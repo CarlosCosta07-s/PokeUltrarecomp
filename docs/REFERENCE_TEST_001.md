@@ -41,7 +41,7 @@ Não instale toolchains nem dependências com privilégios elevados. Use fontes 
 
 Abra PowerShell na pasta de trabalho do projeto e execute:
 
-    .\tools\run_reference_test_001.ps1
+    .\tools\run_reference_test_001.ps1 -AcceptThirdPartyCode
 
 Para capturar a saída numa cópia adicional do log:
 
