@@ -150,7 +150,7 @@ try {
         $TestOutput = & cargo test --locked --lib overrides::tests -- --nocapture 2>&1 |
             Tee-Object -FilePath $LogPath -Append
         $TestExitCode = $LASTEXITCODE
-        $TestOutputText = ($TestOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+        $TestOutputText = ($TestOutput | ForEach-Object { $_.ToString() }) -join [char]10
     }
     finally {
         Pop-Location
@@ -167,112 +167,16 @@ try {
         throw "The reference tests did not pass. Inspect the local log: $LogPath"
     }
 
-    if ($TestOutputText -notmatch '(?m)^running 2 tests
-    Write-Host "PASS: Cargo exited with code 0 for the pinned parser tests."
-    Write-Host "Local log: $LogPath"
-    Write-Host "This proves only these parser tests pass; it does not prove recompilation or game compatibility."
-}
-catch {
-    if ($ExitCode -eq 0) { $ExitCode = 1 }
-    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
-    try {
-        Add-Content -LiteralPath $LogPath -Encoding utf8 -Value @(
-            ""
-            "Runner error: $($_.Exception.Message)"
-            "Finished (UTC): $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-        )
-    } catch {
-        # Preserve the primary test/runner error if a log cannot be written.
-    }
-}
-finally {
-    Restore-Environment
-
-    if (-not $KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Remove-Item -LiteralPath $WorkDirectory -Recurse -Force -ErrorAction SilentlyContinue
-    } elseif ($KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Write-Host "Temporary workspace retained by request: $WorkDirectory"
-    }
-}
-
-if ($ExitCode -ne 0) {
-    exit $ExitCode
-}
-exit 0
- -or
-        $TestOutputText -notmatch '(?m)^test overrides::tests::marks_are_found_outside_comments \.\.\. ok
-    Write-Host "PASS: Cargo exited with code 0 for the pinned parser tests."
-    Write-Host "Local log: $LogPath"
-    Write-Host "This proves only these parser tests pass; it does not prove recompilation or game compatibility."
-}
-catch {
-    if ($ExitCode -eq 0) { $ExitCode = 1 }
-    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
-    try {
-        Add-Content -LiteralPath $LogPath -Encoding utf8 -Value @(
-            ""
-            "Runner error: $($_.Exception.Message)"
-            "Finished (UTC): $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-        )
-    } catch {
-        # Preserve the primary test/runner error if a log cannot be written.
-    }
-}
-finally {
-    Restore-Environment
-
-    if (-not $KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Remove-Item -LiteralPath $WorkDirectory -Recurse -Force -ErrorAction SilentlyContinue
-    } elseif ($KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Write-Host "Temporary workspace retained by request: $WorkDirectory"
-    }
-}
-
-if ($ExitCode -ne 0) {
-    exit $ExitCode
-}
-exit 0
- -or
-        $TestOutputText -notmatch '(?m)^test overrides::tests::bad_marks_are_reported \.\.\. ok
-    Write-Host "PASS: Cargo exited with code 0 for the pinned parser tests."
-    Write-Host "Local log: $LogPath"
-    Write-Host "This proves only these parser tests pass; it does not prove recompilation or game compatibility."
-}
-catch {
-    if ($ExitCode -eq 0) { $ExitCode = 1 }
-    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
-    try {
-        Add-Content -LiteralPath $LogPath -Encoding utf8 -Value @(
-            ""
-            "Runner error: $($_.Exception.Message)"
-            "Finished (UTC): $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-        )
-    } catch {
-        # Preserve the primary test/runner error if a log cannot be written.
-    }
-}
-finally {
-    Restore-Environment
-
-    if (-not $KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Remove-Item -LiteralPath $WorkDirectory -Recurse -Force -ErrorAction SilentlyContinue
-    } elseif ($KeepWorkspace -and (Test-Path -LiteralPath $WorkDirectory)) {
-        Write-Host "Temporary workspace retained by request: $WorkDirectory"
-    }
-}
-
-if ($ExitCode -ne 0) {
-    exit $ExitCode
-}
-exit 0
- -or
+    if ($TestOutputText -notmatch '(?m)^running 2 tests$' -or
+        $TestOutputText -notmatch '(?m)^test overrides::tests::marks_are_found_outside_comments \.\.\. ok$' -or
+        $TestOutputText -notmatch '(?m)^test overrides::tests::bad_marks_are_reported \.\.\. ok$' -or
         $TestOutputText -notmatch '(?m)^test result: ok\. 2 passed; 0 failed;') {
         $ExitCode = 1
         throw "Cargo exited successfully, but the output did not confirm exactly the two expected passing tests. Inspect the local log: $LogPath"
     }
 
     Write-Host ""
-    Write-Host "PASS: Cargo exited with code 0 for the pinned parser tests."
+    Write-Host "PASS: both expected parser tests passed on the pinned reference commit."
     Write-Host "Local log: $LogPath"
     Write-Host "This proves only these parser tests pass; it does not prove recompilation or game compatibility."
 }
