@@ -59,7 +59,7 @@ As fases são:
 
 ## Primeira verificação reproduzível
 
-A primeira tarefa de teste está documentada em [docs/REFERENCE_TEST_001.md](docs/REFERENCE_TEST_001.md). Ela executa testes sintéticos do parser de overrides do 3dsrecomp num runner Windows, em commit fixo, sem arquivos de jogo. Até que um run seja inspecionado, seu estado permanece **não verificado**. Mesmo aprovado, esse teste só demonstra comportamento de parser e não constitui prova de recompilação ou execução de qualquer jogo.
+A primeira tarefa de teste está documentada em [docs/REFERENCE_TEST_001.md](docs/REFERENCE_TEST_001.md) e usa um script PowerShell local. O script executa testes sintéticos do parser de overrides do 3dsrecomp numa revisão fixada, sem arquivos de jogo e sem depender do GitHub Actions. O teste ainda não foi executado neste ambiente porque Rust/Cargo não estão instalados. Mesmo aprovado, demonstra apenas o comportamento do parser, não recompilação ou execução de qualquer jogo.
 
 ## Como acompanhar o progresso
 
