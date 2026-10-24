@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [switch]$AcceptThirdPartyCode,
     [switch]$KeepWorkspace,
     [string]$WorkspaceRoot = [System.IO.Path]::GetTempPath(),
     [string]$LogPath = (Join-Path ([System.IO.Path]::GetTempPath()) "PokeUltrarecomp-reference-test-001.log")
@@ -77,6 +78,10 @@ try {
         "Started (UTC): $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
         ""
     ) | Set-Content -LiteralPath $LogPath -Encoding utf8
+
+    if (-not $AcceptThirdPartyCode) {
+        throw "Safety stop: this runner fetches, compiles, and executes third-party source and dependency code. Review docs/REFERENCE_TEST_001.md first; run only as a non-admin user (preferably in a disposable VM/Sandbox), then explicitly pass -AcceptThirdPartyCode."
+    }
 
     $env:GIT_TERMINAL_PROMPT = "0"
     $env:CARGO_TERM_COLOR = "never"
