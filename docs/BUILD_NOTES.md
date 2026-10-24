@@ -65,7 +65,7 @@ Próximo passo:
 ## Teste de referência 001 — parser sintético de overrides
 
 - Especificação e passos locais: [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
-- Runner: [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1).
+- Runner: [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1); exige o argumento explícito AcceptThirdPartyCode antes de executar código de terceiros.
 - Ferramenta de referência: 3dsrecomp, commit c3f21f94ba50d688025febc8974ff348d471b587.
 - Comando: cargo test --locked --lib overrides::tests -- --nocapture.
 - Ambiente esperado: Windows + PowerShell + Git + Rust/Cargo 1.88.0 ou mais recente.
