@@ -45,6 +45,8 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 4 — Reproduzir um teste de referência documentado
 
+**Estado atual:** candidato selecionado e workflow de teste adicionado; execução e resultado ainda precisam ser verificados em [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
+
 **Tarefas**
 - [ ] Selecionar uma prova de teste sintética ou um teste de unidade publicado por uma ferramenta de referência que não exija ROM/dump.
 - [ ] Preferir um teste de compilação, verificação de instruções reconstruídas contra um intérprete ou teste do runtime de PC com fixtures sintéticas.
