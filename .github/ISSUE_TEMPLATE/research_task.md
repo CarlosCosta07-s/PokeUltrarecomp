@@ -2,7 +2,6 @@
 name: Tarefa de pesquisa técnica
 about: Proponha uma investigação pequena, com fontes e critérios verificáveis
 title: "[RESEARCH] "
-labels: ["research", "needs-triage"]
 assignees: []
 ---
 
