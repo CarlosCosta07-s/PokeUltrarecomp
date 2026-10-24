@@ -60,3 +60,15 @@ Próximo passo:
 - Builds/testes de jogo: **não executados**.
 - Resultado: leitura documental e verificação de caminhos públicos; os autores relatam resultados descritos em [AUDIT.md](AUDIT.md), mas eles não foram reproduzidos por este repositório.
 - Limitações: estados e licenças podem mudar; commits de referência e os arquivos consultados devem ser revistos antes de qualquer incorporação.
+
+
+## Teste de referência 001 — parser sintético de overrides
+
+- Especificação: [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
+- Ferramenta: [3dsrecomp](https://github.com/fearkov/3dsrecomp), commit c3f21f94ba50d688025febc8974ff348d471b587.
+- Fonte dos testes: [src/overrides.rs](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/src/overrides.rs).
+- Comando: cargo test --locked --lib overrides::tests -- --nocapture.
+- Ambiente pretendido: runner Windows, Rust 1.95.0.
+- Entradas de jogo: nenhuma; os testes constroem strings sintéticas.
+- Estado: **aguardando inspeção do resultado do GitHub Actions**.
+- Interpretação: aprovado significa apenas que dois testes de parser passam no commit fixado; não demonstra recompilação ARM nem execução de Ultra Sun/Ultra Moon.
