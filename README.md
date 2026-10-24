@@ -1,6 +1,6 @@
 # PokeUltrarecomp
 
-**Estado: fase inicial de pesquisa, documentação e auditoria.** Este repositório ainda não contém uma porta funcional de Pokémon Ultra Sun ou Pokémon Ultra Moon, um runtime próprio para Windows, nem resultados de compilação ou testes executados por este projeto.
+**Estado: fase inicial de pesquisa, documentação, auditoria e ferramentas de verificação do repositório.** Este repositório ainda não contém uma porta funcional de Pokémon Ultra Sun ou Pokémon Ultra Moon, um runtime próprio para Windows, nem resultados de compilação da porta ou testes de jogo executados por este projeto.
 
 ## Objetivo
 
@@ -10,7 +10,7 @@ A estratégia inicial é estudar projetos de reconstrução, descompilação, re
 
 ## Estado atual verificável
 
-- O trabalho deste repositório está limitado à organização, documentação e pesquisa inicial.
+- O trabalho deste repositório está limitado à organização, documentação, pesquisa inicial e ferramentas locais de proteção/verificação; o runtime do jogo ainda não foi implementado.
 - Este conjunto de documentos registra uma auditoria documental dos quatro projetos de referência listados abaixo. Os testes reportados por esses projetos foram lidos em suas documentações, mas **não foram executados independentemente por este repositório**.
 - Ainda não há runtime próprio implementado aqui, prova de conceito compilada, teste de jogo reproduzível ou porta nativa funcional reivindicada.
 - O arquivo **LICENSE** já existia no repositório inicial e contém o texto padrão da GNU GPL versão 3. Sua procedência, autoria e abrangência não estão documentadas. Por isso, não se deve interpretar esse arquivo como confirmação de que todo conteúdo presente ou futuro pode ser licenciado pelo mantenedor. Veja [Legal e propriedade intelectual](docs/LEGAL_AND_IP.md).
@@ -60,6 +60,15 @@ As fases são:
 ## Primeira verificação reproduzível
 
 A primeira tarefa de teste está documentada em [docs/REFERENCE_TEST_001.md](docs/REFERENCE_TEST_001.md) e usa um script PowerShell local. O script executa testes sintéticos do parser de overrides do 3dsrecomp numa revisão fixada, sem arquivos de jogo e sem depender do GitHub Actions. O teste ainda não foi executado neste ambiente porque Rust/Cargo não estão instalados. Mesmo aprovado, demonstra apenas o comportamento do parser, não recompilação ou execução de qualquer jogo.
+
+## Verificação local do repositório
+
+Foi adicionado um verificador sem dependências externas para ajudar a detectar caminhos/arquivos com aparência de conteúdo de jogo ou dados privados e links Markdown relativos quebrados:
+
+    python tools/check_repository_safety.py
+    python -m unittest discover -s tests -v
+
+É necessário Python 3.10 ou mais recente e Git. O verificador analisa arquivos no índice Git e arquivos não ignorados que ainda não foram rastreados. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de cada arquivo ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
 
 ## Como acompanhar o progresso
 
