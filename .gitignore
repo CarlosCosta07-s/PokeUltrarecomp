@@ -72,6 +72,10 @@ Thumbs.db
 *.nds
 *.gba
 *.bcsar
+*.bcseq
+*.bcstm
+*.bcwav
+*.bfres
 *.bclim
 *.bflim
 *.bcres
@@ -80,6 +84,15 @@ Thumbs.db
 *.narc
 *.szs
 *.cetk
+*.exefs
+*.romfs
+*.ncch
+*.ncsd
+*.exheader
+*.cro
+*.code
+*.sav
+*.garc
 boot9.bin
 boot11.bin
 seeddb.bin
