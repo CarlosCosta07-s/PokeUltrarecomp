@@ -26,11 +26,8 @@ Antes de incorporar, registrar: nome e função, origem oficial, commit/tag/hash
 A licença de uma ferramenta não licencia ROMs, dumps, firmware, jogos, assets ou resultados derivados. Não assumir que outputs gerados são redistribuíveis. Rever este inventário em cada atualização de dependência.
 
 
-## Ações de CI utilizadas por Reference Test 001
+## Runner local do teste de referência 001
 
-| Ação | Origem | Commit fixado | Licença observada | Uso |
-| --- | --- | --- | --- | --- |
-| actions/checkout | [GitHub](https://github.com/actions/checkout) | [f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a](https://github.com/actions/checkout/commit/f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a) | MIT; arquivo LICENSE consultado nesse commit | Checkout temporário da fonte de referência no runner hospedado; nenhum código é incorporado ao repositório do projeto |
-| dtolnay/rust-toolchain | [GitHub](https://github.com/dtolnay/rust-toolchain) | [683b588c487a69d01f6c6ddf40f036ff682cc2c8](https://github.com/dtolnay/rust-toolchain/commit/683b588c487a69d01f6c6ddf40f036ff682cc2c8) | MIT; arquivo LICENSE consultado nesse commit | Instalação da toolchain Rust 1.95.0 para o teste; a ação é executada pelo runner, não vendorizada aqui |
+O script tools/run_reference_test_001.ps1 usa ferramentas locais do mantenedor, um fetch Git raso do commit fixado e dependências Rust baixadas temporariamente por Cargo. Ele não incorpora o código 3dsrecomp ao projeto nem depende de ações hospedadas do GitHub. Não há ações de CI de terceiros em uso neste momento.
 
-A fonte 3dsrecomp é baixada apenas para executar seu teste unitário público em ambiente temporário e em commit fixo. Ela não é uma dependência incorporada ao PokeUltrarecomp. O teste não recebe arquivos de jogo. A ausência de um LICENSE no caminho padrão de 3dsrecomp continua sendo uma questão para resolver antes de copiar ou redistribuir seu código.
+A ausência de um LICENSE no caminho padrão de 3dsrecomp continua sendo uma questão para resolver antes de copiar ou redistribuir seu código.
