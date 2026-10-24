@@ -1,51 +1,72 @@
 # Referência de teste 001 — parser sintético de overrides
 
-**Estado inicial:** selecionado; execução pelo GitHub Actions ainda não confirmada neste registro.
-
 ## Objetivo
 
-Reproduzir um teste de unidade público do [3dsrecomp](https://github.com/fearkov/3dsrecomp) que analisa marcadores de overrides em pequenos trechos sintéticos de código C. Esse teste não precisa de ROM, dump, firmware, chave, recurso extraído, compilação de jogo nem runtime 3DS.
+Executar localmente dois testes unitários públicos do [3dsrecomp](https://github.com/fearkov/3dsrecomp), referentes a marcadores de substituição de funções. Os casos de teste usam strings sintéticas; não exigem ROM, dump, firmware, chaves ou recursos extraídos.
 
 ## Fonte fixada
 
 - Repositório: https://github.com/fearkov/3dsrecomp
-- Commit de origem: [c3f21f94ba50d688025febc8974ff348d471b587](https://github.com/fearkov/3dsrecomp/commit/c3f21f94ba50d688025febc8974ff348d471b587)
-- Arquivo de teste: [src/overrides.rs](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/src/overrides.rs)
-- Manifesto e versões travadas: [Cargo.toml](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/Cargo.toml) e [Cargo.lock](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/Cargo.lock)
-- Componente testado: parser de marcadores RECOMP_OVERRIDE e RECOMP_OVERRIDE_IN.
+- Commit: [c3f21f94ba50d688025febc8974ff348d471b587](https://github.com/fearkov/3dsrecomp/commit/c3f21f94ba50d688025febc8974ff348d471b587)
+- Testes: [src/overrides.rs](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/src/overrides.rs)
+- Lockfile de dependências: [Cargo.lock](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/Cargo.lock)
+- Testes selecionados: **marks_are_found_outside_comments** e **bad_marks_are_reported**.
 
-O código upstream contém um teste positivo que garante que marcadores em comentários e strings sejam ignorados e que marcadores válidos gerem endereços/nomes esperados. Outro teste verifica a rejeição de marcadores malformados e de endereços duplicados. São assertions de parser sobre strings sintéticas.
+O primeiro verifica que marcadores em comentários/strings são ignorados e que exemplos válidos produzem endereços/nomes esperados. O segundo verifica a rejeição de sintaxe inválida e endereços duplicados.
 
-## Execução planejada
+## Método sem GitHub Actions
 
-A automação está em [.github/workflows/reference-test-001.yml](../.github/workflows/reference-test-001.yml) e roda em um runner Windows hospedado pelo GitHub. O código de referência é consultado em um commit fixo no workspace temporário do runner; nenhum código do 3dsrecomp é incorporado ao histórico do PokeUltrarecomp.
+Use [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1) em um computador Windows com Git e Rust/Cargo instalados. O script:
 
-O comando usado é:
+1. cria um diretório temporário isolado;
+2. faz um fetch raso do commit de referência e verifica o SHA exato;
+3. confirma que os dois testes esperados existem na fonte;
+4. direciona o cache de Cargo e os artefatos de build para o diretório temporário;
+5. executa apenas os testes de overrides;
+6. grava um log local em %TEMP%\PokeUltrarecomp-reference-test-001.log;
+7. limpa o checkout e os artefatos temporários ao sair, inclusive em caso de falha, salvo uso explícito de -KeepWorkspace.
 
-~~~powershell
-cargo test --locked --lib overrides::tests -- --nocapture
-~~~
+O script não altera a configuração global do Git nem pede credenciais. O fetch é do código-fonte público da ferramenta; dependências Rust podem ser baixadas durante o teste. Os diretórios temporários são removidos para limitar o uso de armazenamento. O log é mantido no diretório temporário; revise e redija caminhos locais antes de compartilhá-lo.
 
-Toolchain fixada: Rust 1.95.0. O lockfile determina as versões exatas de crates e da dependência Git declarada pelo projeto. Nenhum input de jogo deve ser fornecido à tarefa.
+## Pré-requisitos
+
+- Git disponível no PATH.
+- Rust/Cargo 1.88.0 ou mais recente, conforme o rust-version declarado pelo pacote fixado.
+- Acesso à rede para obter o commit e as dependências.
+- Espaço temporário para o checkout e a compilação.
+
+Não instale toolchains nem dependências com privilégios elevados. Use fontes oficiais e, se a instalação de Rust for necessária, siga as instruções oficiais: https://www.rust-lang.org/tools/install.
+
+## Comando
+
+Abra PowerShell na pasta de trabalho do projeto e execute:
+
+    .\tools\run_reference_test_001.ps1
+
+Para capturar a saída numa cópia adicional do log:
+
+    .\tools\run_reference_test_001.ps1 2>&1 | Tee-Object "$env:TEMP\PokeUltrarecomp-reference-test-001-console.log"
+
+O script escreve seu próprio log resumido. A segunda opção cria um segundo log, que deve ser removido depois de não ser mais necessário.
 
 ## Critérios de aceitação
 
-O teste só pode ser registrado como aprovado quando um run do GitHub Actions para este workflow:
-1. terminar com código de saída zero;
-2. listar e aprovar os dois testes da seção overrides::tests;
-3. usar exatamente o commit de referência acima e Rust 1.95.0;
-4. não baixar, solicitar ou acessar conteúdo de jogo.
+Registre PASS somente se:
+1. o script confirmar o commit exato;
+2. Cargo terminar com código zero;
+3. os dois testes de overrides forem listados e aprovados;
+4. não forem usadas entradas de jogo.
 
-Uma falha de rede, compilador ou dependência deve ser registrada como falha de infraestrutura, não como evidência de defeito no parser. Um teste aprovado prova apenas aquele comportamento de parser em fixtures sintéticas. **Não prova que código ARM foi recompilado, que Ultra Sun/Ultra Moon inicializam, nem que exista runtime ou porta nativa para Windows.**
+Se uma dependência/rede/toolchain falhar, classifique a execução como falha de ambiente, sem inferir que o parser está defeituoso. Um PASS prova apenas os dois testes sintéticos do parser. Não prova recompilação ARM, inicialização de Ultra Sun/Ultra Moon nem runtime próprio para Windows.
 
-## Licença e limites
+## Licença e limite de reutilização
 
-O teste é executado diretamente na fonte pública de referência sem copiar arquivos para o PokeUltrarecomp. O Cargo.toml desse commit declara MIT, mas a consulta documental anterior não encontrou um arquivo LICENSE no caminho padrão desse repositório. Assim, a automação serve para estudar e executar o teste upstream; não autoriza copiar nem redistribuir o código. Antes de qualquer incorporação, confirme a licença aplicável e as atribuições com base na origem completa.
+O script não copia arquivos para o repositório PokeUltrarecomp. O Cargo.toml da revisão consultada declara MIT, mas não foi encontrado um arquivo LICENSE no caminho padrão do 3dsrecomp. Executar um teste para pesquisa não é aprovação para copiar ou redistribuir código. Qualquer incorporação continua bloqueada até que a licença aplicável e a procedência estejam esclarecidas.
 
-## Resultado registrado
+## Resultado atual
 
-- Data da definição: 2026-10-24.
-- Execução local: não realizada.
-- Resultado do GitHub Actions: pendente de verificação.
-- Classificação atual: NOT RUN / NOT VERIFIED.
-- Próximo passo após um run aprovado: registrar seu URL/commit e escolher uma segunda prova de conceito que valide um componente host próprio com fixtures sintéticas, após resolver os bloqueios de licença e procedência.
+- Data da preparação: 2026-10-24.
+- Execução no ambiente desta sessão: **não realizada**, pois não há rustc nem cargo instalados.
+- Resultado no computador do mantenedor: pendente.
+- Estado: NOT RUN / NOT VERIFIED.
+- Evidência exigida: log local revisado e anotação com data, versões de Git/Rust/Cargo, SHA de referência, código de saída e resultado dos dois testes. Não publique logs que revelem caminhos privados.
