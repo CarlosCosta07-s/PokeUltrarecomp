@@ -60,7 +60,10 @@ try {
     }
 
     New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
-    New-Item -ItemType Directory -Path (Split-Path -Parent $LogPath) -Force | Out-Null
+    $LogDirectory = Split-Path -Parent $LogPath
+    if (-not [string]::IsNullOrWhiteSpace($LogDirectory)) {
+        New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+    }
 
     @(
         "PokeUltrarecomp — reference test 001"
@@ -153,7 +156,7 @@ try {
 }
 catch {
     if ($ExitCode -eq 0) { $ExitCode = 1 }
-    Write-Error $_
+    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
     try {
         Add-Content -LiteralPath $LogPath -Encoding utf8 -Value @(
             ""
