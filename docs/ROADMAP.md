@@ -45,7 +45,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 4 — Reproduzir um teste de referência documentado
 
-**Estado atual:** candidato selecionado e workflow de teste adicionado; execução e resultado ainda precisam ser verificados em [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
+**Estado atual:** procedimento PowerShell local preparado em [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md); execução e resultado continuam pendentes. Este projeto não depende de GitHub Actions.
 
 **Tarefas**
 - [ ] Selecionar uma prova de teste sintética ou um teste de unidade publicado por uma ferramenta de referência que não exija ROM/dump.
