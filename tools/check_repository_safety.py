@@ -33,9 +33,10 @@ REQUIRED_FILES = (
 PROHIBITED_EXTENSIONS = {
     ".3ds", ".3dsx", ".cia", ".cxi", ".cci", ".tik", ".tmd",
     ".firm", ".firmware", ".rom", ".nds", ".gba", ".bcsar",
-    ".bclim", ".bflim", ".bcres", ".bflyt", ".sarc", ".narc",
-    ".szs", ".cetk", ".exefs", ".romfs", ".ncch", ".ncsd",
-    ".exheader", ".cro",
+    ".bcseq", ".bcstm", ".bcwav", ".bfres", ".bclim", ".bflim",
+    ".bcres", ".bflyt", ".sarc", ".narc", ".szs", ".cetk",
+    ".exefs", ".romfs", ".ncch", ".ncsd", ".exheader", ".cro",
+    ".code", ".sav", ".garc",
 }
 
 PROHIBITED_FILENAMES = {
