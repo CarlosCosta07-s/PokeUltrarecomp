@@ -72,3 +72,8 @@ Próximo passo:
 - Entradas de jogo: nenhuma; os testes constroem strings sintéticas.
 - Estado: **aguardando inspeção do resultado do GitHub Actions**.
 - Interpretação: aprovado significa apenas que dois testes de parser passam no commit fixado; não demonstra recompilação ARM nem execução de Ultra Sun/Ultra Moon.
+
+
+### Observação de execução remota
+
+O workflow está publicado e os commits que alteraram os caminhos monitorados estão na branch principal. A integração GitHub disponível nesta sessão não forneceu resultados de runs disparados por push; o endpoint acessível de runs está limitado a eventos de pull request. O ambiente de execução local também não tem Rust/Cargo instalado. Portanto, não há evidência confirmada de PASS ou FAIL nesta etapa. O resultado continua NOT VERIFIED; verifique a página Actions do repositório antes de mudar esse estado.
