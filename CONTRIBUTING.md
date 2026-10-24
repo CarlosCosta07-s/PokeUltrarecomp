@@ -25,7 +25,14 @@ Não copie código de repositórios que não tenham licença ou permissão clara
 
 Não enviar ROMs, dumps, CIA/CXI/CCI, atualizações, firmware, chaves, executáveis proprietários ou recursos extraídos nos commits, issues, PRs, releases ou CI. Não enviar resultados gerados que contenham ou reproduzam código/recursos proprietários. Testes devem preferir fixtures sintéticas e manter qualquer entrada local fora do Git e de pipelines remotos.
 
-Antes de cada commit, verifique git status, git diff --check, o diff completo, git check-ignore para entradas locais e o tamanho dos arquivos adicionados. Ignore rules não são proteção para arquivos que já estejam rastreados.
+Antes de cada commit, verifique `git status`, `git diff --check`, o diff completo, `git check-ignore` para entradas locais e o tamanho dos arquivos adicionados. Ignore rules não são proteção para arquivos que já estejam sendo rastreados.
+
+Para uma verificação auxiliar sem dependências externas, execute com Python 3.10+:
+
+    python tools/check_repository_safety.py
+    python -m unittest discover -s tests -v
+
+O verificador cobre apenas padrões conhecidos de caminhos/extensões e links Markdown relativos; ele não examina o histórico inteiro nem substitui a revisão manual.
 
 ## Pull requests
 
