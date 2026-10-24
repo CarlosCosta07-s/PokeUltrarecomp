@@ -16,7 +16,7 @@ O primeiro verifica que marcadores em comentários/strings são ignorados e que 
 
 ## Método sem GitHub Actions
 
-Use [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1) em um computador Windows com Git e Rust/Cargo instalados. O script:
+Use [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1) em um computador Windows com Git e Rust/Cargo instalados. Este teste compila e executa código de terceiros e dependências baixadas; o script exige opt-in explícito. Prefira Windows Sandbox ou uma VM descartável, use uma conta sem privilégios administrativos e não exponha arquivos pessoais/credenciais nesse ambiente. O script não é uma sandbox por si só. O script:
 
 1. cria um diretório temporário isolado;
 2. faz um fetch raso do commit de referência e verifica o SHA exato;
