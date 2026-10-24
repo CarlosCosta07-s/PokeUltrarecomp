@@ -2,7 +2,6 @@
 name: Relato de problema técnico
 about: Registre uma falha reproduzível em documentação, ferramenta ou código do projeto
 title: "[BUG] "
-labels: ["bug", "needs-triage"]
 assignees: []
 ---
 
