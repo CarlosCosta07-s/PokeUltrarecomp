@@ -4,7 +4,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 1 — Organização e auditoria
 
-**Estado:** documentação inicial em preparação; auditoria de referência baseada em documentação pública.
+**Estado:** documentação e auditoria inicial publicadas; pendente decisão do mantenedor sobre o LICENSE preexistente e revisão final de governança.
 
 **Tarefas**
 - [ ] Manter README, arquitetura, regras de contribuição, segurança e avisos legais consistentes.
