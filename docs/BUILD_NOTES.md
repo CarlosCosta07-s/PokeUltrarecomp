@@ -76,3 +76,16 @@ Próximo passo:
 - Interpretação: PASS significa apenas que os testes do parser passaram no commit fixado. Não demonstra recompilação ARM nem execução de Ultra Sun/Ultra Moon.
 
 O script busca apenas o commit fixado num diretório temporário, usa cache/build temporários e limpa esses dados ao terminar. O log resumido é escrito em %TEMP%; revise-o antes de compartilhar.
+
+## Verificador local de segurança do repositório — 2026-10-24
+
+- Arquivos: `tools/check_repository_safety.py` e `tests/test_repository_safety.py`.
+- Dependências externas: nenhuma; usa a biblioteca padrão do Python e o Git.
+- Testes unitários executados em ambiente temporário com fixtures sintéticas: **7 aprovados**.
+- Verificação sintática executada com `python -m py_compile`: aprovada.
+- Teste de fumaça do comando CLI: aprovado num repositório Git temporário de exemplo, com documentos mínimos.
+- A verificação contra a árvore de trabalho completa da `main` ainda está pendente; os resultados acima não são um teste da porta do jogo.
+- Escopo: detecta nomes/extensões/dir paths conhecidos de dados de jogo ou credenciais e links Markdown locais quebrados ou fora da raiz.
+- Limitações: não examina histórico Git, arquivos ignorados que ainda não estão rastreados, conteúdo arbitrário, licenças, direitos sobre dados ou compatibilidade do jogo. Um arquivo adicionado à força pode contornar regras de ignore; toda alteração ainda requer revisão de diff.
+- Estado do runtime e teste de referência 001: continuam **NOT RUN / NOT VERIFIED**.
+
