@@ -13,6 +13,10 @@ class ProhibitedPathTests(unittest.TestCase):
     def test_detects_game_image_and_extracted_module(self):
         self.assertIsNotNone(guard.prohibited_path_reason("roms/UltraSun.3DS"))
         self.assertIsNotNone(guard.prohibited_path_reason("out/code.cro"))
+        self.assertIsNotNone(guard.prohibited_path_reason("extracted/main.code"))
+        self.assertIsNotNone(guard.prohibited_path_reason("private/player.sav"))
+        self.assertIsNotNone(guard.prohibited_path_reason("audio/stream.bcstm"))
+        self.assertIsNotNone(guard.prohibited_path_reason("archives/data.garc"))
         self.assertIsNotNone(guard.prohibited_path_reason("firmware/boot9.bin"))
 
     def test_detects_private_configuration_and_keys(self):
