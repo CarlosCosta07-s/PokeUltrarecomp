@@ -57,6 +57,10 @@ As fases são:
 9. Avaliar estabilidade e desempenho com evidências.
 10. Avaliar e validar a adaptação para Ultra Moon.
 
+## Primeira verificação reproduzível
+
+A primeira tarefa de teste está documentada em [docs/REFERENCE_TEST_001.md](docs/REFERENCE_TEST_001.md). Ela executa testes sintéticos do parser de overrides do 3dsrecomp num runner Windows, em commit fixo, sem arquivos de jogo. Até que um run seja inspecionado, seu estado permanece **não verificado**. Mesmo aprovado, esse teste só demonstra comportamento de parser e não constitui prova de recompilação ou execução de qualquer jogo.
+
 ## Como acompanhar o progresso
 
 Use GitHub Issues para pesquisas ou problemas com escopo claro. Registre sempre o commit e as versões exatas das ferramentas, comandos executados, resultados observados, logs redigidos e critérios de aceitação. Diferencie resultados reproduzidos de resultados apenas relatados em documentação externa.
