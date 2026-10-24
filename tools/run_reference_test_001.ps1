@@ -13,6 +13,7 @@ $ReferenceRepository = "https://github.com/fearkov/3dsrecomp.git"
 $ReferenceCommit = "c3f21f94ba50d688025febc8974ff348d471b587"
 $MinimumRustVersion = [version]"1.88.0"
 $TestCommand = "cargo test --locked --lib overrides::tests -- --nocapture"
+$LogPath = [System.IO.Path]::GetFullPath($LogPath)
 
 $WorkDirectory = Join-Path $WorkspaceRoot ("PokeUltrarecomp-ReferenceTest001-" + [guid]::NewGuid().ToString("N"))
 $SourceDirectory = Join-Path $WorkDirectory "source"
