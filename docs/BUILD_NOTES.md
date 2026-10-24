@@ -64,16 +64,15 @@ Próximo passo:
 
 ## Teste de referência 001 — parser sintético de overrides
 
-- Especificação: [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
-- Ferramenta: [3dsrecomp](https://github.com/fearkov/3dsrecomp), commit c3f21f94ba50d688025febc8974ff348d471b587.
-- Fonte dos testes: [src/overrides.rs](https://github.com/fearkov/3dsrecomp/blob/c3f21f94ba50d688025febc8974ff348d471b587/src/overrides.rs).
+- Especificação e passos locais: [REFERENCE_TEST_001.md](REFERENCE_TEST_001.md).
+- Runner: [tools/run_reference_test_001.ps1](../tools/run_reference_test_001.ps1).
+- Ferramenta de referência: 3dsrecomp, commit c3f21f94ba50d688025febc8974ff348d471b587.
 - Comando: cargo test --locked --lib overrides::tests -- --nocapture.
-- Ambiente pretendido: runner Windows, Rust 1.95.0.
-- Entradas de jogo: nenhuma; os testes constroem strings sintéticas.
-- Estado: **aguardando inspeção do resultado do GitHub Actions**.
-- Interpretação: aprovado significa apenas que dois testes de parser passam no commit fixado; não demonstra recompilação ARM nem execução de Ultra Sun/Ultra Moon.
+- Ambiente esperado: Windows + PowerShell + Git + Rust/Cargo 1.88.0 ou mais recente.
+- Entradas de jogo: nenhuma; fixtures de strings sintéticas.
+- Execução nesta sessão: não realizada, porque rustc e cargo não estão instalados.
+- Execução no computador do mantenedor: pendente.
+- Estado: NOT RUN / NOT VERIFIED.
+- Interpretação: PASS significa apenas que os testes do parser passaram no commit fixado. Não demonstra recompilação ARM nem execução de Ultra Sun/Ultra Moon.
 
-
-### Observação de execução remota
-
-O workflow está publicado e os commits que alteraram os caminhos monitorados estão na branch principal. A integração GitHub disponível nesta sessão não forneceu resultados de runs disparados por push; o endpoint acessível de runs está limitado a eventos de pull request. O ambiente de execução local também não tem Rust/Cargo instalado. Portanto, não há evidência confirmada de PASS ou FAIL nesta etapa. O resultado continua NOT VERIFIED; verifique a página Actions do repositório antes de mudar esse estado.
+O script busca apenas o commit fixado num diretório temporário, usa cache/build temporários e limpa esses dados ao terminar. O log resumido é escrito em %TEMP%; revise-o antes de compartilhar.
