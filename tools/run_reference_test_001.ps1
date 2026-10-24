@@ -46,6 +46,14 @@ try {
         }
     }
 
+    $GitVersionText = (& git --version 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not run Git."
+    }
+
+    $PowerShellVersionText = $PSVersionTable.PSVersion.ToString()
+    $OSVersionText = [Environment]::OSVersion.VersionString
+
     $RustVersionText = (& rustc --version 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $RustVersionText -notmatch 'rustc\s+(\d+\.\d+\.\d+)') {
         throw "Could not determine the Rust compiler version."
@@ -70,6 +78,9 @@ try {
         "PokeUltrarecomp — reference test 001"
         "Reference repository: $ReferenceRepository"
         "Pinned commit: $ReferenceCommit"
+        "Operating system: $OSVersionText"
+        "PowerShell: $PowerShellVersionText"
+        "Git: $GitVersionText"
         "Minimum Rust version: $MinimumRustVersion"
         "Detected Rust: $RustVersionText"
         "Detected Cargo: $CargoVersionText"
