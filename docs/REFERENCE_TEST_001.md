@@ -45,7 +45,7 @@ Abra PowerShell na pasta de trabalho do projeto e execute:
 
 Para capturar a saída numa cópia adicional do log:
 
-    .\tools\run_reference_test_001.ps1 2>&1 | Tee-Object "$env:TEMP\PokeUltrarecomp-reference-test-001-console.log"
+    .\tools\run_reference_test_001.ps1 -AcceptThirdPartyCode 2>&1 | Tee-Object "$env:TEMP\PokeUltrarecomp-reference-test-001-console.log"
 
 O script escreve seu próprio log resumido. A segunda opção cria um segundo log, que deve ser removido depois de não ser mais necessário.
 
