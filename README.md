@@ -68,7 +68,7 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
     python tools/check_repository_safety.py
     python -m unittest discover -s tests -v
 
-É necessário Python 3.10 ou mais recente e Git. O verificador analisa arquivos no índice Git e arquivos não ignorados que ainda não foram rastreados. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de cada arquivo ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
+É necessário Python 3.10 ou mais recente e Git. O verificador analisa os blobs preparados no índice Git, as versões atuais dos arquivos na pasta de trabalho e arquivos não ignorados ainda não rastreados. Isso permite detectar diferenças entre o que será commitado e o que está no disco. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de arquivos binários ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
 
 ## Como acompanhar o progresso
 
