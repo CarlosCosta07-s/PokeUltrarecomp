@@ -62,7 +62,8 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "mov": "MOV", "mvn": "MVN", "add": "ADD", "sub": "SUB",
         "and": "AND", "orr": "ORR", "eor": "EOR", "bic": "BIC",
         "adds": "ADDS", "subs": "SUBS", "cmp": "CMP", "cmn": "CMN",
-        "movs": "MOVS",
+        "movs": "MOVS", "adds_reg": "ADDS", "subs_reg": "SUBS",
+        "adds_imm3": "ADDS", "subs_imm3": "SUBS",
     }
     name = names.get(op)
     if name is None:
@@ -73,6 +74,10 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"{name} r{inst[1]}, #{inst[2]}"
     if state == "thumb" and op in ("adds", "subs"):
         return f"{name} r{inst[1]}, #{inst[2]}"
+    if state == "thumb" and op in ("adds_imm3", "subs_imm3"):
+        return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
+    if state == "thumb" and op in ("adds_reg", "subs_reg"):
+        return f"{name} r{inst[1]}, r{inst[2]}, r{inst[3]}"
     if op in ("add", "sub", "and", "orr", "eor", "bic", "adds", "subs"):
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
     raise TargetRangeError(f"could not format decoded operation {decoded!r}")
