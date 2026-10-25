@@ -69,7 +69,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte da POC: 9 testes aprovados no ambiente temporário desta sessão.
+- Suíte da POC: 11 testes aprovados no ambiente temporário desta sessão.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 7 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
