@@ -129,3 +129,16 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Classificação: **PASS para a demonstração sintética limitada no ambiente Linux**.
 - Limites: nenhum ROM ou conteúdo de jogo foi aberto; não comprova equivalência com código de jogo, não cobre Thumb, flags, memória, fluxo de controle geral, ABI real, Windows ou serviços de 3DS. O teste de referência 001 continua pendente.
 
+## Revalidação integral das suítes Python publicadas — 2026-10-24
+
+- Método: os quatro arquivos listados abaixo foram obtidos da `main` e seus IDs de blob Git foram conferidos localmente com `git hash-object`; os testes foram executados em um diretório temporário isolado, sem um clone completo do repositório.
+- Implementação POC: `tools/arm_subset_poc.py`, blob `07d3814e56c39cb200cce44158d59b76607c5d83`.
+- Testes POC: `tests/test_arm_subset_poc.py`, blob `7ee6b241fabf7f1074eb43aabf6deb0c666c6c43`.
+- Verificador de segurança: `tools/check_repository_safety.py`, blob `a372a3880723f5a17ae87cd81d4a41bd45d70edc`.
+- Testes do verificador: `tests/test_repository_safety.py`, blob `3bd44115751390dc6c613e758c94ef90f988eae2`.
+- Ambiente: Linux 6.18.55 x86_64; Python 3.13.5; GCC 14.2.0; Git 2.47.3.
+- Comandos: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
+- Resultado observado: **22 testes aprovados, zero falhas e zero ignorados**. A POC foi compilada com C11, `-Wall -Wextra -Werror`, executada e confirmou o retorno 7. Os testes do verificador utilizaram repositórios Git sintéticos temporários para checar conteúdo preparado e pasta de trabalho divergentes.
+- Classificação: **PASS para as duas suítes sintéticas Python e a compilação/execução host da POC no ambiente Linux descrito**.
+- Limites: não executa o teste Rust de referência 001, não testa Windows, não verifica a árvore completa da `main` com o CLI do verificador e não prova equivalência, runtime ou gameplay. Nenhuma ROM ou recurso extraído foi usado.
+
