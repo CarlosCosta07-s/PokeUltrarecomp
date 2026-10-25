@@ -70,3 +70,12 @@ Os blocos são hipóteses estruturais do trecho escolhido, não limites garantid
 A saída é uma anotação sintática de uma região, não código C executável nem prova de equivalência. Mesmo quando todos os encodings são reconhecidos, as POCs sintéticas têm uma ABI artificial e o estado real do jogo não foi modelado. O próximo marco precisa definir um contrato de função/entrada e comparar estado de registradores/flags com um oráculo independente antes de tentar compilar um trecho real em runtime.
 
 Nenhum código do jogo foi usado na CI. Os testes usam ExHeaders, `.code`, endereços e instruções fabricados para testes.
+
+
+## Predicação de cargas e armazenamentos A32
+
+O inspetor também reconhece as formas de memória A32 já cobertas quando usam condições EQ..LE, por exemplo **LDRNE r0, [r1, #+4]** e **STRNE r2, [r3, #+8]**. O IR mantém a condição explícita; o sumário de efeitos registra quais flags são lidas para decidir se a instrução executa, além dos registradores e da leitura/escrita de memória observados. Os metadados de endereço e writeback continuam sintáticos: nenhum valor de registrador ou de memória é avaliado.
+
+A condição AL permanece sem sufixo. A condição 0xF não é aceita como predicação de instrução A32 comum. Esta cobertura não significa que todas as instruções de memória, todos os modos de endereçamento ou instruções com efeitos especiais estejam suportados; os encodings não reconhecidos continuam fora do subconjunto.
+
+**Validação sintética:** [workflow 40216029715](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216029715), commit fea2ae026bf76f6e877d6cb23557de68d647182e: 285 testes aprovados, matriz diferencial aritmética 96/96 e verificador de segurança aprovado. Nenhum executável real dos jogos foi usado.

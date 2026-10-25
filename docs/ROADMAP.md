@@ -105,7 +105,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
 
-**Estado:** inspeção sintática de intervalos ARM/Thumb, grafo candidato de controle e sumário conservador de efeitos. A cobertura A32 inclui chamadas/literais, transferências de múltiplos registradores, LDR/STR word/byte com offset imediato ou registrador, o grupo extra LDRH/STRH/LDRSB/LDRSH e um subconjunto de processamento de registradores com shift imediato, inclusive predicação EQ..LE. A suíte integral passou em **283 testes**, matriz diferencial 96/96 e verificador de segurança PASS em 43 caminhos no [run 40203189860](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40203189860). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
+**Estado:** inspeção sintática de intervalos ARM/Thumb, grafo candidato de controle e sumário conservador de efeitos. A cobertura A32 inclui chamadas/literais, transferências de múltiplos registradores, LDR/STR word/byte com offset imediato ou registrador, o grupo extra LDRH/STRH/LDRSB/LDRSH, processamento de registradores com shift imediato e cargas/armazenamentos condicionais EQ..LE. A suíte integral passou em **285 testes**, matriz diferencial 96/96 e verificador de segurança no [run 40216029715](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216029715). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
 
 **Tarefas**
 - [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
@@ -125,6 +125,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [ ] Integrar o resultado a uma seleção de intervalo candidato que exija confirmação do mantenedor do endereço inicial e do estado ARM/Thumb.
 - [x] Adicionar inspeção sintática A32 para AND/EOR/SUB/RSB/ADD/ORR/MOV/BIC/MVN e TST/TEQ/CMP/CMN com shift imediato, incluindo condições EQ..LE e sumário dos flags de condição; manter shifts controlados por registrador, operandos PC e condição 0xF fora do subconjunto.
 - [x] Executar testes sintéticos na suíte completa; validação mais recente: 283 testes no [run 40203189860](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40203189860), incluindo transferências de memória A32 e processamento de registradores com shift imediato e predicação.
+- [x] Adicionar inspeção condicional EQ..LE para LDR/STR word/byte e formas halfword/signed-load já reconhecidas; registrar condição lida e efeitos de memória sem ler valores.
 - [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
 - [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.
 

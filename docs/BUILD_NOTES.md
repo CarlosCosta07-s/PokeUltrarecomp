@@ -521,3 +521,13 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - A saída usa mnemônicos condicionais como `ADDNE` e `CMPNE`. O sumário de efeitos marca a instrução como condicional e registra as flags de condição lidas, além das flags escritas pela operação quando aplicável.
 - **Validação integral aprovada:** [run 40203189860](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40203189860), commit `5528a3cd10bf75f85717cf5aaf2be83bb621ca90`: `Ran 283 tests in 2.788s`, `OK`; matriz diferencial 96/96; verificador de segurança PASS após conferir 43 caminhos indexados. Nenhum `.code` real foi usado.
 - O inspetor não traduz essas instruções para C, não resolve o valor efetivo do operando deslocado e não demonstra equivalência do jogo. Shifts controlados por registrador, operandos PC e encodings especiais seguem recusados.
+
+
+## Predicação em cargas e armazenamentos A32 — 2026-10-25
+
+- O inspetor de intervalos agora aceita as formas de memória A32 previamente suportadas sob condições EQ..LE, com IR predicado explícito. A formatação inclui, por exemplo, **LDRNE r0, [r1, #+4]** e **STRNE r2, [r3, #+8]**.
+- O sumário de efeitos registra as flags de condição lidas, registradores lidos/escritos e o tipo de efeito de memória; metadados de endereço continuam sem resolver valores dinâmicos ou ler memória.
+- A condição 0xF permanece recusada como condição comum; a expansão não autoriza modos de endereçamento ou encodings ainda não suportados.
+- A primeira execução, [run 40215965363](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40215965363), detectou regressão de formatação causada por referências de variáveis fora do escopo. A correção ficou no commit fea2ae026bf76f6e877d6cb23557de68d647182e.
+- **Validação integral aprovada:** [run 40216029715](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216029715): Ran 285 tests in 2.557s, OK; matriz diferencial 96/96 e verificador de segurança aprovados. Não foi usado código .code real.
+- Esta etapa amplia a inspeção estática; não gera C dessas instruções nem prova equivalência, execução ou portabilidade dos jogos.
