@@ -28,6 +28,11 @@ REQUIRED_FILES = (
     "docs/LEGAL_AND_IP.md",
     "docs/REFERENCE_TEST_001.md",
     "docs/POC_001_SPEC.md",
+    "docs/CODEBASE_RESEARCH.md",
+    "tools/arm_subset_poc.py",
+    "tests/test_arm_subset_poc.py",
+    "tools/arm_flags.py",
+    "tests/test_arm_flags.py",
 )
 
 # These extensions commonly contain title images, executable modules, or
