@@ -38,7 +38,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 
 Instruções condicionais, Thumb, operações com flags no tradutor, registradores fora do subconjunto, acessos à memória, saltos internos, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
 
-## Modelo isolado de flags NZCV
+## Modelo NZCV e integração restrita do tradutor
 
 O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas.
 
