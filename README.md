@@ -76,7 +76,7 @@ Foi criada uma pesquisa de **nove repositórios de código** relacionados a reco
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes do tradutor passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. Também foi criado o módulo separado [\`tools/arm_flags.py\`](tools/arm_flags.py), que modela flags NZCV sem ativar instruções com atualização de flags no tradutor. A suíte completa passou em **50 testes**: 23 do tradutor, 18 do modelo de flags e 9 do verificador de segurança, sem falhas ou testes ignorados.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes do tradutor passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. Também foi criado o módulo separado [tools/arm_flags.py](tools/arm_flags.py), que modela flags NZCV sem ativar instruções com atualização de flags no tradutor. A suíte completa passou em **50 testes**: 23 do tradutor, 18 do modelo de flags e 9 do verificador de segurança, sem falhas ou testes ignorados.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
