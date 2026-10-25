@@ -437,7 +437,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         elif decoded[0] == "push" and decoded[2]:
             regs.append("lr")
         return ("PUSH {" if decoded[0] == "push" else "POP {") + ", ".join(regs) + "}"
-    if state == "arm" and semantic_decoded[0] in ("arm_push", "arm_pop"):
+    if state == "arm" and decoded[0] in ("arm_push", "arm_pop"):
         register_mask = int(decoded[1])
         names = {13: "sp", 14: "lr", 15: "pc"}
         registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
@@ -470,7 +470,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             elif not (str(shift_name) == "lsl" and int(shift_amount) == 0):
                 operands += f", {str(shift_name).upper()} #{int(shift_amount)}"
             return f"{mnemonic} {operands}"
-    if state == "arm" and semantic_decoded[0] == "a32_multi":
+    if state == "arm" and decoded[0] == "a32_multi":
         operation, rn, register_mask, mode, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         base_name = names.get(int(rn), f"r{rn}")
@@ -499,7 +499,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
-    if state == "arm" and semantic_decoded[0] == "a32_mem_extra_reg":
+    if state == "arm" and decoded[0] == "a32_mem_extra_reg":
         operation, _width, rt, rn, rm, add_offset, preindexed, writeback, _sign_extend = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         rt_name = names.get(int(rt), f"r{rt}")
@@ -511,7 +511,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset}"
-    if state == "arm" and semantic_decoded[0] == "a32_mem_reg":
+    if state == "arm" and decoded[0] == "a32_mem_reg":
         operation, width, rt, rn, rm, shift_name, shift_amount, add_offset, preindexed, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         rt_name = names.get(int(rt), f"r{rt}")
