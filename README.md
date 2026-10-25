@@ -78,7 +78,7 @@ Foi criada uma pesquisa de **nove repositórios de código** relacionados a reco
 
 Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que traduz fixtures ARM A32 sintéticas para C. As instruções de dados suportadas aceitam predicação pelas 14 condições padrão de ARM (EQ a LE), assim como os desvios `B`. `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV; instruções predicadas que não passam na condição preservam registradores e flags. O estado de entrada NZCV é selecionado na geração por `translate(..., initial_nzcv=...)` ou `--initial-nzcv`. A matriz nativa cobre 448 combinações de desvio/predicação (14 condições × 16 estados NZCV) com uma tabela de condições independente, além dos 96 casos aritméticos da matriz diferencial. O tradutor agora aceita desvios para trás/autoalvo **somente** quando é fornecido um orçamento explícito entre 1 e 100.000 instruções executadas (`max_execution_steps` ou `--max-execution-steps`); o C gerado relata término normal (status 0) ou esgotamento do orçamento (status 1) e a contagem de passos. Sem orçamento, a API original permanece igual e laços continuam rejeitados.
 
-A suíte completa do repositório passou em **136 testes, sem falhas ou testes ignorados**, no checkout completo do commit `f14aa07a23867fd3bd79c547006bcce57f8b2006`, em Ubuntu com Python 3.14.4 e GCC 15.2.0. Isso inclui os 109 testes prévios dos componentes ARM/target-intake e 27 testes da nova POC Thumb-16. A matriz diferencial registou 96/96 correspondências; a matriz Thumb valida 224 combinações (14 condições × 16 estados NZCV) contra uma tabela booleana independente. O verificador de segurança passou após analisar 36 caminhos rastreados. [Registro da execução integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158610342). Isso valida os componentes sintéticos e o intake de metadados, não a execução do jogo nem compatibilidade com Pokémon Ultra Sun/Ultra Moon.
+A suíte completa do repositório passou em **151 testes, sem falhas ou testes ignorados**, no checkout completo do commit `78bad708b8e561d58f934f133fef68d9e1d1f2cb`, em Ubuntu com Python 3.14.4 e GCC 15.2.0. Isso inclui 136 testes prévios e 15 casos novos para a ferramenta de inspeção de intervalo explícito ARM/Thumb. A matriz diferencial registou 96/96 correspondências; a matriz Thumb valida 224 combinações (14 condições × 16 estados NZCV); o verificador de segurança passou após analisar 38 caminhos indexados. [Registro da execução integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158948344). Isso valida a análise sintática limitada e o intake de metadados, não a execução do jogo nem compatibilidade com Pokémon Ultra Sun/Ultra Moon.
 
     python tools/arm_subset_poc.py
     python tools/arm_differential_poc.py
@@ -99,6 +99,16 @@ Esta é uma preparação real de entrada para os alvos, **não** um desassemblad
 ## POC-002 — primeiro subconjunto Thumb-16 → C
 
 Foi adicionada a [POC-002](docs/THUMB_POC_002.md), um tradutor Thumb-16 separado da POC ARM A32. O subconjunto cobre `MOVS`, `ADDS`, `SUBS`, `CMP` imediatos, desvios condicionais EQ..LE, desvio incondicional e `BX LR`. A fixture padrão retorna 7 e NZCV=6; a matriz nativa avalia 224 combinações (14 condições × 16 estados NZCV) contra uma tabela independente. Laços para trás exigem orçamento explícito de execução. Essa é uma segunda prova sintética, não um disassembler ou uma cobertura das instruções dos jogos.
+
+## Inspeção local de um intervalo ARM/Thumb
+
+A ferramenta `tools/inspect_3ds_code_range.py` recebe endereço virtual, estado ARM/Thumb e quantidade explícita de instruções, confere o intervalo contra o `.text` declarado no ExHeader e decodifica apenas os encodings já cobertos pelos tradutores de teste. Ela não localiza funções automaticamente e falha quando encontra uma instrução fora do subconjunto. O relatório com encodings deve permanecer local; use `--report` somente para um caminho fora do repositório. Veja [guia de intervalos locais](docs/CODE_RANGE_INSPECTION.md).
+
+Exemplo (os caminhos e o intervalo abaixo são ilustrativos; confirme antes o estado ARM/Thumb da região local):
+
+    python tools/inspect_3ds_code_range.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --state thumb --start-address 0x00100000 --instruction-count 8 --title-id 00040000001B5000
+
+Esta ferramenta fornece anotação sintática do intervalo, não uma descompilação, código C executável nem prova de equivalência. O ABI real do jogo e o estado de registradores ainda não são modelados.
 
 ## Direção do runtime e uso de emuladores
 

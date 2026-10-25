@@ -103,6 +103,21 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Critério da POC sintética:** cumprido para a sequência explicitamente fornecida e o subconjunto listado. A integração aos jogos continua aberta até haver descoberta de funções, identificação de estado ARM/Thumb, análise de dados embutidos e verificação diferencial independente.
 
+## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
+
+**Estado:** implementação e suíte sintética aprovadas no checkout completo da `main`. O próximo passo real depende de um intervalo local autorizado cuja localização e estado ARM/Thumb tenham sido confirmados.
+
+**Tarefas**
+- [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
+- [x] Exigir estado ARM/Thumb e contagem explícitos; rejeitar intervalos fora do payload `.text` e endereços desalinhados.
+- [x] Decodificar somente o subconjunto reconhecido e falhar de forma clara ao encontrar instrução não suportada.
+- [x] Informar destinos de branch e se caem dentro do intervalo e do `.text` declarado.
+- [x] Executar testes sintéticos na suíte completa; 151 testes passaram no commit 78bad708b8e561d58f934f133fef68d9e1d1f2cb.
+- [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
+- [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.
+
+**Critério de conclusão:** anotação sintática reproduzível para intervalo selecionado, sem incluir entradas ou extrações na CI. Isso não prova equivalência semântica nem runtime de jogo.
+
 ## Fase 6 — Investigar runtime próprio para Windows
 
 **Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
