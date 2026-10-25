@@ -377,6 +377,9 @@ def translate(
             "    if (execution_status_out != 0) *execution_status_out = UINT8_C(1);",
             "thumb_exit: ;",
         ))
+    # Read each guest register in the epilogue so strict C compilers do not
+    # reject valid fixtures that write a register whose value is not returned.
+    lines.extend(f"    (void)r{reg};" for reg in sorted(used_registers))
     lines.extend((
         "    if (nzcv_out != 0) {",
         "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
