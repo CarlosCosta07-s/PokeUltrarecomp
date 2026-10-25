@@ -992,5 +992,64 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             self.assertEqual((word >> 8) & 7, decoded[1], f"encoding 0x{word:04X}")
             self.assertEqual(register_list, decoded[2], f"encoding 0x{word:04X}")
 
+
+    def test_runtime_state_io_uses_live_registers_flags_and_control_flow(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb runtime-state proof requires cc, gcc, or clang")
+        add = poc.translate(
+            [0x3005, 0x4770],  # ADDS r0,#5; BX LR
+            max_execution_steps=2,
+            runtime_state_io=True,
+        ).replace("uint32_t thumb_entry_bounded(", "uint32_t thumb_runtime_add(")
+        branch = poc.translate(
+            [0xD100, 0x2007, 0x4770],  # BNE BX LR; otherwise MOVS r0,#7; BX LR
+            max_execution_steps=3,
+            runtime_state_io=True,
+        ).replace("uint32_t thumb_entry_bounded(", "uint32_t thumb_runtime_bne(")
+        harness = "\n".join((add, branch)) + """
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(37), UINT32_C(0x11111111), UINT32_C(0x22222222), UINT32_C(0x33333333),
+        UINT32_C(0x44444444), UINT32_C(0x55555555), UINT32_C(0x66666666), UINT32_C(0x77777777)
+    };
+    uint32_t output[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+    uint8_t flags = UINT8_C(255), status = UINT8_C(255);
+    uint32_t steps = 0U;
+    if (!(thumb_runtime_add(input, UINT8_C(15), &flags, &steps, &status, output) == UINT32_C(42)
+        && flags == UINT8_C(0) && status == UINT8_C(0) && steps == UINT32_C(2)
+        && output[0] == UINT32_C(42))) return 1;
+    for (unsigned i = 1; i < 8; ++i) if (output[i] != input[i]) return 2;
+    for (unsigned i = 0; i < 8; ++i) output[i] = 0U;
+    flags = UINT8_C(255); status = UINT8_C(255); steps = 0U;
+    if (!(thumb_runtime_bne(input, UINT8_C(0), &flags, &steps, &status, output) == UINT32_C(37)
+        && flags == UINT8_C(0) && status == UINT8_C(0) && steps == UINT32_C(2)
+        && output[0] == input[0])) return 3;
+    for (unsigned i = 1; i < 8; ++i) if (output[i] != input[i]) return 4;
+    for (unsigned i = 0; i < 8; ++i) output[i] = 0U;
+    flags = UINT8_C(255); status = UINT8_C(255); steps = 0U;
+    if (!(thumb_runtime_bne(input, UINT8_C(4), &flags, &steps, &status, output) == UINT32_C(7)
+        && flags == UINT8_C(0) && status == UINT8_C(0) && steps == UINT32_C(3)
+        && output[0] == UINT32_C(7))) return 5;
+    for (unsigned i = 1; i < 8; ++i) if (output[i] != input[i]) return 6;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_runtime_state.c"
+            exe = Path(directory) / ("thumb_runtime_state.exe" if os.name == "nt" else "thumb_runtime_state")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"runtime Thumb input/output/flags/branch check failed with {run.returncode}")
+
+    def test_runtime_state_io_requires_boolean_option_and_execution_budget(self):
+        halfwords = [0x3001, 0x4770]
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "requires an explicit execution budget"):
+            poc.translate(halfwords, runtime_state_io=True)
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "must be a bool"):
+            poc.translate(halfwords, max_execution_steps=2, runtime_state_io=1)
+
 if __name__ == "__main__":
     unittest.main()
