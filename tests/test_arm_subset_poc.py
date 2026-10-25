@@ -155,6 +155,16 @@ class TranslationTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "backward or self-targeting branch"):
             poc.translate([0xEAFFFFFE, 0xE12FFF1E])
 
+    def test_branch_codegen_and_sign_extension_without_compiler(self):
+        self.assertEqual(("branch", "al", 0x7FFFFF), poc.decode_word(0xEA7FFFFF))
+        self.assertEqual(("branch", "al", -0x800000), poc.decode_word(0xEA800000))
+        beq = poc.translate([0x0A000000, 0xE3A00001, 0xE12FFF1E])
+        self.assertIn("if (flag_z != 0U) goto arm_label_2;", beq)
+        self.assertIn("arm_label_2: ;", beq)
+        bne = poc.translate([0x1A000000, 0xE3A00001, 0xE12FFF1E])
+        self.assertIn("if (flag_z == 0U) goto arm_label_2;", bne)
+        self.assertIn("arm_label_2: ;", bne)
+
     def test_generated_c_unconditional_branch_skips_instruction_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
