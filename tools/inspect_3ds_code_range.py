@@ -66,6 +66,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "adds_imm3": "ADDS", "subs_imm3": "SUBS",
         "lsl_imm": "LSL", "lsr_imm": "LSR", "asr_imm": "ASR",
         "ands_reg": "ANDS", "eors_reg": "EORS", "orrs_reg": "ORRS",
+        "adcs_reg": "ADCS", "sbcs_reg": "SBCS",
         "cmp_reg": "CMP", "cmn_reg": "CMN",
         "rsbs_zero": "RSBS",
         "bics_reg": "BICS", "mvns_reg": "MVNS", "tst_reg": "TST",
@@ -83,7 +84,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
     if state == "thumb" and op in ("lsl_imm", "lsr_imm", "asr_imm"):
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
-    if state == "thumb" and op in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
+    if state == "thumb" and op in ("ands_reg", "eors_reg", "adcs_reg", "sbcs_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
         return f"{name} r{inst[1]}, r{inst[2]}"
     if state == "thumb" and op in ("cmp_reg", "cmn_reg"):
         return f"{name} r{inst[1]}, r{inst[2]}"
