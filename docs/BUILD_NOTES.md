@@ -298,3 +298,12 @@ A tentativa de clonar o repositório inteiro continua bloqueada por falha de res
 - **Proteção de fluxo:** o tradutor continuou recusando desvio para trás/autoalvo.
 
 Esta verificação isolada **não é a suíte integral do repositório** e não substitui `python -m unittest discover -s tests -v`: os 88 testes esperados (57 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial) continuam pendentes de execução num checkout completo e sincronizado. Também não valida o runtime do jogo, uma ROM, nem compatibilidade com Ultra Sun/Ultra Moon.
+
+## POC-001 — laços limitados por orçamento de execução — 2026-10-24
+
+- Implementado `max_execution_steps` em `translate` e `--max-execution-steps` na CLI, com intervalo validado de 1 a 100.000 e rejeição de bools/valores fora da faixa.
+- A API antiga e a assinatura `synthetic_entry(uint8_t *nzcv_out)` permanecem iguais quando o orçamento é omitido; nesse modo, desvio para trás/autoalvo continua rejeitado. Quando o orçamento é fornecido, o C usa a assinatura `synthetic_entry_bounded(nzcv_out, steps_executed_out, execution_status_out)`.
+- Cada instrução visitada conta, incluindo instruções predicadas que não executam o corpo e `BX LR`. `execution_status_out=0` significa retorno normal; `=1` significa esgotamento do limite. O estado de registradores/NZCV no esgotamento é parcial, não um retorno normal.
+- Foram adicionados três testes à suíte do tradutor: laço que termina dentro de 8 passos, orçamento esgotado após 2 passos, validação de limites e opção CLI. A suíte do tradutor passa a ter 60 métodos; o total combinado esperado é 91 (60 + 18 + 9 + 4).
+- **Validação isolada:** `python -m unittest discover -s tests -v` executou os 60 testes do tradutor no workspace temporário, em 5,071 s: **60 aprovados, zero falhas e zero ignorados**. `cc`/GCC compilou e executou os harnesses nativos com C11, `-Wall -Wextra -Werror`, incluindo a matriz de 448 combinações e o novo laço. O blob Git da fonte local corresponde exatamente ao `main` (`2e77aea8fb39d899f8f58f5b6e58b914956aadb4`).
+- **Limitação de validação:** os testes foram executados isoladamente, com uma cópia local dos testes de tradutor baseada no arquivo publicado, e não em checkout integral recém-clonado. A suíte combinada de 91 testes, o verificador contra toda a árvore e o teste de referência 001 continuam pendentes; clone continua bloqueado por DNS. Não afirmar compatibilidade com jogo nem runtime próprio concluído.
