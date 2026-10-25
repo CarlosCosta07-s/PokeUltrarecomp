@@ -27,6 +27,7 @@ REQUIRED_FILES = (
     "docs/BUILD_NOTES.md",
     "docs/LEGAL_AND_IP.md",
     "docs/REFERENCE_TEST_001.md",
+    "docs/POC_001_SPEC.md",
 )
 
 # These extensions commonly contain title images, executable modules, or
