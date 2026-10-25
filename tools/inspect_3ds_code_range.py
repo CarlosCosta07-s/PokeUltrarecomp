@@ -33,7 +33,7 @@ def parse_address(token: str) -> int:
     return value
 
 
-def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
+def _decode_arm_for_inspection_unwrapped(word: int) -> tuple[object, ...]:
     """Decode a few A32 control-flow/literal forms for inspection only.
 
     These forms are intentionally not enabled in the synthetic C translator:
@@ -101,14 +101,14 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
             mode = ("i" if increment else "d") + ("b" if preindexed else "a")
             return ("a32_multi", "ldm" if load else "stm", rn, register_mask, mode, writeback)
 
-    if condition == 0xE:
+    if condition != 0xF:
         special = word & 0x0FFFFFF0
         rm = word & 0xF
-        if special == 0x012FFF10:
+        if condition == 0xE and special == 0x012FFF10:
             if rm == 15:
                 raise arm.UnsupportedInstruction("BX with Rm=PC is not decoded by this inspector")
             return ("bx", rm)
-        if special == 0x012FFF30:
+        if condition == 0xE and special == 0x012FFF30:
             if rm == 15:
                 raise arm.UnsupportedInstruction("BLX register with Rm=PC is not decoded by this inspector")
             return ("blx_reg", rm)
@@ -388,7 +388,35 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
 
     return arm.decode_word(word)
 
+
+def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
+    """Wrap supported conditional A32 memory operations in an explicit predicate IR."""
+    decoded = _decode_arm_for_inspection_unwrapped(word)
+    condition = (word >> 28) & 0xF
+    if condition in (0xE, 0xF):
+        return decoded
+    if decoded and decoded[0] in {
+        "ldr_literal", "a32_mem_imm", "a32_mem_reg",
+        "a32_mem_extra_imm", "a32_mem_extra_reg",
+    }:
+        condition_name = arm.BRANCH_CONDITION_NAMES.get(condition)
+        if condition_name is None:
+            raise arm.UnsupportedInstruction(
+                f"unsupported A32 memory condition 0x{condition:X}"
+            )
+        return ("predicated", condition_name, decoded)
+    return decoded
+
+
 def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
+    if state == "arm" and decoded and decoded[0] == "predicated":
+        condition = str(decoded[1]).upper()
+        inner = tuple(decoded[2])
+        inner_mnemonic = mnemonic_for(state, inner)
+        if " " in inner_mnemonic:
+            operation, operands = inner_mnemonic.split(" ", 1)
+            return f"{operation}{condition} {operands}"
+        return f"{inner_mnemonic}{condition}"
     if decoded == ("return",):
         return "BX LR"
     if decoded[0] == "branch":
@@ -409,7 +437,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         elif decoded[0] == "push" and decoded[2]:
             regs.append("lr")
         return ("PUSH {" if decoded[0] == "push" else "POP {") + ", ".join(regs) + "}"
-    if state == "arm" and decoded[0] in ("arm_push", "arm_pop"):
+    if state == "arm" and semantic_decoded[0] in ("arm_push", "arm_pop"):
         register_mask = int(decoded[1])
         names = {13: "sp", 14: "lr", 15: "pc"}
         registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
@@ -442,7 +470,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             elif not (str(shift_name) == "lsl" and int(shift_amount) == 0):
                 operands += f", {str(shift_name).upper()} #{int(shift_amount)}"
             return f"{mnemonic} {operands}"
-    if state == "arm" and decoded[0] == "a32_multi":
+    if state == "arm" and semantic_decoded[0] == "a32_multi":
         operation, rn, register_mask, mode, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         base_name = names.get(int(rn), f"r{rn}")
@@ -471,7 +499,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
-    if state == "arm" and decoded[0] == "a32_mem_extra_reg":
+    if state == "arm" and semantic_decoded[0] == "a32_mem_extra_reg":
         operation, _width, rt, rn, rm, add_offset, preindexed, writeback, _sign_extend = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         rt_name = names.get(int(rt), f"r{rt}")
@@ -483,7 +511,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset}"
-    if state == "arm" and decoded[0] == "a32_mem_reg":
+    if state == "arm" and semantic_decoded[0] == "a32_mem_reg":
         operation, width, rt, rn, rm, shift_name, shift_amount, add_offset, preindexed, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
         rt_name = names.get(int(rt), f"r{rt}")
@@ -863,6 +891,7 @@ def inspect_code_range(
             call_target_state = state
             try:
                 decoded = decode_arm_for_inspection(word) if state == "arm" else thumb.decode_halfword(word)
+                semantic_decoded = tuple(decoded[2]) if state == "arm" and decoded and decoded[0] == "predicated" else decoded
                 mnemonic = mnemonic_for(state, decoded)
                 if state == "arm" and decoded[0] == "call":
                     call_target = address + 8 + int(decoded[2])
@@ -879,8 +908,8 @@ def inspect_code_range(
                 literal = None
                 if state == "thumb" and decoded[0] == "ldr_literal":
                     literal = thumb.literal_address(address, decoded)
-                elif state == "arm" and decoded[0] == "ldr_literal":
-                    literal = address + 8 + int(decoded[2])
+                elif state == "arm" and semantic_decoded[0] == "ldr_literal":
+                    literal = address + 8 + int(semantic_decoded[2])
                     if not 0 <= literal < (1 << 32):
                         raise TargetRangeError(
                             f"A32 literal address from 0x{address:08X} lies outside the 32-bit address space"
@@ -911,17 +940,17 @@ def inspect_code_range(
                     )
                     item["stack_delta_bytes"] = -4 * count if decoded[0] == "push" else 4 * count
                 if state == "arm" and decoded[0] in ("arm_push", "arm_pop"):
-                    count = int(decoded[1]).bit_count()
-                    item["stack_delta_bytes"] = -4 * count if decoded[0] == "arm_push" else 4 * count
-                    if decoded[0] == "arm_pop" and (int(decoded[1]) & (1 << 15)):
+                    count = int(semantic_decoded[1]).bit_count()
+                    item["stack_delta_bytes"] = -4 * count if semantic_decoded[0] == "arm_push" else 4 * count
+                    if semantic_decoded[0] == "arm_pop" and (int(semantic_decoded[1]) & (1 << 15)):
                         item["indirect_branch"] = True
                         item["branch_target_virtual_address"] = None
                         item["branch_target_note"] = (
                             "PC is loaded from the stack at run time; target is not resolved"
                         )
                 if state == "arm" and decoded[0] == "a32_multi":
-                    item["memory_access"] = a32_multiple_memory_access_metadata(decoded)
-                    if decoded[1] == "ldm" and (int(decoded[3]) & (1 << 15)):
+                    item["memory_access"] = a32_multiple_memory_access_metadata(semantic_decoded)
+                    if semantic_decoded[1] == "ldm" and (int(semantic_decoded[3]) & (1 << 15)):
                         item["indirect_branch"] = True
                         item["branch_target_virtual_address"] = None
                         item["branch_target_note"] = (
@@ -929,24 +958,24 @@ def inspect_code_range(
                         )
                 if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
                     item["memory_access"] = memory_access_metadata(decoded)
-                if state == "arm" and decoded[0] in ("a32_mem_imm", "a32_mem_extra_imm"):
-                    item["memory_access"] = a32_memory_access_metadata(decoded)
-                    if decoded[0] == "a32_mem_imm" and decoded[1] == "ldr" and int(decoded[3]) == 15:
+                if state == "arm" and semantic_decoded[0] in ("a32_mem_imm", "a32_mem_extra_imm"):
+                    item["memory_access"] = a32_memory_access_metadata(semantic_decoded)
+                    if semantic_decoded[0] == "a32_mem_imm" and semantic_decoded[1] == "ldr" and int(semantic_decoded[3]) == 15:
                         item["indirect_branch"] = True
                         item["branch_target_virtual_address"] = None
                         item["branch_target_note"] = (
                             "PC is loaded from memory at run time; effective address and target are unresolved"
                         )
                 if state == "arm" and decoded[0] == "a32_mem_reg":
-                    item["memory_access"] = a32_register_memory_access_metadata(decoded)
-                    if decoded[1] == "ldr" and int(decoded[3]) == 15:
+                    item["memory_access"] = a32_register_memory_access_metadata(semantic_decoded)
+                    if semantic_decoded[1] == "ldr" and int(semantic_decoded[3]) == 15:
                         item["indirect_branch"] = True
                         item["branch_target_virtual_address"] = None
                         item["branch_target_note"] = (
                             "PC is loaded from memory at run time; effective address and target are unresolved"
                         )
                 if state == "arm" and decoded[0] == "a32_mem_extra_reg":
-                    item["memory_access"] = a32_extra_register_memory_access_metadata(decoded)
+                    item["memory_access"] = a32_extra_register_memory_access_metadata(semantic_decoded)
                 if state == "thumb" and decoded[0] == "adr":
                     pc_base = (address + 4) & ~3
                     item["pc_relative_address"] = {

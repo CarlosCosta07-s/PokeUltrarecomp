@@ -408,6 +408,41 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(["c", "n", "z"], teq_effect["flags_written"])
         self.assertEqual(["r0"], orr_effect["registers_written"])
 
+    def test_conditional_a32_memory_access_reports_condition_and_effects(self):
+        # LDRNE r0,[r1,#4]; STRNE r2,[r3,#8]
+        self.put_arm([0x15910004, 0x15832008])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 2,
+            title_id="00040000001B5000",
+        )
+        load, store = result["instructions"]
+        self.assertEqual(["LDRNE r0, [r1, #+4]", "STRNE r2, [r3, #+8]"],
+                         [item["mnemonic"] for item in result["instructions"]])
+        self.assertEqual("load", load["memory_access"]["direction"])
+        self.assertEqual("store", store["memory_access"]["direction"])
+        self.assertEqual(4, load["memory_access"]["offset_bytes"])
+        self.assertEqual(8, store["memory_access"]["offset_bytes"])
+        load_effect, store_effect = result["dataflow"]["instructions"]
+        self.assertTrue(load_effect["conditional"])
+        self.assertEqual(["z"], load_effect["flags_read"])
+        self.assertEqual(["r1"], load_effect["registers_read"])
+        self.assertEqual(["r0"], load_effect["registers_written"])
+        self.assertEqual("read", load_effect["memory"])
+        self.assertTrue(store_effect["conditional"])
+        self.assertEqual(["z"], store_effect["flags_read"])
+        self.assertEqual(["r2", "r3"], store_effect["registers_read"])
+        self.assertEqual([], store_effect["registers_written"])
+        self.assertEqual("write", store_effect["memory"])
+
+    def test_a32_memory_condition_nv_is_not_treated_as_predicated_memory(self):
+        # Condition 0xF is reserved for other encoding spaces, not ordinary A32 LDR.
+        self.put_arm([0xF5910004])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+            ranges.inspect_code_range(
+                "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                title_id="00040000001B5000",
+            )
+
     def test_conditional_a32_register_data_processing_reports_condition_flags(self):
         self.put_arm([0x10810002, 0x11510002])  # ADDNE r0,r1,r2; CMPNE r1,r2
         result = ranges.inspect_code_range(
