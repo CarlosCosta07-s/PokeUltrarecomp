@@ -94,6 +94,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Próximos passos
 
 1. Resolver a pendência de licença/procedência registrada em [issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1).
-2. Validar o verificador de repositório contra uma cópia de trabalho completa da `main`.
-3. Definir, com licença verificada, se a POC evolui como experimento independente ou se deve comparar-se a uma ferramenta de referência aprovada.
-4. Só ampliar o subconjunto após adicionar testes positivos e negativos para cada instrução/semântica; não chamar esta POC de runtime ou porta nativa.
+2. Executar o verificador de repositório contra uma cópia de trabalho completa da `main`.
+3. Construir validação diferencial com um emulador independente/licenciado, comparando resultado e NZCV para fixtures sintéticas.
+4. Definir o estado inicial de NZCV/CPSR e a política de preservação de flags na ABI da função gerada.
+5. Só então ampliar formas aritméticas/lógicas com bit S ou implementar desvios condicionais; não chamar esta POC de runtime ou porta nativa.
