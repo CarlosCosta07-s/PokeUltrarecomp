@@ -19,14 +19,15 @@ A sequência sintética padrão é:
 | `0xE2800003` | `ADD r0, r0, #3` |
 | `0xE2000007` | `AND r0, r0, #7` |
 | `0xE3800008` | `ORR r0, r0, #8` |
+| `0xE2200001` | `EOR r0, r0, #1` |
 | `0xE12FFF1E` | `BX LR` — terminador/retorno |
 
-A função C gerada deve retornar `15`: `12 - 8 + 3 = 7`, a operação AND mantém `7`, e `ORR #8` produz `15`. Não são lidos arquivos externos, ROMs, dumps, firmware, chaves ou recursos extraídos. Não há código de jogo nem código de terceiro no demonstrador.
+A função C gerada deve retornar `14`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, `ORR #8` produz `15`, e `EOR #1` produz `14`. Não são lidos arquivos externos, ROMs, dumps, firmware, chaves ou recursos extraídos. Não há código de jogo nem código de terceiro no demonstrador.
 
 ## Subconjunto implementado
 
 - ARM A32, condição AL (incondicional) apenas.
-- `MOV`, `SUB`, `ADD`, `AND` e `ORR` imediatos sem atualização de flags.
+- `MOV`, `SUB`, `ADD`, `AND`, `ORR` e `EOR` imediatos sem atualização de flags.
 - Imediatos com rotação ARM de 32 bits.
 - Registradores limitados a `r0-r3`.
 - `BX LR` como terminador único no final da sequência.
@@ -49,7 +50,7 @@ Gerar C para stdout:
 
 Fornecer a fixture explicitamente (palavras hexadecimais):
 
-    python tools/arm_subset_poc.py E3A0000C E2400008 E2800003 E2000007 E3800008 E12FFF1E
+    python tools/arm_subset_poc.py E3A0000C E2400008 E2800003 E2000007 E3800008 E2200001 E12FFF1E
 
 Escrever o C em um arquivo local:
 
@@ -59,11 +60,11 @@ Executar a suíte unitária e a compilação/execução nativa temporária:
 
     python -m unittest discover -s tests -v
 
-O teste de compilação compila o C emitido dentro de um diretório temporário, executa o binário e exige código de saída zero, correspondente ao retorno 15. Se nenhum compilador suportado for encontrado, esse teste é ignorado, e a comprovação de execução nativa permanece incompleta.
+O teste de compilação compila o C emitido dentro de um diretório temporário, executa o binário e exige código de saída zero, correspondente ao retorno 14. Se nenhum compilador suportado for encontrado, esse teste é ignorado, e a comprovação de execução nativa permanece incompleta.
 
 ## Critérios de aceitação
 
-- Decodificação de cada uma das seis palavras exatas para a operação esperada.
+- Decodificação de cada uma das sete palavras exatas para a operação esperada.
 - Decodificação correta de um imediato rotacionado sintético.
 - Rejeição de condição não suportada, atualização de flags, registrador de origem/destino fora do limite, sequência sem `BX LR`, instruções após o retorno e sequência longa demais.
 - C emitido passa por compilador C11 com avisos ativados e `-Werror` no ambiente que suportar essas opções.
@@ -72,11 +73,11 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte da POC: 17 testes aprovados no ambiente temporário desta sessão, incluindo decodificação e rejeição de registradores de origem fora do subconjunto para `ORR`, além de verificação da emissão C.
+- Suíte da POC: 19 testes aprovados no ambiente temporário desta sessão, incluindo decodificação de `EOR`, rejeição de registrador de origem fora do subconjunto e verificação da emissão C.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 15 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
-- Essa POC valida o encadeamento *decodificação sintética → emissão C → compilador host → resultado* para seis palavras da fixture (cinco operações e o terminador). Não demonstra cobertura útil para um jogo real nem substitui o teste de referência 001.
+- Essa POC valida o encadeamento *decodificação sintética → emissão C → compilador host → resultado* para sete palavras da fixture (seis operações e o terminador). Não demonstra cobertura útil para um jogo real nem substitui o teste de referência 001.
 - A POC foi escrita de forma independente. O issue de procedência/escopo do `LICENSE` preexistente continua aberto; a publicação desta demonstração não resolve essa decisão de licenciamento.
 
 ## Próximos passos
