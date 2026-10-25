@@ -41,12 +41,14 @@ class ThumbDecodeTests(unittest.TestCase):
         self.assertEqual(("ands_reg", 0, 1), poc.decode_halfword(0x4008))
         self.assertEqual(("eors_reg", 0, 1), poc.decode_halfword(0x4048))
         self.assertEqual(("tst_reg", 0, 1), poc.decode_halfword(0x4208))
+        self.assertEqual(("cmp_reg", 0, 1), poc.decode_halfword(0x4288))
+        self.assertEqual(("cmn_reg", 0, 1), poc.decode_halfword(0x42C8))
         self.assertEqual(("orrs_reg", 0, 1), poc.decode_halfword(0x4308))
         self.assertEqual(("bics_reg", 0, 1), poc.decode_halfword(0x4388))
         self.assertEqual(("mvns_reg", 0, 1), poc.decode_halfword(0x43C8))
 
     def test_classifies_data_processing_register_space_conservatively(self):
-        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x8: "tst_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
+        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x8: "tst_reg", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
         for word in range(0x4000, 0x4400):
             opcode = (word >> 6) & 0xF
             with self.subTest(word=f"0x{word:04X}"):
@@ -305,6 +307,34 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "thumb_logic.c"
             exe = Path(directory) / ("thumb_logic.exe" if os.name == "nt" else "thumb_logic")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_native_register_cmp_cmn_update_flags_without_writing_destination(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb CMP/CMN proof requires cc, gcc, or clang")
+        cmp_equal = poc.translate([0x2007, 0x2107, 0x4288, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_cmp_equal("
+        )
+        cmn_overflow = poc.translate([0x2001, 0x07C0, 0x2101, 0x07C9, 0x42C8, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_cmn_overflow("
+        )
+        harness = "\n".join((cmp_equal, cmn_overflow)) + """
+int main(void) {
+    uint8_t flags = 0;
+    if (!(thumb_cmp_equal(&flags) == UINT32_C(7) && flags == UINT8_C(6))) return 1;
+    flags = 0;
+    if (!(thumb_cmn_overflow(&flags) == UINT32_C(0x80000000) && flags == UINT8_C(7))) return 2;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_cmp_cmn.c"
+            exe = Path(directory) / ("thumb_cmp_cmn.exe" if os.name == "nt" else "thumb_cmp_cmn")
             src.write_text(harness, encoding="utf-8")
             result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
