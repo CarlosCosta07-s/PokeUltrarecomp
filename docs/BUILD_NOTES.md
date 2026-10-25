@@ -117,3 +117,15 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Links Markdown: 26 ocorrências de links internos foram conferidas em cinco documentos atualizados (README, POC-001, BUILD_NOTES, ROADMAP e CONTRIBUTING); nenhum destino interno quebrado foi encontrado.
 - Limites: isto não executa o script Python no clone completo nem inspeciona o conteúdo binário/arbitrário, o histórico, os arquivos ignorados não rastreados ou a situação jurídica de arquivos. Não marca a revisão integral de segurança como concluída.
 
+## POC-001 — iteração 2: SUB imediato — 2026-10-24
+
+- Alteração: adicionado suporte limitado a `SUB` imediato (opcode A32 `0010`), mantendo o limite aos registradores `r0-r3`, condição AL e instruções sem atualização de flags.
+- Fixture sintética atual: `E3A0000C E2400008 E2800003 E12FFF1E` — `MOV r0,#12`, `SUB r0,r0,#8`, `ADD r0,r0,#3`, `BX LR`; resultado esperado: 7.
+- Testes adicionais: decodificação de SUB, rejeição de registrador de origem fora do subconjunto e verificação de C gerado para MOV/SUB/ADD.
+- Verificação de conteúdo antes da execução: hashes de objeto Git dos arquivos em área temporária coincidiram com os blobs publicados nesta iteração: `tools/arm_subset_poc.py` = `07d3814e56c39cb200cce44158d59b76607c5d83`; `tests/test_arm_subset_poc.py` = `7ee6b241fabf7f1074eb43aabf6deb0c666c6c43`.
+- Ambiente: Linux x86-64; Python 3.13.5; GCC 14.2.0.
+- Comandos: `python3 -m py_compile tools/arm_subset_poc.py tests/test_arm_subset_poc.py`; `python3 -m unittest discover -s tests -v`.
+- Resultado: **13 testes aprovados**; o teste host compilou o C emitido com `-std=c11 -Wall -Wextra -Werror`, executou o binário e confirmou o retorno 7 por código de saída zero.
+- Classificação: **PASS para a demonstração sintética limitada no ambiente Linux**.
+- Limites: nenhum ROM ou conteúdo de jogo foi aberto; não comprova equivalência com código de jogo, não cobre Thumb, flags, memória, fluxo de controle geral, ABI real, Windows ou serviços de 3DS. O teste de referência 001 continua pendente.
+
