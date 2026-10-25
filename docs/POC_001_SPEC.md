@@ -38,7 +38,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 - `BX LR` como terminador único no final da sequência.
 - Limite de 256 palavras de instrução por sequência.
 
-BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture ou para trás/para a própria instrução, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas com S-bit, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas com S-bit, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Saltos para trás ou para a própria instrução são rejeitados por padrão e só podem ser traduzidos quando é fornecido um orçamento explícito de execução. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
 
 ## Modelo NZCV e integração restrita do tradutor
 
@@ -47,6 +47,18 @@ O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência im
 **Integração mínima concluída:** o C gerado usa `uint32_t synthetic_entry(uint8_t *nzcv_out)` e retorna NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos em condições restritas. `CMN` calcula flags de soma e `CMP` calcula flags de subtração, sem escrever o resultado no registrador de destino. Testes nativos cobrem os dois casos de comparação. O módulo `arm_flags.py` permanece um modelo de referência separado; ainda não há CPSR completo. Formas lógicas com bit S e shifter-carry continuam recusadas. Tanto `B` quanto as instruções de dados suportadas respeitam as 14 condições padrão de ARM. O teste nativo compila 448 funções (224 de desvio e 224 de predicação de dados; 14 condições × 16 estados de entrada de NZCV por tipo) e compara os caminhos executados com uma tabela de condições escrita de forma independente no teste; a revisão anterior também detectou uma mutação deliberada de `GT` (4 divergências em 224).
 
 **Estado inicial de NZCV (política definida):** a ABI continua sendo `synthetic_entry(uint8_t *nzcv_out)`, sem entrada de flags em tempo de execução. O estado de entrada é escolhido na geração, por `translate(words, initial_nzcv=...)` ou `--initial-nzcv` na CLI, como nibble `N:bit3 Z:bit2 C:bit1 V:bit0` (padrão 0, valores fora de 0..15 são rejeitados). Um desvio ou uma instrução de dados condicional sem uma instrução anterior que defina flags decide, portanto, pelo estado de entrada escolhido. Isso é uma convenção da POC, não uma afirmação sobre o CPSR real de qualquer chamador.
+
+## Orçamento explícito para laços
+
+Por padrão, `translate(words, initial_nzcv=0)` mantém a ABI antiga `uint32_t synthetic_entry(uint8_t *nzcv_out)` e rejeita desvios para trás/autoalvos. Para aceitar esses alvos, o chamador precisa passar `max_execution_steps` entre 1 e 100.000, ou usar `--max-execution-steps` na CLI. Nesse modo, o C emitido usa:
+
+    uint32_t synthetic_entry_bounded(
+        uint8_t *nzcv_out,
+        uint32_t *steps_executed_out,
+        uint8_t *execution_status_out
+    );
+
+Cada instrução de convidado visitada conta para o orçamento, incluindo um desvio, uma instrução predicada cuja condição seja falsa e o `BX LR` final. O status é 0 quando `BX LR` termina normalmente e 1 quando o limite é esgotado antes da próxima instrução; o contador informa quantos passos foram executados. Os ponteiros de saída de contador/status podem ser nulos, mas um chamador que precisa distinguir retorno normal de esgotamento deve fornecer `execution_status_out`. No esgotamento, o valor retornado e NZCV representam o estado parcial no instante em que o limite foi atingido, não um retorno normal do programa. O limite reduz risco de laço infinito em fixtures; não é uma sandbox nem prova de segurança para C arbitrário.
 
 ## Arquivos
 
@@ -96,14 +108,16 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 - Rejeição de condição não suportada, atualização de flags, registrador de origem/destino fora do limite, sequência sem `BX LR`, instruções após o retorno e sequência longa demais.
 - C emitido passa por compilador C11 com avisos ativados e `-Werror` no ambiente que suportar essas opções.
 - Executável gerado termina com código zero quando `synthetic_entry(&nzcv_out)` retorna 12 e o nibble NZCV corresponde ao caso de teste.
+- Saltos para trás/autoalvos são rejeitados sem orçamento e, com orçamento explícito, o código gerado termina normalmente ou reporta `execution_status_out == 1` quando o limite é atingido.
 
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte do tradutor POC-001: **57 testes definidos** após a adição da predicação de dados, incluindo uma matriz nativa que cobre as 14 condições e os 16 estados NZCV para desvios e instruções de dados; a suíte completa ainda precisa ser executada contra este commit.
+- Suíte do tradutor POC-001: **60 testes definidos**, incluindo a matriz nativa de 448 combinações e novos casos para orçamento de execução: laço concluído, orçamento esgotado, limites inválidos e CLI. Os 60 testes do tradutor passaram numa execução isolada com Python 3.13.5 e `cc`/GCC, após confirmar que a fonte traduzida corresponde ao blob Git `2e77aea8fb39d899f8f58f5b6e58b914956aadb4`. A cópia local dos testes e o workspace isolado não substituem um checkout integral limpo.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- A última execução integral documentada antes da predicação foi de **85 testes aprovados**. A predicação acrescentou dois testes e a continuação acrescentou um teste nativo para `CMP` condicional, totalizando **88 testes esperados** (57 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial); ainda não foi possível reexecutar a suíte após essas mudanças.
-- **Verificação complementar parcial:** a fonte exata do tradutor (`tools/arm_subset_poc.py`, Git blob `8ca13e7d9fd3e174ce0abedf55b541132a15b90a`) foi executada num workspace isolado com `cc`/GCC. A fixture padrão, a matriz nativa independente com 448 casos, e harnesses separados para `CMP`/`ADDS` condicionais e rejeição de desvios para trás passaram. Isto não é a execução integral dos 88 testes; a suíte completa e o verificador no checkout integral continuam pendentes.
+- A última execução integral documentada no repositório foi de **85 testes aprovados**, antes da predicação. O tradutor agora possui 60 testes e a suíte combinada tem **91 testes esperados** (60 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial). O conjunto integral não foi executado no estado atual porque o clone de GitHub falha por resolução DNS.
+- **Verificação complementar parcial anterior:** a fonte do tradutor antes do suporte a orçamento (blob `8ca13e7d9fd3e174ce0abedf55b541132a15b90a`) foi executada num workspace isolado; a fixture padrão, a matriz de 448 casos e os harnesses condicionais passaram.
+- **Validação isolada após o orçamento:** 60 testes do tradutor passaram em 5,071 s num workspace com a fonte atual do tradutor conferida pelo blob Git `2e77aea8fb39d899f8f58f5b6e58b914956aadb4`; `cc` (GCC) compilou e executou os casos nativos, incluindo loop normal e esgotamento de orçamento. Não é a suíte combinada integral; os 91 testes previstos, a verificação de segurança no checkout completo e o teste de referência continuam pendentes.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
@@ -116,4 +130,4 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 2. Executar o verificador de repositório contra uma cópia de trabalho completa da `main`.
 3. Ampliar a validação sintética baseada na especificação ARM, com casos esperados independentes para resultados, flags e limites; não é necessário usar emulador para essa etapa. Se futuramente uma comparação do comportamento do jogo original for realmente útil, o Azahar poderá ser usado somente como referência externa opcional, nunca como dependência do runtime.
 4. ~~Definir o estado inicial de NZCV~~ — feito (ver "Estado inicial de NZCV"). Ainda aberta: a política de preservação de flags na ABI de uma função real, que exige evidência além desta fixture.
-5. Predicação de dados: implementada para as instruções existentes e as 14 condições padrão. Próximo: adicionar orçamento explícito de execução para habilitar loops de forma segura; só depois considerar formas lógicas com bit S, que exigem modelar o carry do shifter. Não chamar esta POC de runtime ou porta nativa.
+5. Predicação de dados e orçamento de execução: implementados para o subconjunto atual. Próximo critério: repetir a suíte combinada de 91 testes e o verificador de segurança em checkout integral limpo; só depois considerar formas lógicas com bit S, que exigem modelar o carry do shifter. Não chamar esta POC de runtime ou porta nativa.
