@@ -50,6 +50,24 @@ class TranslationTests(unittest.TestCase):
         with self.assertRaises(poc.UnsupportedInstruction):
             poc.translate([0xE3A00003] * (poc.MAX_INSTRUCTIONS + 1))
 
+    def test_cli_emits_c_for_the_default_synthetic_fixture(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "arm_subset_poc.py")],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(0, result.returncode, msg=result.stderr)
+        self.assertIn("uint32_t synthetic_entry(void)", result.stdout)
+        self.assertIn("UINT32_C(3)", result.stdout)
+        self.assertIn("return r0;", result.stdout)
+
+    def test_cli_returns_nonzero_for_incomplete_sequence(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "arm_subset_poc.py"), "E3A00003"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("sequence must end with BX LR", result.stderr)
+
     def test_generated_c_compiles_and_returns_seven_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
