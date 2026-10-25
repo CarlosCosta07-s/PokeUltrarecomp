@@ -868,5 +868,70 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(cases)} MULS cases mismatched")
 
+    def test_decodes_thumb_register_offset_load_store_forms(self):
+        expected = {
+            0: "str_reg", 1: "strh_reg", 2: "strb_reg", 3: "ldrsb_reg",
+            4: "ldr_reg", 5: "ldrh_reg", 6: "ldrb_reg", 7: "ldrsh_reg",
+        }
+        for opcode, operation in expected.items():
+            word = 0x5000 | (opcode << 9) | (3 << 6) | (2 << 3) | 1
+            with self.subTest(opcode=opcode):
+                self.assertEqual((operation, 1, 2, 3), poc.decode_halfword(word))
+
+    def test_classifies_every_thumb_register_offset_load_store_encoding(self):
+        expected = {
+            0: "str_reg", 1: "strh_reg", 2: "strb_reg", 3: "ldrsb_reg",
+            4: "ldr_reg", 5: "ldrh_reg", 6: "ldrb_reg", 7: "ldrsh_reg",
+        }
+        for word in range(0x5000, 0x6000):
+            opcode = (word >> 9) & 7
+            decoded = poc.decode_halfword(word)
+            self.assertEqual(expected[opcode], decoded[0], f"encoding 0x{word:04X}")
+            self.assertEqual((word & 7, (word >> 3) & 7, (word >> 6) & 7),
+                             (decoded[1], decoded[2], decoded[3]), f"encoding 0x{word:04X}")
+
+    def test_decodes_thumb_scaled_immediate_and_sp_relative_load_store(self):
+        cases = (
+            (0x6000 | (31 << 6) | (1 << 3), ("str_imm", 0, 1, 124)),
+            (0x6800 | (31 << 6) | (1 << 3), ("ldr_imm", 0, 1, 124)),
+            (0x7000 | (31 << 6) | (1 << 3), ("strb_imm", 0, 1, 31)),
+            (0x7800 | (31 << 6) | (1 << 3), ("ldrb_imm", 0, 1, 31)),
+            (0x8000 | (31 << 6) | (1 << 3), ("strh_imm", 0, 1, 62)),
+            (0x8800 | (31 << 6) | (1 << 3), ("ldrh_imm", 0, 1, 62)),
+            (0x9000 | (7 << 8) | 0xFF, ("str_sp", 7, 1020)),
+            (0x9800 | (7 << 8) | 0xFF, ("ldr_sp", 7, 1020)),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:04X}"):
+                self.assertEqual(expected, poc.decode_halfword(word))
+
+    def test_classifies_every_thumb_immediate_load_store_encoding(self):
+        known = {
+            0x6000: "str_imm", 0x6800: "ldr_imm", 0x7000: "strb_imm", 0x7800: "ldrb_imm",
+            0x8000: "strh_imm", 0x8800: "ldrh_imm", 0x9000: "str_sp", 0x9800: "ldr_sp",
+        }
+        for word in range(0x6000, 0xA000):
+            operation = known[word & 0xF800]
+            decoded = poc.decode_halfword(word)
+            self.assertEqual(operation, decoded[0], f"encoding 0x{word:04X}")
+            if operation.endswith("_sp"):
+                self.assertEqual(((word >> 8) & 7, (word & 0xFF) * 4),
+                                 (decoded[1], decoded[2]), f"encoding 0x{word:04X}")
+            else:
+                scale = 4 if operation in ("str_imm", "ldr_imm") else 2 if operation in ("strh_imm", "ldrh_imm") else 1
+                self.assertEqual((word & 7, (word >> 3) & 7, ((word >> 6) & 0x1F) * scale),
+                                 (decoded[1], decoded[2], decoded[3]), f"encoding 0x{word:04X}")
+
+    def test_synthetic_translator_refuses_memory_accesses_without_memory_model(self):
+        examples = (
+            0x5000, 0x5200, 0x5600, 0x5800, 0x6000, 0x6800,
+            0x7000, 0x7800, 0x8000, 0x8800, 0x9000, 0x9800,
+        )
+        for word in examples:
+            with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
+                poc.UnsupportedThumbInstruction, "memory access.*no memory model"
+            ):
+                poc.translate([word, 0x4770])
+
 if __name__ == "__main__":
     unittest.main()

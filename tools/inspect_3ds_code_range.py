@@ -71,6 +71,12 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "cmp_reg": "CMP", "cmn_reg": "CMN",
         "rsbs_zero": "RSBS",
         "bics_reg": "BICS", "mvns_reg": "MVNS", "tst_reg": "TST",
+        "str_reg": "STR", "strh_reg": "STRH", "strb_reg": "STRB",
+        "ldrsb_reg": "LDRSB", "ldr_reg": "LDR", "ldrh_reg": "LDRH",
+        "ldrb_reg": "LDRB", "ldrsh_reg": "LDRSH",
+        "str_imm": "STR", "ldr_imm": "LDR", "strb_imm": "STRB",
+        "ldrb_imm": "LDRB", "strh_imm": "STRH", "ldrh_imm": "LDRH",
+        "str_sp": "STR", "ldr_sp": "LDR",
     }
     name = names.get(op)
     if name is None:
@@ -90,6 +96,17 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "adcs_reg", "sbcs_reg", "orrs_reg", "muls_reg", "bics_reg", "mvns_reg", "tst_reg",
     ):
         return f"{name} r{inst[1]}, r{inst[2]}"
+    if state == "thumb" and op in (
+        "str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg",
+        "ldrh_reg", "ldrb_reg", "ldrsh_reg",
+    ):
+        return f"{name} r{inst[1]}, [r{inst[2]}, r{inst[3]}]"
+    if state == "thumb" and op in (
+        "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm",
+    ):
+        return f"{name} r{inst[1]}, [r{inst[2]}, #{inst[3]}]"
+    if state == "thumb" and op in ("str_sp", "ldr_sp"):
+        return f"{name} r{inst[1]}, [sp, #{inst[2]}]"
     if state == "thumb" and op in ("cmp_reg", "cmn_reg"):
         return f"{name} r{inst[1]}, r{inst[2]}"
     if state == "thumb" and op == "rsbs_zero":
@@ -100,6 +117,46 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
     raise TargetRangeError(f"could not format decoded operation {decoded!r}")
 
+
+def memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
+    """Describe a Thumb memory encoding without resolving runtime register values."""
+    if not decoded or decoded[0] not in thumb.MEMORY_OPS:
+        raise TargetRangeError(f"not a decoded Thumb memory access: {decoded!r}")
+    op = str(decoded[0])
+    width_by_op = {
+        "str_reg": 4, "ldr_reg": 4, "str_imm": 4, "ldr_imm": 4, "str_sp": 4, "ldr_sp": 4,
+        "strh_reg": 2, "ldrh_reg": 2, "strh_imm": 2, "ldrh_imm": 2, "ldrsh_reg": 2,
+        "strb_reg": 1, "ldrb_reg": 1, "strb_imm": 1, "ldrb_imm": 1, "ldrsb_reg": 1,
+    }
+    record: dict[str, Any] = {
+        "direction": "store" if op.startswith("str") else "load",
+        "width_bytes": width_by_op[op],
+        "sign_extend": op in ("ldrsb_reg", "ldrsh_reg"),
+        "runtime_effective_address_resolved": False,
+        "memory_value_read_by_inspector": False,
+    }
+    if op.endswith("_reg"):
+        record.update({
+            "addressing_mode": "register-offset",
+            "base_register": f"r{decoded[2]}",
+            "offset_register": f"r{decoded[3]}",
+            "offset_bytes": None,
+        })
+    elif op.endswith("_sp"):
+        record.update({
+            "addressing_mode": "sp-relative",
+            "base_register": "sp",
+            "offset_register": None,
+            "offset_bytes": int(decoded[2]),
+        })
+    else:
+        record.update({
+            "addressing_mode": "immediate-offset",
+            "base_register": f"r{decoded[2]}",
+            "offset_register": None,
+            "offset_bytes": int(decoded[3]),
+        })
+    return record
 
 def inspect_code_range(
     target_id: str,
@@ -252,6 +309,8 @@ def inspect_code_range(
                         1 if decoded[0] == "pop_pc" or (decoded[0] == "push" and decoded[2]) else 0
                     )
                     item["stack_delta_bytes"] = -4 * count if decoded[0] == "push" else 4 * count
+                if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
+                    item["memory_access"] = memory_access_metadata(decoded)
                 if decoded[0] in thumb.INDIRECT_FLOW_OPS:
                     item["indirect_branch"] = True
                     item["branch_links"] = decoded[0] == "blx_reg"

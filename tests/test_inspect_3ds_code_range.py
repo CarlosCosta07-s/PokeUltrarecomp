@@ -493,5 +493,44 @@ class ExplicitRangeTests(unittest.TestCase):
             [item["mnemonic"] for item in result["instructions"]],
         )
 
+    def test_formats_thumb_memory_accesses_and_reports_addressing_metadata(self):
+        register_ops = [
+            0x5000 | (opcode << 9) | (3 << 6) | (2 << 3) | 1
+            for opcode in range(8)
+        ]
+        immediates = [
+            0x6000 | (31 << 6) | (1 << 3), 0x6800 | (31 << 6) | (1 << 3),
+            0x7000 | (31 << 6) | (1 << 3), 0x7800 | (31 << 6) | (1 << 3),
+            0x8000 | (31 << 6) | (1 << 3), 0x8800 | (31 << 6) | (1 << 3),
+            0x9000 | (7 << 8) | 0xFF, 0x9800 | (7 << 8) | 0xFF,
+        ]
+        words = register_ops + immediates + [0x4770]
+        self.put_thumb(words)
+        result = self.inspect_thumb(len(words))
+        self.assertEqual([
+            "STR r1, [r2, r3]", "STRH r1, [r2, r3]", "STRB r1, [r2, r3]",
+            "LDRSB r1, [r2, r3]", "LDR r1, [r2, r3]", "LDRH r1, [r2, r3]",
+            "LDRB r1, [r2, r3]", "LDRSH r1, [r2, r3]",
+            "STR r0, [r1, #124]", "LDR r0, [r1, #124]",
+            "STRB r0, [r1, #31]", "LDRB r0, [r1, #31]",
+            "STRH r0, [r1, #62]", "LDRH r0, [r1, #62]",
+            "STR r7, [sp, #1020]", "LDR r7, [sp, #1020]", "BX LR",
+        ], [item["mnemonic"] for item in result["instructions"]])
+        first = result["instructions"][0]["memory_access"]
+        self.assertEqual("store", first["direction"])
+        self.assertEqual(4, first["width_bytes"])
+        self.assertEqual("register-offset", first["addressing_mode"])
+        self.assertEqual("r2", first["base_register"])
+        self.assertEqual("r3", first["offset_register"])
+        self.assertFalse(first["runtime_effective_address_resolved"])
+        signed_load = result["instructions"][3]["memory_access"]
+        self.assertEqual(1, signed_load["width_bytes"])
+        self.assertTrue(signed_load["sign_extend"])
+        immediate_load = result["instructions"][9]["memory_access"]
+        self.assertEqual(124, immediate_load["offset_bytes"])
+        stack_load = result["instructions"][15]["memory_access"]
+        self.assertEqual("sp-relative", stack_load["addressing_mode"])
+        self.assertEqual(1020, stack_load["offset_bytes"])
+        self.assertFalse(stack_load["memory_value_read_by_inspector"])
 if __name__ == "__main__":
     unittest.main()

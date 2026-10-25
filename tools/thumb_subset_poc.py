@@ -36,6 +36,7 @@ CONDITION_C = {
 INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
 STACK_OPS = ("push", "pop")
 LITERAL_OPS = ("ldr_literal",)
+MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg", "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm", "str_sp", "ldr_sp")
 
 
 class UnsupportedThumbInstruction(ValueError):
@@ -119,6 +120,40 @@ def decode_halfword(word: int) -> tuple[object, ...]:
                 f"unsupported Thumb data-processing register opcode {opcode:04b} in 0x{word:04X}"
             )
         return (supported_ops[opcode], rd, rm)
+
+    # Thumb-1 register-offset load/store group: 0101 op Rm Rn Rt.
+    # Decoded for inspection only; the synthetic translator has no memory model.
+    if (word & 0xF000) == 0x5000:
+        opcode = (word >> 9) & 0x7
+        rm = (word >> 6) & 0x7
+        rn = (word >> 3) & 0x7
+        rt = word & 0x7
+        memory_ops = {
+            0x0: "str_reg", 0x1: "strh_reg", 0x2: "strb_reg", 0x3: "ldrsb_reg",
+            0x4: "ldr_reg", 0x5: "ldrh_reg", 0x6: "ldrb_reg", 0x7: "ldrsh_reg",
+        }
+        return (memory_ops[opcode], rt, rn, rm)
+
+    # Thumb-1 immediate-offset transfers scale imm5 by access width.
+    immediate_op = word & 0xF800
+    if immediate_op in (0x6000, 0x6800, 0x7000, 0x7800, 0x8000, 0x8800):
+        rt = word & 0x7
+        rn = (word >> 3) & 0x7
+        imm5 = (word >> 6) & 0x1F
+        forms = {
+            0x6000: ("str_imm", 4), 0x6800: ("ldr_imm", 4),
+            0x7000: ("strb_imm", 1), 0x7800: ("ldrb_imm", 1),
+            0x8000: ("strh_imm", 2), 0x8800: ("ldrh_imm", 2),
+        }
+        operation, scale = forms[immediate_op]
+        return (operation, rt, rn, imm5 * scale)
+
+    # Thumb-1 SP-relative word transfers use imm8 scaled by four bytes.
+    if immediate_op in (0x9000, 0x9800):
+        rt = (word >> 8) & 0x7
+        imm8 = word & 0xFF
+        operation = "str_sp" if immediate_op == 0x9000 else "ldr_sp"
+        return (operation, rt, imm8 * 4)
 
     # Thumb-1 three-operand ADD/SUB: register Rm or imm3.
     if (word & 0xF800) == 0x1800:
@@ -270,6 +305,11 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     for inst in decoded:
+        if inst[0] in MEMORY_OPS:
+            raise UnsupportedThumbInstruction(
+                f"memory access ({inst[0]}) is decoded for inspection only; "
+                "the synthetic translator has no memory model"
+            )
         if inst[0] in LITERAL_OPS:
             raise UnsupportedThumbInstruction(
                 "PC-relative literal load is decoded for inspection only; "
