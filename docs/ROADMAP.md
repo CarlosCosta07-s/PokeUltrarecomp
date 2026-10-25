@@ -142,6 +142,19 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Limite:** o grafo só descreve o trecho escolhido e não prova que ele começa numa função, não resolve funções chamadas, e não modela registradores/memória. Sem uma entrada local autorizada, não há evidência de que algum caminho real dos jogos tenha sido identificado.
 
+## Fase 5F — Efeitos observados de registradores e flags
+
+**Estado:** sumário sintático conservador implementado para instruções decodificadas no intervalo explicitamente escolhido. Não é análise de vivacidade, execução simbólica ou inferência de ABI.
+
+- [x] Relatar leituras/escritas observadas de registradores para o subconjunto conhecido de ARM A32/Thumb.
+- [x] Relatar leitura/escrita de NZCV para condições, aritmética, comparações e operações Thumb suportadas.
+- [x] Distinguir load/store e transferências de stack; representar chamadas e encodings desconhecidos como efeitos incompletos.
+- [x] Agregar efeitos observados no relatório de intervalo sem afirmar contrato de retorno ou preservação de registradores.
+- [ ] Validar as anotações contra uma referência ARM independente e ampliar o subconjunto somente com fixtures verificadas.
+- [ ] Aplicar o relatório a uma faixa local autorizada, escolhida e revisada pelo mantenedor; não publicar bytes ou relatórios derivados.
+
+**Critério:** o relatório informa o que o decodificador atual permite inferir sintaticamente e identifica explicitamente onde não é seguro concluir. Não gera C nem demonstra equivalência semântica.
+
 ## Fase 6 — Investigar runtime próprio para Windows
 
 **Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.

@@ -35,6 +35,8 @@ REQUIRED_FILES = (
     "tests/test_inspect_3ds_target.py",
     "tools/thumb_subset_poc.py",
     "tools/inspect_3ds_code_range.py",
+    "tools/arm_thumb_effects.py",
+    "tests/test_arm_thumb_effects.py",
     "tools/arm_thumb_cfg.py",
     "tests/test_arm_thumb_cfg.py",
     "tests/test_inspect_3ds_code_range.py",

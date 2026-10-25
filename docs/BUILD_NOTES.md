@@ -455,3 +455,11 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Corrigida a implementação ADR/SP que tinha o `if` colado ao comentário no arquivo-fonte; corrigida a classificação `direction=store` para STMIA e a asserção de teste correspondente. Também ficou explícita a prioridade do decode de literal-load em execução anterior, e a mensagem específica voltou a passar.
 - **Validação integral:** [run 40198129769](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40198129769), commit `5473846c6fbbc9bd8b9c4ce1478ceecaf5908e1e`: `Ran 248 tests in 2.868s`, `OK`; Python 3.14.4/GCC 15.2.0, matriz diferencial 96/96, segurança PASS em 41 caminhos indexados.
 - As correções foram validadas usando somente halfwords e headers sintéticos. Nenhum executável real dos jogos foi lido; o inspetor não faz acessos à memória nem substitui as instruções por C executável.
+
+## Efeitos sintáticos de registradores e flags — 2026-10-25
+
+- Adicionado `tools/arm_thumb_effects.py`, com sumários por instrução para os formatos reconhecidos pelo inspetor de intervalo.
+- O relatório `tools/inspect_3ds_code_range.py` inclui agora `dataflow`: conjuntos observados de registradores/flags lidos e escritos, efeitos de memória, transferências de controle e endereços com análise incompleta.
+- Instruções desconhecidas são marcadas como desconhecidas; chamadas diretas/indiretas são parciais porque os efeitos da função chamada e os clobbers da ABI não são inferidos. O agregado não afirma que um registrador escrito no intervalo é o valor de retorno, nem que registradores ausentes são preservados.
+- Testes novos usam IR e encodings sintéticos para predicação A32, NZCV, ALU Thumb, loads/stores, stack, múltiplas transferências, chamadas e entradas desconhecidas.
+- Nenhum executável real dos jogos foi lido. Validação da suíte completa desta revisão: pendente até a conclusão do GitHub Actions.

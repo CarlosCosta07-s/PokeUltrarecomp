@@ -86,6 +86,12 @@ A suíte completa do repositório passou em **151 testes, sem falhas ou testes i
 
 A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`. O subconjunto ainda não inclui `BL`, saltos para trás sem orçamento, memória, funções reais, o CPSR completo, Thumb, formas lógicas com bit S ou shifter-carry. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
+## Análise sintática de efeitos de registradores
+
+A inspeção de intervalo adiciona agora um campo `dataflow` que resume registradores e flags observados como lidos/escritos e assinala efeitos de memória e transferências de controle. O resultado é conservador: chamadas e instruções desconhecidas ficam explicitamente incompletas. Não é análise de vivacidade, execução simbólica, ABI ou prova de que uma faixa é uma função.
+
+Consulte [tools/arm_thumb_effects.py](tools/arm_thumb_effects.py), [testes sintéticos](tests/test_arm_thumb_effects.py) e a fase 5F do [roadmap](docs/ROADMAP.md).
+
 ## Preparação dos executáveis de Ultra Sun / Ultra Moon
 
 A POC-002 agora cobre os 16 opcodes Thumb-1 de processamento entre registradores e as formas de shift por registrador, além de inspeção sintática de load/store simples, transferências múltiplas `LDMIA/STMIA` e operações de cálculo de endereço (`ADR`, `ADD/SUB SP`). O inspetor informa largura, modo de endereçamento, lista de registradores, writeback e alvos PC-relativos calculáveis, mas nunca lê valores da memória nem presume valores de registradores em execução. O tradutor sintético recusa esses opcodes até haver modelo de memória/ABI. A suíte completa passou em **248 testes**, sem falhas nem ignorados, no [workflow integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40198129769). Isso valida fixtures sintéticas e inspeção estática; ainda não foi analisado um `.code` real de Ultra Sun/Ultra Moon.

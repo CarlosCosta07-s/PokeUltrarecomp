@@ -14,6 +14,7 @@ import arm_subset_poc as arm  # noqa: E402
 import inspect_3ds_target as intake  # noqa: E402
 import thumb_subset_poc as thumb  # noqa: E402
 import arm_thumb_cfg as cfg  # noqa: E402
+import arm_thumb_effects as effects  # noqa: E402
 
 
 class TargetRangeError(ValueError):
@@ -464,6 +465,7 @@ def inspect_code_range(
         },
         "instructions": instructions,
         "control_flow": cfg.analyze_control_flow(instructions, state, start_address, selected_end),
+        "dataflow": effects.summarize_range(instructions, state),
         "limitations": [
             "Only the explicit fixed-width range is decoded; no function discovery or automatic ARM/Thumb state detection.",
             "Only the current narrow ARM A32 and Thumb-16 subsets are decoded.",
