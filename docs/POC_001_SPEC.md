@@ -31,13 +31,14 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 
 - ARM A32, condição AL (incondicional) apenas.
 - `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags.
+- `B` incondicional e `BEQ`/`BNE` com destinos dentro da própria fixture; os saltos preservam NZCV.
 - Formas aritméticas imediatas com flags: `ADDS`, `SUBS`, `CMN` e `CMP`, com flags NZCV expostas em parâmetro de saída.
 - Imediatos com rotação ARM de 32 bits.
 - Registradores limitados a `r0-r3`.
 - `BX LR` como terminador único no final da sequência.
 - Limite de 256 palavras de instrução por sequência.
 
-Instruções executadas condicionalmente, Thumb, formas lógicas com S-bit, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, saltos internos, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+BL, condições de salto diferentes de AL/EQ/NE, saltos para fora da fixture, instruções de dados executadas condicionalmente, Thumb, formas lógicas com S-bit, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
 
 ## Modelo NZCV e integração restrita do tradutor
 
@@ -58,11 +59,11 @@ Se um dia for necessário observar o comportamento do jogo original para compara
 
 ## Matriz diferencial sintética
 
-A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 96 fixtures, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN/CMP. Ela compila o C emitido e compara o valor retornado e NZCV com o modelo separado `tools/arm_flags.py`. Execute com:
+A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 96 fixtures aritméticas, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN/CMP. Ela compila o C emitido e compara o valor retornado e NZCV com o modelo separado `tools/arm_flags.py`. Os desvios têm testes nativos específicos adicionais para destinos, condição EQ/NE e caminhos tomados/não tomados. Execute com:
 
     python tools/arm_differential_poc.py
 
-O teste compara o C gerado com o modelo NZCV separado do projeto; **não é validação contra um emulador independente** e não prova compatibilidade com o jogo. Depois de sincronizar os arquivos Python de implementação e teste aos blobs verificados de `main` e conferir os hashes Git dos arquivos alterados, a matriz executou **96/96 correspondências** com C11, `-Wall -Wextra -Werror`. O checkout integral do repositório não pôde ser clonado neste ambiente por falha de resolução DNS; por isso, a evidência é do conjunto de arquivos Python verificados, não de um checkout integral.
+O teste compara o C gerado com o modelo NZCV separado do projeto; **não é validação contra um emulador independente** e não prova compatibilidade com o jogo. A matriz executou **96/96 correspondências** com C11, `-Wall -Wextra -Werror`. Os testes nativos específicos de `B`, `BEQ` e `BNE` também passaram. Os hashes Git da implementação, testes, modelo de flags e matriz foram conferidos com os blobs correspondentes de `main`. Isso valida o conjunto Python verificado, não um checkout integral recém-clonado nem o jogo.
 
 ## Como reproduzir
 
@@ -97,9 +98,9 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte do tradutor POC-001: **36 testes aprovados**, incluindo decodificação e rejeições de `CMP`, além de compilação/execução nativa de comparações.
+- Suíte do tradutor POC-001: **43 testes aprovados**, cobrindo `CMP`, decodificação/rejeição de desvios, destino dentro da fixture e execução nativa de `B`, `BEQ` e `BNE`.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- A suíte atual soma **67 testes aprovados, zero falhas e zero ignorados**: 36 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial.
+- A suíte atual soma **74 testes aprovados, zero falhas e zero ignorados**: 43 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
