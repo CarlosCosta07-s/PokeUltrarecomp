@@ -1051,5 +1051,43 @@ int main(void) {
         with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "must be a bool"):
             poc.translate(halfwords, max_execution_steps=2, runtime_state_io=1)
 
+
+    def test_runtime_state_io_rejects_null_registers_and_invalid_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb runtime-state validation requires cc, gcc, or clang")
+        source = poc.translate(
+            [0x3001, 0x4770],
+            max_execution_steps=2,
+            runtime_state_io=True,
+        ).replace("uint32_t thumb_entry_bounded(", "uint32_t thumb_runtime_validate(")
+        harness = source + """
+int main(void) {
+    const uint32_t input[8] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U};
+    uint32_t output[8] = {
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)
+    };
+    uint8_t flags = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = UINT32_C(99);
+    if (thumb_runtime_validate(0, UINT8_C(0), &flags, &steps, &status, output) != 0U) return 1;
+    if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 2;
+    for (unsigned i = 0; i < 8; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 3;
+    flags = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = UINT32_C(99);
+    if (thumb_runtime_validate(input, UINT8_C(16), &flags, &steps, &status, output) != 0U) return 4;
+    if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 5;
+    for (unsigned i = 0; i < 8; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 6;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_runtime_invalid.c"
+            exe = Path(directory) / ("thumb_runtime_invalid.exe" if os.name == "nt" else "thumb_runtime_invalid")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"invalid Thumb runtime input handling failed with {run.returncode}")
+
 if __name__ == "__main__":
     unittest.main()
