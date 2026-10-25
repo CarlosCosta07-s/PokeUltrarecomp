@@ -105,11 +105,12 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
 
-**Estado:** implementação e suíte sintética aprovadas no checkout completo da `main`. O próximo passo real depende de um intervalo local autorizado cuja localização e estado ARM/Thumb tenham sido confirmados.
+**Estado:** implementação e suíte sintética aprovadas no checkout completo da `main`. O modo estrito rejeita encodings desconhecidos; o modo `--include-unsupported` registra-os como brutos e agrupa prefixos Thumb-2 de 32 bits. A execução integral da extensão aprovou 156 testes, matriz diferencial 96/96 e verificador de segurança. O próximo passo real depende de um intervalo local autorizado cuja localização e estado ARM/Thumb tenham sido confirmados.
 
 **Tarefas**
 - [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
 - [x] Exigir estado ARM/Thumb e contagem explícitos; rejeitar intervalos fora do payload `.text` e endereços desalinhados.
+- [x] Adicionar modo de inspeção parcial que registra encodings desconhecidos sem mnemônicos inventados e agrupa prefixos Thumb-2 de 32 bits para preservar alinhamento.
 - [x] Decodificar somente o subconjunto reconhecido e falhar de forma clara ao encontrar instrução não suportada.
 - [x] Informar destinos de branch e se caem dentro do intervalo e do `.text` declarado.
 - [x] Executar testes sintéticos na suíte completa; 151 testes passaram no commit 78bad708b8e561d58f934f133fef68d9e1d1f2cb.

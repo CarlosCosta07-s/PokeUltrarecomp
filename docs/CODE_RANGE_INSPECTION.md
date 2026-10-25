@@ -8,6 +8,8 @@ O intake identifica metadados e layout, mas não adivinha onde uma função come
 
     python tools/inspect_3ds_code_range.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --state thumb --start-address 0x00100000 --instruction-count 8 --title-id 00040000001B5000
 
+Para uma inspeção parcial de um intervalo que contém encodings não suportados, acrescente `--include-unsupported`. O relatório identifica entradas como `unsupported` ou `unsupported-thumb32`, mantém o encoding bruto e continua a partir do próximo limite conhecido, sem inventar semântica.
+
 Use endereços alinhados ao tamanho da instrução: múltiplos de quatro bytes para ARM A32 e de dois bytes para Thumb. Para Thumb, informe o endereço de instrução sem o bit de estado Thumb que pode estar presente em um ponteiro de função. O arquivo `.code` deve estar descomprimido e corresponder ao ExHeader.
 
 O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/repositorio/intervalo.json`; a ferramenta recusa gravar o relatório dentro da árvore do projeto. O relatório inclui encodings e mnemônicos, além de hashes e offsets locais, portanto deve permanecer privado quando derivado de um jogo.
@@ -17,7 +19,9 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 - Exige o Program ID embutido no ACI reconhecido como o alvo selecionado; para um identificador desconhecido, a ferramenta falha salvo quando o mantenedor passa explicitamente `--allow-unverified-target`.
 - Só examina o payload `.text` declarado; não usa a região de page padding como código.
 - Exige o estado ARM/Thumb e a contagem explicitamente. Não há descoberta de funções, linear sweep ou detecção automática de estado.
-- Se qualquer palavra/halfword estiver fora do pequeno subconjunto, falha na primeira instrução não suportada e apresenta o endereço.
+- Por padrão, se uma palavra/halfword estiver fora do pequeno subconjunto, falha na primeira instrução não suportada e apresenta o endereço.
+- Com `--include-unsupported`, encodings desconhecidos são preservados como brutos, com `mnemonic` e `decoded_ir` nulos; o status geral muda para `partially-decoded-explicit-range`.
+- Prefixos Thumb-2 de 32 bits são agrupados em uma entrada de 4 bytes. O decodificador Thumb-2 permanece ausente; o agrupamento evita tratar a segunda metade como outra instrução.
 - Informa os destinos calculados de branches e se caem dentro do intervalo selecionado e do `.text` declarado. Não resolve funções chamadas, memória, literal pools, tabelas de dados, relocations ou ABI.
 
 ## Limites

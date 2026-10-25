@@ -350,3 +350,12 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Rejeita Program ID de jogo oposto ou não reconhecido (salvo override explícito), endereço desalinhado, leitura fora de `.text`, intervalo que entra no page padding e instruções não suportadas. Apresenta destinos dos branches sem descobrir funções.
 - **Execução integral aprovada:** [run 40158948344](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158948344), commit 78bad708b8e561d58f934f133fef68d9e1d1f2cb. Python 3.14.4/GCC 15.2.0; Ran 151 tests in 1.366s; OK; matriz diferencial 96/96; matriz Thumb 224 estados; verificador de segurança PASS com 38 caminhos indexados e zero arquivos não ignorados não rastreados.
 - **Limite:** nenhum ExHeader ou `.code` real foi lido na CI; a nova ferramenta foi validada com arquivos sintéticos. Não descobre funções, não decide ARM/Thumb automaticamente, não resolve literal pools/calls/memória/ABI e não produz C executável. Os relatórios contêm encodings e devem permanecer locais.
+
+## Inspeção parcial ARM/Thumb e prevenção de desalinhamento Thumb-2 — 2026-10-25
+
+- `tools/inspect_3ds_code_range.py` agora oferece `--include-unsupported`: encodings desconhecidos ficam no relatório como bytes brutos, sem um mnemônico ou IR inventado. O modo estrito continua sendo o padrão.
+- Prefixos Thumb-2 de 32 bits são agrupados como uma única instrução bruta de quatro bytes; o scanner não tenta decodificar a segunda metade separadamente. O formato e a semântica do Thumb-2 completo continuam fora do escopo.
+- O tamanho final do intervalo é variável no estado Thumb quando um prefixo de 32 bits aparece. O relatório aponta offsets, endereços e se targets de branch caem no intervalo ou coincidem com um início de instrução escaneada.
+- **Execução integral aprovada:** [run 40189160109](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40189160109), commit `7f333bea0355ed359ae78c23b2986f35fc5d4e1a`: `Ran 156 tests in 1.992s`, `OK`; matriz diferencial 96/96; verificador de segurança `PASS`, com 39 caminhos indexados.
+- Cinco novos testes cobrem rejeição estrita de Thumb-2, agrupamento de 32 bits e alinhamento da instrução seguinte, encodings desconhecidos ARM/Thumb, e fronteira `.text`. Nenhum dado real de jogo foi usado na CI.
+- Ainda falta decodificador Thumb-2 e uma entrada local autorizada; não há descoberta automática de funções, tradução integral do executável nem runtime do jogo.

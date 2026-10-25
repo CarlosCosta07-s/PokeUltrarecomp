@@ -102,7 +102,7 @@ Foi adicionada a [POC-002](docs/THUMB_POC_002.md), um tradutor Thumb-16 separado
 
 ## Inspeção local de um intervalo ARM/Thumb
 
-A ferramenta `tools/inspect_3ds_code_range.py` recebe endereço virtual, estado ARM/Thumb e quantidade explícita de instruções, confere o intervalo contra o `.text` declarado no ExHeader e decodifica apenas os encodings já cobertos pelos tradutores de teste. Ela não localiza funções automaticamente e falha quando encontra uma instrução fora do subconjunto. O relatório com encodings deve permanecer local; use `--report` somente para um caminho fora do repositório. Veja [guia de intervalos locais](docs/CODE_RANGE_INSPECTION.md).
+A ferramenta `tools/inspect_3ds_code_range.py` recebe endereço virtual, estado ARM/Thumb e quantidade explícita de instruções, confere o intervalo contra o `.text` declarado no ExHeader e decodifica os encodings reconhecidos. Por padrão, mantém o modo estrito; `--include-unsupported` registra instruções desconhecidas como encodings brutos sem inventar mnemônicos. Prefixos Thumb-2 de 32 bits são agrupados numa única entrada bruta, preservando o alinhamento das instruções seguintes; o decoder Thumb-2 completo ainda não existe. A execução integral após essa melhoria aprovou **156 testes**, com sintaxe Python, matriz diferencial 96/96 e verificador de segurança aprovados. [Workflow de validação](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40189160109). O relatório com encodings deve permanecer local; use `--report` somente para um caminho fora do repositório. Veja [guia de intervalos locais](docs/CODE_RANGE_INSPECTION.md).
 
 Exemplo (os caminhos e o intervalo abaixo são ilustrativos; confirme antes o estado ARM/Thumb da região local):
 
