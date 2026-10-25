@@ -76,12 +76,12 @@ Foi criada uma pesquisa de **nove repositórios de código** relacionados a reco
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes do tradutor passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. Também foi criado o módulo separado [tools/arm_flags.py](tools/arm_flags.py), que modela flags NZCV sem ativar instruções com atualização de flags no tradutor. A suíte completa passou em **50 testes**: 23 do tradutor, 18 do modelo de flags e 9 do verificador de segurança, sem falhas ou testes ignorados.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, o C gerado ainda retorna `12`. A função gerada agora também pode retornar NZCV em um nibble de saída; o decodificador aceita `ADDS`, `SUBS` e `CMN` imediatos em fixtures sintéticas restritas. Testes compilam e executam o C para validar overflow de `ADDS` e flags de `CMN`. O módulo de referência [tools/arm_flags.py](tools/arm_flags.py) continua separado. A suíte completa passou em **57 testes**: 30 do tradutor, 18 do modelo de flags e 9 do verificador de segurança, sem falhas ou testes ignorados.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
 
-A POC traduz apenas `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. O modelo NZCV permanece isolado e ainda não está integrado ao tradutor; `CMN` continua pendente. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`, e aceita ainda `ADDS`, `SUBS` e `CMN` em fixtures de teste específicas. O suporte não inclui todas as instruções ARM, o CPSR completo nem instruções lógicas com bit S ou shifter-carry. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
 ## Como acompanhar o progresso
 
