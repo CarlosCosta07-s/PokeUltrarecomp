@@ -91,16 +91,17 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5B — POC-002: subconjunto Thumb-16
 
-**Estado:** primeira implementação do subconjunto sintético adicionada; a aceitação depende da execução da suíte completa da `main` no workflow.
+**Estado:** tradutor sintético implementado e validado no checkout completo da `main`: suíte combinada de 136 testes aprovada, sem falhas nem testes ignorados. A parte que conecta intervalos identificados nos executáveis reais aos tradutores permanece pendente.
 
 **Cobertura atual**
 - [x] Decodificar `MOVS`, `ADDS`, `SUBS` e `CMP` imediatos.
 - [x] Traduzir branches incondicionais e condicionais EQ..LE com offsets Thumb relativos ao PC (endereço atual + 4).
 - [x] Modelar flags NZCV, entrada explícita, sequência com `BX LR` e limite de execução para laços.
 - [x] Testar a fixture nativa e as 224 combinações de condição/estado NZCV contra tabela independente.
+- [x] Executar a suíte integral, a matriz diferencial e o verificador de segurança no runner hospedado.
 - [ ] Conectar a tradução somente a intervalos de código identificados por análise de fluxo/estado ARM-Thumb; não fazer linear sweep indiscriminado em `.text`.
 
-**Critério de conclusão:** teste sintético reproduzível e limites da implementação claros. Não inferir compatibilidade com jogo até haver descoberta de funções, análise de dados embutidos e verificação diferencial independente.
+**Critério da POC sintética:** cumprido para a sequência explicitamente fornecida e o subconjunto listado. A integração aos jogos continua aberta até haver descoberta de funções, identificação de estado ARM/Thumb, análise de dados embutidos e verificação diferencial independente.
 
 ## Fase 6 — Investigar runtime próprio para Windows
 

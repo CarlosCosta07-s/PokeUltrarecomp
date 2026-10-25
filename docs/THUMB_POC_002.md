@@ -41,3 +41,7 @@ A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma 
 Isto não é um disassembler geral nem um recompilador de jogos. Ainda faltam os formatos Thumb-1 restantes, Thumb-2 (não é o foco para ARMv6K), BL/BLX, literal loads, acesso à memória, stack, calls, funções descobertas, relocations, CRO e ABI real. O scanner não deve ser aplicado a todo `.text` como se cada halfword fosse instrução: áreas de dados/literal pools e transições ARM/Thumb exigem análise de fluxo e proveniência.
 
 Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado em testes. A validação cobre apenas as fixtures sintéticas da POC-002. A etapa que conecta um range ARM/Thumb identificado no executável local aos tradutores ainda está pendente.
+
+## Evidência de validação — POC-002
+
+No commit `f14aa07a23867fd3bd79c547006bcce57f8b2006`, a suíte completa passou: 136 testes, zero falhas e zero ignorados, com Python 3.14.4 e GCC 15.2.0. O workflow compilou e executou a fixture Thumb padrão, testou as 224 combinações de condição/flags, validou o laço limitado e passou pelo verificador de segurança. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158610342). Nenhum arquivo de jogo real foi fornecido nem lido; a POC-002 continua sendo uma tradução de halfwords sintéticos.
