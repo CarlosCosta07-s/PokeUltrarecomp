@@ -76,12 +76,12 @@ Foi criada uma pesquisa de **nove repositórios de código** relacionados a reco
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes específicos da POC passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. A suíte completa publicada (POC + verificador do repositório) passou em **32 testes**, sem falhas nem testes ignorados, no ambiente Linux desta sessão.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes do tradutor passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. Também foi criado o módulo separado [\`tools/arm_flags.py\`](tools/arm_flags.py), que modela flags NZCV sem ativar instruções com atualização de flags no tradutor. A suíte completa passou em **50 testes**: 23 do tradutor, 18 do modelo de flags e 9 do verificador de segurança, sem falhas ou testes ignorados.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
 
-A POC cobre apenas `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A POC traduz apenas `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. O modelo NZCV permanece isolado e ainda não está integrado ao tradutor; `CMN` continua pendente. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
 ## Como acompanhar o progresso
 
