@@ -54,7 +54,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_rejects_unsupported_branch_condition(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "branch condition"):
-            poc.decode_word(0xCA000000)  # BGT
+            poc.decode_word(0xFA000000)  # cond=0xF is not a valid A32 branch condition (BLX-immediate space)
 
     def test_rejects_unsupported_flag_setting_instruction(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
@@ -174,6 +174,57 @@ class TranslationTests(unittest.TestCase):
         bne = poc.translate([0x1A000000, 0xE3A00001, 0xE12FFF1E])
         self.assertIn("if (flag_z == 0U) goto arm_label_2;", bne)
         self.assertIn("arm_label_2: ;", bne)
+
+    def test_decodes_all_standard_branch_conditions(self):
+        names = ["eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le"]
+        for code, name in enumerate(names):
+            with self.subTest(condition=name):
+                self.assertEqual(("branch", name, 0), poc.decode_word((code << 28) | 0x0A000000))
+        self.assertEqual(("branch", "al", 0), poc.decode_word(0xEA000000))
+
+    def test_all_branch_conditions_match_arm_spec_for_all_entry_flag_states_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        # Independent statement of the ARM condition table (ARM ARM, "Condition codes"),
+        # written over booleans rather than copied from the translator's C expressions.
+        spec = [
+            lambda n, z, c, v: z,                      # EQ
+            lambda n, z, c, v: not z,                  # NE
+            lambda n, z, c, v: c,                      # CS
+            lambda n, z, c, v: not c,                  # CC
+            lambda n, z, c, v: n,                      # MI
+            lambda n, z, c, v: not n,                  # PL
+            lambda n, z, c, v: v,                      # VS
+            lambda n, z, c, v: not v,                  # VC
+            lambda n, z, c, v: c and not z,            # HI
+            lambda n, z, c, v: (not c) or z,           # LS
+            lambda n, z, c, v: n == v,                 # GE
+            lambda n, z, c, v: n != v,                 # LT
+            lambda n, z, c, v: (not z) and n == v,     # GT
+            lambda n, z, c, v: z or n != v,            # LE
+        ]
+        sources = []
+        checks = []
+        for code, taken_for in enumerate(spec):
+            # Bcc +0 targets the final BX LR; fall-through runs MOV r0,#1. Taken => r0 == 0.
+            words = [(code << 28) | 0x0A000000, 0xE3A00001, 0xE12FFF1E]
+            for nzcv in range(16):
+                name = f"entry_c{code:X}_n{nzcv:X}"
+                text = poc.translate(words, initial_nzcv=nzcv).replace("uint32_t synthetic_entry(", f"uint32_t {name}(")
+                sources.append(text)
+                n, z, c, v = (bool(nzcv & 8), bool(nzcv & 4), bool(nzcv & 2), bool(nzcv & 1))
+                expected = 0 if taken_for(n, z, c, v) else 1
+                checks.append(f"    {{ uint8_t f = 0; if (!({name}(&f) == UINT32_C({expected}) && f == UINT8_C({nzcv}))) bad++; }}")
+        harness = "\n".join(sources) + "\nint main(void) {\n    int bad = 0;\n" + "\n".join(checks) + "\n    return bad;\n}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "conditions.c"
+            exe = Path(directory) / ("conditions.exe" if os.name == "nt" else "conditions")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(checks)} condition/flag cases mismatched")
 
     def test_initial_nzcv_sets_entry_flags_and_defaults_to_zero(self):
         words = [0xE3A00001, 0xE12FFF1E]

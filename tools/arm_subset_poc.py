@@ -14,6 +14,31 @@ from pathlib import Path
 DEFAULT_WORDS = (0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008, 0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E)
 MAX_INSTRUCTIONS = 256
 
+# ARM condition field (bits 31:28) -> mnemonic suffix, for B only. 0xF is not a
+# condition in A32 (it selects the unconditional/BLX-immediate space) and is rejected.
+BRANCH_CONDITION_NAMES = {
+    0x0: "eq", 0x1: "ne", 0x2: "cs", 0x3: "cc", 0x4: "mi", 0x5: "pl", 0x6: "vs",
+    0x7: "vc", 0x8: "hi", 0x9: "ls", 0xA: "ge", 0xB: "lt", 0xC: "gt", 0xD: "le",
+    0xE: "al",
+}
+# C expressions over the 0/1-valued flag_n/flag_z/flag_c/flag_v of the generated function.
+BRANCH_CONDITION_C = {
+    "eq": "flag_z != 0U",
+    "ne": "flag_z == 0U",
+    "cs": "flag_c != 0U",
+    "cc": "flag_c == 0U",
+    "mi": "flag_n != 0U",
+    "pl": "flag_n == 0U",
+    "vs": "flag_v != 0U",
+    "vc": "flag_v == 0U",
+    "hi": "flag_c != 0U && flag_z == 0U",
+    "ls": "flag_c == 0U || flag_z != 0U",
+    "ge": "flag_n == flag_v",
+    "lt": "flag_n != flag_v",
+    "gt": "flag_z == 0U && flag_n == flag_v",
+    "le": "flag_z != 0U || flag_n != flag_v",
+}
+
 
 class UnsupportedInstruction(ValueError):
     """The input is outside this demonstrator's intentionally small subset."""
@@ -38,18 +63,18 @@ def decode_word(word: int) -> tuple[object, ...]:
 
     condition = (word >> 28) & 0xF
 
-    # B (not BL) supports only AL, EQ and NE in this deliberately small POC.
+    # B (not BL) supports AL and the fourteen standard conditions (EQ..LE) in this POC.
     # ARM A32 computes the destination from PC+8 plus sign-extended imm24<<2.
     # Since this fixture is word-indexed, target = index + 2 + sign_extend(imm24).
     if ((word >> 25) & 0b111) == 0b101:
         if (word >> 24) & 1:
             raise UnsupportedInstruction(f"branch-with-link is unsupported: 0x{word:08X}")
-        if condition not in (0xE, 0x0, 0x1):
+        if condition not in BRANCH_CONDITION_NAMES:
             raise UnsupportedInstruction(f"branch condition is unsupported in 0x{word:08X}")
         offset = word & 0x00FFFFFF
         if offset & 0x00800000:
             offset -= 0x01000000
-        branch_condition = {0xE: "al", 0x0: "eq", 0x1: "ne"}[condition]
+        branch_condition = BRANCH_CONDITION_NAMES[condition]
         return ("branch", branch_condition, offset)
 
     if condition != 0xE:
@@ -204,10 +229,8 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
             target = branch_targets[instruction_index]
             if condition == "al":
                 lines.append(f"    goto arm_label_{target};")
-            elif condition == "eq":
-                lines.append(f"    if (flag_z != 0U) goto arm_label_{target};")
-            elif condition == "ne":
-                lines.append(f"    if (flag_z == 0U) goto arm_label_{target};")
+            elif condition in BRANCH_CONDITION_C:
+                lines.append(f"    if ({BRANCH_CONDITION_C[condition]}) goto arm_label_{target};")
             else:  # decoder closes the supported condition set.
                 raise UnsupportedInstruction(f"internal unsupported branch condition: {condition!r}")
         elif instruction[0] == "mov":
