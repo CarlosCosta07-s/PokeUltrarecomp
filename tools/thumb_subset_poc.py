@@ -390,7 +390,8 @@ def translate(
             amount = f"thumb_regshift_amount_{suffix}"
             result = f"thumb_regshift_result_{suffix}"
             rotation = f"thumb_regshift_rotation_{suffix}"
-            lines.append(f"    uint32_t {rotation} = 0U;")
+            if op == "rors_reg":
+                lines.append(f"    uint32_t {rotation} = 0U;")
             lines.append(f"    uint32_t {source} = r{rd};")
             lines.append(f"    uint32_t {amount_source} = r{rm};")
             lines.append(f"    uint32_t {amount} = {amount_source} & UINT32_C(0xFF);")
