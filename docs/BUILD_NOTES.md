@@ -198,7 +198,7 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 
 ## POC-001 — iteração 7: MVN imediato e pesquisa de fontes — 2026-10-24
 
-- Alteração: adicionado suporte restrito a `MVN` imediato, com `S=0`, condição AL, registradores `r0-r3), encoding canônico `Rn=0), e sem atualização de flags.
+- Alteração: adicionado suporte restrito a `MVN` imediato, com `S=0`, condição AL, registradores `r0-r3`, encoding canônico `Rn=0` e sem atualização de flags.
 - Fixture sintética atual: `E3A0000C E2400008 E2800003 E2000007 E3800008 E2200001 E3C00002 E3E01000 E201000C E12FFF1E`. Depois das operações anteriores, `MVN r1,#0` produz `0xFFFFFFFF`, e `AND r0,r1,#12` assegura que a execução nativa retorna 12.
 - Testes novos: decodificação de `MVN`, rejeição de encoding não canônico, emissão C do complemento e teste compilado/executado que falharia se o valor de `MVN` estivesse incorreto.
 - Pesquisa: criado [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md) com nove bases de código de ARM, emulação e recompilação, as funções técnicas e observações iniciais sobre licenças. A pesquisa é documental; nenhum código de terceiros foi copiado ou adicionado como dependência.
