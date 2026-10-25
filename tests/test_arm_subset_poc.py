@@ -23,9 +23,15 @@ class DecoderTests(unittest.TestCase):
     def test_rotated_immediate_is_decoded(self):
         self.assertEqual(("mov", 0, 0x80000000), poc.decode_word(0xE3A00102))
 
-    def test_rejects_conditional_instruction(self):
-        with self.assertRaises(poc.UnsupportedInstruction):
-            poc.decode_word(0x13A00003)  # MOVNE r0, #3
+    def test_decodes_conditional_instruction_as_predicated(self):
+        self.assertEqual(
+            ("predicated", "ne", ("mov", 0, 3)),
+            poc.decode_word(0x13A00003),  # MOVNE r0, #3
+        )
+
+    def test_rejects_condition_f_for_data_processing(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "condition code 0xF"):
+            poc.decode_word(0xF3A00003)
 
     def test_rejects_unsupported_register(self):
         with self.assertRaises(poc.UnsupportedInstruction):
@@ -216,6 +222,18 @@ class TranslationTests(unittest.TestCase):
                 n, z, c, v = (bool(nzcv & 8), bool(nzcv & 4), bool(nzcv & 2), bool(nzcv & 1))
                 expected = 0 if taken_for(n, z, c, v) else 1
                 checks.append(f"    {{ uint8_t f = 0; if (!({name}(&f) == UINT32_C({expected}) && f == UINT8_C({nzcv}))) bad++; }}")
+
+                # Conditional data-processing must use the same condition truth table.
+                pred_name = f"pred_entry_c{code:X}_n{nzcv:X}"
+                predicated_words = [(code << 28) | 0x03A00001, 0xE12FFF1E]  # MOV{cond} r0,#1
+                pred_source = poc.translate(predicated_words, initial_nzcv=nzcv).replace(
+                    "uint32_t synthetic_entry(", f"uint32_t {pred_name}("
+                )
+                sources.append(pred_source)
+                pred_expected = 1 if taken_for(n, z, c, v) else 0
+                checks.append(
+                    f"    {{ uint8_t f = 0; if (!({pred_name}(&f) == UINT32_C({pred_expected}) && f == UINT8_C({nzcv}))) bad++; }}"
+                )
         harness = "\n".join(sources) + "\nint main(void) {\n    int bad = 0;\n" + "\n".join(checks) + "\n    return bad;\n}\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "conditions.c"
@@ -225,6 +243,37 @@ class TranslationTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(checks)} condition/flag cases mismatched")
+
+    def test_predicated_flag_setting_updates_nzcv_only_when_condition_is_true(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native predication proof requires cc, gcc, or clang")
+        # ADDEQS r0,r0,#1: with Z=0 it is skipped and preserves entry NZCV=0x8;
+        # with Z=1 it executes, producing r0=1 and NZCV=0.
+        skipped = poc.translate([0x02900001, 0xE12FFF1E], initial_nzcv=0x8).replace(
+            "uint32_t synthetic_entry(", "uint32_t predicated_skipped("
+        )
+        executed = poc.translate([0x02900001, 0xE12FFF1E], initial_nzcv=0x4).replace(
+            "uint32_t synthetic_entry(", "uint32_t predicated_executed("
+        )
+        harness = "\n".join((skipped, executed)) + """
+int main(void) {
+    uint8_t skipped_flags = 0;
+    uint8_t executed_flags = 0;
+    return predicated_skipped(&skipped_flags) == UINT32_C(0)
+        && skipped_flags == UINT8_C(8)
+        && predicated_executed(&executed_flags) == UINT32_C(1)
+        && executed_flags == UINT8_C(0) ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "predicated_flags.c"
+            exe = Path(directory) / ("predicated_flags.exe" if os.name == "nt" else "predicated_flags")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_initial_nzcv_sets_entry_flags_and_defaults_to_zero(self):
         words = [0xE3A00001, 0xE12FFF1E]
