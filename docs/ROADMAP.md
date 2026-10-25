@@ -61,7 +61,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5 — Definir a primeira prova de conceito
 
-**Preparação experimental:** a POC-001 traduz a fixture sintética de dez palavras ARM A32 para C e retorna NZCV pelo parâmetro de saída. `ADDS`, `SUBS` e `CMN` imediatos são aceitos em fixtures restritas, com casos de execução C verificando flags e que `CMN` não altera o registrador de destino. A suíte tem **30 testes do tradutor**, 18 testes do modelo NZCV de referência e 9 do verificador de segurança: **57 aprovados** no ambiente Linux verificado. A pesquisa de nove bases está em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). O projeto ainda não valida equivalência com Ultra Sun/Ultra Moon nem constitui um runtime de jogo.
+**Preparação experimental:** a POC-001 traduz a fixture sintética de dez palavras ARM A32 para C e retorna NZCV pelo parâmetro de saída. `ADDS`, `SUBS` e `CMN` imediatos são aceitos em fixtures restritas, com casos de execução C verificando flags e que `CMN` não altera o registrador de destino. A suíte tem **31 testes do tradutor**, 18 testes do modelo NZCV de referência e 9 do verificador de segurança: **58 aprovados** no ambiente Linux verificado. A pesquisa de nove bases está em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). O projeto ainda não valida equivalência com Ultra Sun/Ultra Moon nem constitui um runtime de jogo.
 
 **Tarefas**
 - [ ] Escolher apenas uma unidade pequena, com limite de escopo e um resultado observável.
