@@ -61,7 +61,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5 — Definir a primeira prova de conceito
 
-**Preparação experimental:** a [POC-001](POC_001_SPEC.md) traduz dez palavras sintéticas ARM A32 (`MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`; `AND` aparece duas vezes) para C. A suíte específica da POC tem 23 testes aprovados; a suíte completa de ferramentas Python tem 32 testes aprovados no ambiente Linux verificado. A pesquisa de nove bases de código está documentada em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). Isto não encerra a fase: não é código de jogo, não valida equivalência com Ultra Sun/Ultra Moon e não substitui a reprodução do teste de referência 001 nem a decisão sobre licenças/procedência.
+**Preparação experimental:** a POC-001 continua traduzindo a fixture sintética de dez palavras ARM A32 para C, com 23 testes próprios aprovados. Foi acrescentado o módulo isolado `tools/arm_flags.py` para flags NZCV, com 18 testes próprios; esse módulo ainda não está integrado ao tradutor. A suíte completa de ferramentas Python tem **50 testes aprovados** (23 do tradutor, 18 de flags e 9 do verificador de segurança) no ambiente Linux verificado. A pesquisa de nove bases de código está documentada em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). Isto não encerra a fase nem valida equivalência com Ultra Sun/Ultra Moon ou um runtime de jogo.
 
 **Tarefas**
 - [ ] Escolher apenas uma unidade pequena, com limite de escopo e um resultado observável.
