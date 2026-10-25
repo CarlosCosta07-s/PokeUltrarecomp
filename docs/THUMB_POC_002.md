@@ -65,7 +65,7 @@ A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma 
 
 A cobertura inclui também deslocamentos imediatos Thumb-1 (LSL/LSR/ASR), operações lógicas/teste entre registradores (ANDS/EORS/ORRS/BICS/MVNS/TST), CMP/CMN entre registradores e RSBS Rdn,Rm,#0. Operações lógicas/teste preservam C/V, CMP/CMN não alteram o registrador comparado, e RSBS valida o overflow de negação do valor mínimo. Encodings de outros opcodes no mesmo espaço de data-processing continuam rejeitados.
 
-O grupo Thumb-1 de operações entre registradores agora inclui ANDS/EORS/ORRS/BICS/MVNS/TST, CMP/CMN, RSBS (negação) e ADCS/SBCS. C/V são preservados nas operações lógicas/teste e consumidos explicitamente nas operações com carry.
+O grupo Thumb-1 de processamento entre registradores agora cobre seus 16 opcodes: ANDS/EORS/LSLS/LSRS/ASRS/ADCS/SBCS/RORS/TST/RSBS/CMP/CMN/ORRS/MULS/BICS/MVNS. MULS grava os 32 bits inferiores do produto, atualiza N/Z e preserva C/V. Os shifts por registrador usam Rs[7:0] como quantidade, incluindo os casos 0, 32 e maior que 32, e são verificados com compilação C nativa. O decoder é um subconjunto delimitado de Thumb-1, não um decoder Thumb completo.
 
 A cobertura inclui também os deslocamentos imediatos Thumb-1 LSL, LSR e ASR. Os testes classificam todos os encodings de 0x0000 a 0x17FF e executam testes C nativos para carry, preservação de C/V e os casos em que imm5=0 tem significado especial.
 
@@ -79,4 +79,4 @@ Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado e
 
 ## Evidência de validação — POC-002
 
-A validação integral mais recente, no commit `f54c5c5abcf6e394319a8f957bd250b281cad45d`, passou em **231 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40196025438).
+A validação integral mais recente, no commit `aebc07b88024de06e899ae849f1fd33c026012a7`, passou em **234 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados, com zero arquivos não ignorados e não rastreados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197061451). Nenhum `.code` real foi lido; a evidência é sintética.

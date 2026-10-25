@@ -29,9 +29,9 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 
 ## Grafo estrutural de fluxo
 
-O decodificador Thumb-16 também reconhece ANDS/EORS/ORRS/BICS/MVNS/TST, CMP/CMN entre registradores e RSBS (negação) no grupo de data-processing register, além de LSL/LSR/ASR com imediato de 5 bits, incluindo a semântica especial de imm5=0, e ADD/SUB de três operandos: `ADDS/SUBS Rd, Rn, Rm` e `ADDS/SUBS Rd, Rn, #imm3`, formatos de 16 bits do ARMv6K. O relatório registra mnemônicos e operandos; não infere valores dos registradores no jogo. A emissão C e os testes de NZCV dessas formas pertencem à POC-002 sintética.
+O decodificador Thumb-16 também reconhece o grupo de processamento entre registradores completo de 16 opcodes: ANDS/EORS/LSLS/LSRS/ASRS/ADCS/SBCS/RORS/TST/RSBS/CMP/CMN/ORRS/MULS/BICS/MVNS. Os shifts por registrador usam Rs[7:0] como quantidade e a formatação do relatório preserva os dois operandos. A ferramenta não simula registradores nem infere valores em tempo de execução; a semântica C e os testes de NZCV pertencem à POC-002 sintética.
 
-No grupo Thumb-1 data-processing register, o inspetor também identifica ANDS/EORS/ORRS/BICS/MVNS/TST, ADCS/SBCS, CMP/CMN e RSBS (subtração de zero). As demais operações do mesmo grupo continuam desconhecidas até terem decoder, contrato de flags e testes próprios.
+No grupo Thumb-1 data-processing register, os 16 opcodes agora são decodificados e formatados, incluindo shifts por registrador e MULS. Isso é cobertura sintática do grupo, não de todas as instruções Thumb-1/Thumb-2 nem prova de que qualquer intervalo selecionado seja código executável.
 
 
 

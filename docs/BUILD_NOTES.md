@@ -429,3 +429,11 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - O tradutor continua recusando os outros opcodes não implementados dentro do mesmo espaço. O inspetor nomeia ADCS/SBCS e deixa a árvore de fluxo tratar essas instruções como ALU sem desvio.
 - Testes nativos cobrem ADCS com carry-in que altera o resultado e carry-out, SBCS com C=0/C=1 e underflow; teste do inspetor confirma mnemônicos. Todos os resultados usam halfwords sintéticos.
 - **Validação da árvore anterior a esta mudança:** [run 40196025438](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40196025438), commit `f54c5c5abcf6e394319a8f957bd250b281cad45d`: 231 testes aprovados, 96/96 na matriz diferencial e verificador de segurança PASS. A verificação desta extensão ADCS/SBCS fica pendente até a nova execução integral terminar.
+
+## Thumb-1 — completar o grupo de ALU por registrador — 2026-10-25
+
+- Adicionado o opcode Thumb-1 `MULS Rdn,Rm` (0xD) à POC-002: a emissão C calcula o produto em `uint64_t`, retém os 32 bits inferiores no destino, atualiza N/Z e preserva C/V de entrada, conforme o ARMv6-M Architecture Reference Manual (§ A6.7.44, [referência ARM](https://documentation-service.arm.com/static/5f8ff05ef86e16515cdbf826)).
+- O conjunto de teste exaustivo agora reconhece todos os 16 opcodes do grupo data-processing register. Testes nativos específicos cobrem multiplicação comum, produto zero e wrap de `0x80000000 * 2`, verificando a preservação de C/V.
+- O inspetor de intervalos agora formata `LSLS/LSRS/ASRS/RORS` por registrador e `MULS`; foi adicionado teste de formatação para os cinco opcodes.
+- **Validação integral:** [run 40197061451](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197061451), commit `aebc07b88024de06e899ae849f1fd33c026012a7`: `Ran 234 tests in 2.538s`, `OK`; Python 3.14.4/GCC 15.2.0; matriz diferencial 96/96 e verificador de segurança PASS em 41 caminhos indexados, sem arquivos não ignorados e não rastreados.
+- Nenhuma entrada real de jogo foi usada. O grupo Thumb-1 está agora coberto sintaticamente/testado no tradutor limitado, mas o decoder geral ainda não cobre todas as famílias de memória, Thumb-2 ou o ABI do jogo.

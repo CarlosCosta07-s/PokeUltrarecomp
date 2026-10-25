@@ -88,7 +88,7 @@ A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AN
 
 ## Preparação dos executáveis de Ultra Sun / Ultra Moon
 
-A POC-002 traduz ADD/SUB Thumb-1 de três operandos, LSL/LSR/ASR imediatos e um subconjunto do grupo de processamento entre registradores: ANDS/EORS/ORRS/BICS/MVNS/TST, CMP/CMN, RSBS Rdn,Rm,#0 e ADCS/SBCS. Esses caminhos incluem testes nativos para NZCV, carry/borrow, preservação de registrador e overflow. A suíte completa mais recente passou em 231 testes no [workflow](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40196025438).
+A POC-002 agora cobre o grupo completo de 16 opcodes Thumb-1 de processamento entre registradores: ANDS, EORS, LSLS, LSRS, ASRS, ADCS, SBCS, RORS, TST, RSBS, CMP, CMN, ORRS, MULS, BICS e MVNS. Testes C nativos cobrem NZCV, carry/borrow, shifts de 0/32/>32, extensão de sinal, multiplicação com wrap de 32 bits e preservação de C/V em MULS. O inspetor de intervalos também formata shifts por registrador e MULS. A suíte completa passou em **234 testes**, sem falhas ou ignorados, no [workflow integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197061451). Isso valida só as fixtures sintéticas e a inspeção de intervalos, não gameplay nem um runtime do jogo.
 
 O inspetor de intervalos também produz um grafo candidato de fluxo de controle: blocos básicos, arestas de branches condicionais, transferências externas e avisos para instruções desconhecidas e sobreposição com literais. Isso ainda é uma anotação estática limitada ao intervalo escolhido, não descoberta automática de funções nem prova de execução do jogo.
 

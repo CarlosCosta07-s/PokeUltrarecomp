@@ -129,9 +129,10 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Tratar instruções desconhecidas como barreiras e sinalizar LDR literal que se sobrepõe ao intervalo examinado.
 - [x] Ampliar POC-002 com ADD/SUB Thumb-1 de três operandos, tanto registrador quanto imediato de 3 bits, com NZCV validado em C nativo.
 - [x] Adicionar LSL/LSR/ASR Thumb-1 com imediato, incluindo as regras de imm5=0 e carry validadas por C nativo.
-- [x] Adicionar ANDS/EORS/ORRS/BICS/MVNS/TST e CMP/CMN no grupo Thumb-1 de processamento de registradores; rejeitar opcodes ainda não implementados.
+- [x] Completar a tabela dos 16 opcodes do grupo Thumb-1 de processamento de registradores: ANDS/EORS/LSLS/LSRS/ASRS/ADCS/SBCS/RORS/TST/RSBS/CMP/CMN/ORRS/MULS/BICS/MVNS, com testes nativos de resultado/flags e cobertura do inspetor.
 - [x] Adicionar RSBS Rdn,Rm,#0 com testes nativos de negação e overflow assinado.
 - [x] Implementar ADCS/SBCS Thumb-1 com carry/borrow de entrada, carry de saída e testes nativos compilados.
+- [x] Completar LSLS/LSRS/ASRS/RORS por registrador, testar valores de shift 0/32/>32 e registrar a semântica no inspetor de intervalos.
 - [ ] Usar entrada local autorizada de Ultra Sun ou Ultra Moon com endereço/estado verificados; revisar o grafo localmente sem publicar bytes nem relatório derivado.
 - [ ] Definir o contrato de uma função candidata e um oráculo independente antes de converter código real em C.
 
