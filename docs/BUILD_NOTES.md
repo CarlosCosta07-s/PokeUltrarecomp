@@ -399,3 +399,10 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Chamadas BL/BLX viram transferências candidatas com continuação possível; BX/POP PC e outras transferências indiretas ficam sem destino fictício. Instruções desconhecidas encerram o bloco e bloqueiam arestas conhecidas. LDR literal que sobrepõe o trecho gera aviso de possível dado embutido.
 - Adicionados testes sintéticos para fluxo linear, branches condicionais/incondicionais, loop, destino desalinhado, destino fora do range, calls, fluxo indireto, instrução desconhecida e literal-pool overlap; também foi adicionada cobertura integrada no inspetor.
 - O resultado continua limitado a intervalos escolhidos explicitamente. Não lê o valor literal, não descobre funções e não deve ser tratado como CFG real validado contra Ultra Sun/Ultra Moon até uma entrada local autorizada ser examinada.
+
+## Ampliação Thumb-1: ADD/SUB de três operandos — 2026-10-25
+
+- A família implementada após LDR literal e grafo candidato de fluxo é Thumb-1 `00011 I op Rm/imm3 Rn Rd`: `ADDS/SUBS Rd, Rn, Rm` e `ADDS/SUBS Rd, Rn, #imm3`. Todos os registradores são R0–R7; essas formas atualizam NZCV. Referência do encoding: ARM Architecture Reference Manual, Thumb Instruction Set Encoding, Add/Subtract Register/Immediate ([manual ARMv6](https://www.scs.stanford.edu/~zyedidia/docs/arm/armv6.pdf)).
+- A POC-002 emite C com soma alargada em `uint64_t` para carry, sem-borrow para C na subtração e fórmulas explícitas de overflow assinado. Memória, stack e calls permanecem fora da tradução.
+- Testes adicionados: quatro formas de decodificação, classificação exaustiva do espaço `0x1800..0x1FFF`, compilação/execução de duas funções nativas cobrindo os casos immediate3/register, e formatação de mnemônicos pelo inspetor de intervalo.
+- A verificação integral desta mudança está pendente neste registro; nenhum ExHeader ou `.code` real foi usado. O resultado valida a POC sintética, não gameplay.

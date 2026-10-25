@@ -29,6 +29,9 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 
 ## Grafo estrutural de fluxo
 
+O decodificador Thumb-16 também reconhece ADD/SUB de três operandos: `ADDS/SUBS Rd, Rn, Rm` e `ADDS/SUBS Rd, Rn, #imm3`, formatos de 16 bits do ARMv6K. O relatório registra mnemônicos e operandos; não infere valores dos registradores no jogo. A emissão C e os testes de NZCV dessas formas pertencem à POC-002 sintética.
+
+
 Cada relatório contém `control_flow`, um grafo candidato de blocos básicos construído a partir do intervalo explicitamente selecionado. Destinos de branches só viram arestas internas quando coincidem com o início de uma instrução descodificada no mesmo estado; branches condicionais têm arestas de tomada e não tomada; branches incondicionais não recebem uma aresta de fallthrough. Chamadas diretas são listadas como transferências candidatas com continuação possível após retorno, sem afirmar identidade do callee. Transferências indiretas ficam sem destino inventado.
 
 Instruções desconhecidas encerram o bloco e não recebem sucessor presumido. Se um LDR literal aponta para dentro do intervalo selecionado, o grafo expõe a referência como possível dado e acrescenta aviso. A classificação é deliberadamente conservadora: não calcula valores de registradores, não prova alcançabilidade real, não descobre entradas de função e não resolve pools de literais.

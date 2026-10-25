@@ -12,6 +12,10 @@ Complementar a POC-001 ARM A32 com uma segunda demonstração independente e igu
 | `ADDS Rd, #imm8` | Soma uint32; atualiza NZCV |
 | `SUBS Rd, #imm8` | Subtrai uint32; atualiza NZCV |
 | `CMP Rn, #imm8` | Subtrai para flags sem alterar o registrador |
+| `ADDS Rd, Rn, Rm` | Soma registradores baixos e atualiza NZCV |
+| `SUBS Rd, Rn, Rm` | Subtrai registradores baixos e atualiza NZCV |
+| `ADDS Rd, Rn, #imm3` | Soma imediato de 3 bits e atualiza NZCV |
+| `SUBS Rd, Rn, #imm3` | Subtrai imediato de 3 bits e atualiza NZCV |
 | `B<cond> label` | Suporta as 14 condições EQ..LE |
 | `B label` | Desvio incondicional |
 | `BX LR` | Terminador/retorno; apenas o encoding exato é aceito |
@@ -35,6 +39,8 @@ Executar testes:
     python -m unittest discover -s tests -v
 
 A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma tabela booleana independente. Outros testes compilam C com C11, `-Wall -Wextra -Werror` e executam um laço com término esperado e outro com orçamento esgotado.
+
+A cobertura inclui agora a família Thumb-1 de três operandos ADD/SUB (registrador ou imediato de 3 bits). Todos os encodings no intervalo 0x1800..0x1FFF são classificados nos testes; a execução nativa verifica carry/no-borrow, overflow e resultados. Isso não adiciona acesso à memória nem chamadas.
 
 ## Limites
 
