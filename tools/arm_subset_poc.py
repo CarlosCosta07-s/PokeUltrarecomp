@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Clean-room proof of concept: translate three synthetic ARM A32 instructions to C.
+"""Clean-room proof of concept: translate a tiny synthetic ARM A32 subset to C.
 
 This deliberately tiny demonstrator is not a general-purpose recompiler, does not
-load game files, and supports only unconditional MOV/ADD immediate plus BX LR.
+load game files, and supports unconditional MOV/ADD/SUB immediate plus BX LR.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-DEFAULT_WORDS = (0xE3A00003, 0xE2800004, 0xE12FFF1E)
+DEFAULT_WORDS = (0xE3A0000C, 0xE2400008, 0xE2800003, 0xE12FFF1E)
 MAX_INSTRUCTIONS = 256
 
 
@@ -68,6 +68,11 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
         return ("add", rd, rn, immediate)
 
+    if opcode == 0b0010:  # SUB (immediate)
+        if rn > 3:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        return ("sub", rd, rn, immediate)
+
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
 
 
@@ -88,7 +93,7 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
     for instruction in decoded[:-1]:
         if instruction[0] == "mov":
             used_registers.add(instruction[1])
-        elif instruction[0] == "add":
+        elif instruction[0] in ("add", "sub"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
 
@@ -107,6 +112,9 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         elif instruction[0] == "add":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} + UINT32_C({immediate}));")
+        elif instruction[0] == "sub":
+            _, rd, rn, immediate = instruction
+            lines.append(f"    r{rd} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
         else:  # defensive: decode/translation tuples are intentionally closed.
             raise UnsupportedInstruction(f"internal unsupported tuple: {instruction!r}")
     lines.extend(("    return r0;", "}", ""))
@@ -129,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "words", nargs="*", type=parse_word,
-        help="hex instruction words (default: MOV r0,#3; ADD r0,r0,#4; BX LR)",
+        help="hex instruction words (default: MOV r0,#12; SUB r0,r0,#8; ADD r0,r0,#3; BX LR)",
     )
     parser.add_argument("--output", type=Path, help="write generated C to a file instead of stdout")
     args = parser.parse_args(argv)
