@@ -4,7 +4,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 1 — Organização e auditoria
 
-**Estado:** documentação, auditoria inicial e verificador local de segurança publicados; a verificação integral da árvore da `main`, a decisão do mantenedor sobre o LICENSE preexistente e a revisão final de governança continuam pendentes.
+**Estado:** documentação, auditoria inicial e verificador local de segurança publicados; a verificação integral da árvore da `main` e a revisão final de governança continuam pendentes. A decisão sobre o LICENSE preexistente está registrada no [issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1).
 
 **Tarefas**
 - [ ] Manter README, arquitetura, regras de contribuição, segurança e avisos legais consistentes.
@@ -12,7 +12,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [ ] Separar fatos publicados, evidências autorrelatadas, hipóteses e perguntas abertas.
 - [x] Adicionar verificador local sem dependências para caminhos sensíveis e links Markdown, cobrindo blobs do índice Git e versões da pasta de trabalho.
 - [ ] Confirmar que não há conteúdo de jogo, segredos, chaves ou artefatos de build no Git.
-- [ ] Revisar o arquivo LICENSE preexistente, cuja procedência e abrangência não estão documentadas.
+- [ ] Revisar o arquivo LICENSE preexistente, cuja procedência e abrangência não estão documentadas ([issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1)).
 
 **Dependências:** nenhuma.
 
