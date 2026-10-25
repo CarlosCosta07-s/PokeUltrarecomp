@@ -33,6 +33,71 @@ def parse_address(token: str) -> int:
     return value
 
 
+def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
+    """Decode a few A32 control-flow/literal forms for inspection only.
+
+    These forms are intentionally not enabled in the synthetic C translator:
+    they need broader state/ABI semantics before recompilation is safe.
+    """
+    if word == 0xE12FFF1E:
+        return arm.decode_word(word)
+
+    condition = (word >> 28) & 0xF
+    branch_class = (word >> 25) & 0b111
+    if branch_class == 0b101:
+        imm24 = word & 0x00FFFFFF
+        if condition == 0xF:
+            # A32 BLX immediate: SignExtend(imm24:H:'0', 32), target state T32.
+            offset = (imm24 << 2) | (((word >> 24) & 1) << 1)
+            if offset & (1 << 25):
+                offset -= 1 << 26
+            return ("call", "blx", offset)
+        if (word >> 24) & 1:
+            if condition != 0xE:
+                raise arm.UnsupportedInstruction(
+                    "conditional A32 BL is not yet interpreted by the range inspector"
+                )
+            # B/BL uses PC = current instruction address + 8.
+            if imm24 & (1 << 23):
+                imm24 -= 1 << 24
+            return ("call", "bl", imm24 << 2)
+
+    if condition == 0xE:
+        special = word & 0x0FFFFFF0
+        rm = word & 0xF
+        if special == 0x012FFF10:
+            if rm == 15:
+                raise arm.UnsupportedInstruction("BX with Rm=PC is not decoded by this inspector")
+            return ("bx", rm)
+        if special == 0x012FFF30:
+            if rm == 15:
+                raise arm.UnsupportedInstruction("BLX register with Rm=PC is not decoded by this inspector")
+            return ("blx_reg", rm)
+
+        # A32 LDR (literal), word form: P=1, B=0, W=0, L=1, Rn=PC,
+        # immediate offset. Reject Rt=PC here because it is an indirect branch.
+        if ((word >> 26) & 0b11) == 0b01:
+            immediate_form = ((word >> 25) & 1) == 0
+            preindexed = ((word >> 24) & 1) == 1
+            add_offset = ((word >> 23) & 1) == 1
+            byte_transfer = ((word >> 22) & 1) == 1
+            writeback = ((word >> 21) & 1) == 1
+            load = ((word >> 20) & 1) == 1
+            rn = (word >> 16) & 0xF
+            rd = (word >> 12) & 0xF
+            if immediate_form and preindexed and not byte_transfer and not writeback and load and rn == 15:
+                if rd == 15:
+                    raise arm.UnsupportedInstruction(
+                        "LDR literal into PC is an indirect branch and is not yet decoded"
+                    )
+                offset = word & 0xFFF
+                if not add_offset:
+                    offset = -offset
+                return ("ldr_literal", rd, offset)
+
+    return arm.decode_word(word)
+
+
 def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
     if decoded == ("return",):
         return "BX LR"
@@ -314,13 +379,32 @@ def inspect_code_range(
                 index += 1
                 continue
         else:
+            call_target: int | None = None
+            call_target_state = state
             try:
-                decoded = arm.decode_word(word) if state == "arm" else thumb.decode_halfword(word)
+                decoded = decode_arm_for_inspection(word) if state == "arm" else thumb.decode_halfword(word)
                 mnemonic = mnemonic_for(state, decoded)
-                literal = (
-                    thumb.literal_address(address, decoded)
-                    if state == "thumb" and decoded[0] == "ldr_literal" else None
-                )
+                if state == "arm" and decoded[0] == "call":
+                    call_target = address + 8 + int(decoded[2])
+                    if not 0 <= call_target < (1 << 32):
+                        raise TargetRangeError(
+                            f"A32 call target from 0x{address:08X} lies outside the 32-bit address space"
+                        )
+                    if address + 4 >= (1 << 32):
+                        raise TargetRangeError(
+                            f"A32 call return address from 0x{address:08X} lies outside the 32-bit address space"
+                        )
+                    call_target_state = "thumb" if decoded[1] == "blx" else "arm"
+
+                literal = None
+                if state == "thumb" and decoded[0] == "ldr_literal":
+                    literal = thumb.literal_address(address, decoded)
+                elif state == "arm" and decoded[0] == "ldr_literal":
+                    literal = address + 8 + int(decoded[2])
+                    if not 0 <= literal < (1 << 32):
+                        raise TargetRangeError(
+                            f"A32 literal address from 0x{address:08X} lies outside the 32-bit address space"
+                        )
             except (arm.UnsupportedInstruction, thumb.UnsupportedThumbInstruction, TargetRangeError) as exc:
                 unknown_reason = str(exc)
             else:
@@ -339,6 +423,7 @@ def inspect_code_range(
                     item["literal_within_declared_text"] = (
                         text_start <= literal and literal + 4 <= text_start + text_size
                     )
+                    item["literal_width_bytes"] = 4
                     item["literal_value_read"] = False
                 if decoded[0] in ("push", "pop", "pop_pc"):
                     count = bin(int(decoded[1])).count("1") + (
@@ -375,6 +460,14 @@ def inspect_code_range(
                     target_address = address + (2 + int(decoded[2])) * unit
                     item["branch_target_virtual_address"] = f"0x{target_address:08X}"
                     item["branch_target_within_declared_text"] = text_start <= target_address < text_start + text_size
+                if state == "arm" and decoded[0] == "call":
+                    item["branch_links"] = True
+                    item["link_register_value"] = f"0x{address + 4:08X}"
+                    item["branch_target_virtual_address"] = f"0x{call_target:08X}"
+                    item["branch_target_state"] = call_target_state
+                    item["branch_target_within_declared_text"] = (
+                        text_start <= int(call_target) < text_start + text_size
+                    )
                 instructions.append(item)
                 cursor += instruction_size
                 index += 1

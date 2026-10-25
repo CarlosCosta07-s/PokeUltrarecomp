@@ -85,6 +85,83 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual("BX LR", result["instructions"][-1]["mnemonic"])
         self.assertEqual(36, result["instructions"][-1]["decompressed_code_file_offset"])
 
+    def test_decodes_a32_bl_as_call_and_reports_target_continuation(self):
+        self.put_arm([0xEB000000, 0xE3A00001, 0xE12FFF1E])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        call = result["instructions"][0]
+        self.assertEqual("BL", call["mnemonic"])
+        self.assertEqual(["call", "bl", 0], call["decoded_ir"])
+        self.assertEqual("0x00100004", call["link_register_value"])
+        self.assertEqual("0x00100008", call["branch_target_virtual_address"])
+        self.assertEqual("arm", call["branch_target_state"])
+        self.assertTrue(call["branch_target_within_selected_range"])
+        self.assertTrue(call["branch_target_is_scanned_instruction_start"])
+        self.assertEqual("partial", result["dataflow"]["instructions"][0]["status"])
+        self.assertEqual("BL", result["control_flow"]["unresolved_transfers"][0]["kind"])
+        self.assertEqual("call-return-continuation", result["control_flow"]["edges"][0]["kind"])
+
+    def test_decodes_a32_blx_immediate_and_tracks_thumb_target_state(self):
+        for word, expected_target, expected_offset in (
+            (0xFA000000, "0x00100008", 0),
+            (0xFB000000, "0x0010000A", 2),
+        ):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word, 0xE3A00001, 0xE12FFF1E])
+                result = ranges.inspect_code_range(
+                    "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+                    title_id="00040000001B5000",
+                )
+                call = result["instructions"][0]
+                self.assertEqual("BLX", call["mnemonic"])
+                self.assertEqual(["call", "blx", expected_offset], call["decoded_ir"])
+                self.assertEqual("0x00100004", call["link_register_value"])
+                self.assertEqual(expected_target, call["branch_target_virtual_address"])
+                self.assertEqual("thumb", call["branch_target_state"])
+
+    def test_decodes_a32_bx_and_blx_register_without_inventing_destinations(self):
+        self.put_arm([0xE12FFF13, 0xE12FFF33, 0xE12FFF1E])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        bx, blx = result["instructions"][:2]
+        self.assertEqual("BX r3", bx["mnemonic"])
+        self.assertEqual(["bx", 3], bx["decoded_ir"])
+        self.assertIsNone(bx["branch_target_virtual_address"])
+        self.assertTrue(bx["indirect_branch"])
+        self.assertEqual("BLX r3", blx["mnemonic"])
+        self.assertEqual(["blx_reg", 3], blx["decoded_ir"])
+        self.assertIsNone(blx["branch_target_virtual_address"])
+        self.assertEqual("0x00100008", blx["link_register_value"])
+        self.assertTrue(blx["indirect_branch"])
+
+    def test_decodes_a32_ldr_literal_pc_relative_address_without_reading_it(self):
+        self.put_arm([0xE51F0004, 0xE3A01001, 0xE12FFF1E])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        literal = result["instructions"][0]
+        self.assertEqual("LDR r0, [pc, #-4]", literal["mnemonic"])
+        self.assertEqual("0x00100004", literal["literal_pool_virtual_address"])
+        self.assertEqual(4, literal["literal_width_bytes"])
+        self.assertTrue(literal["literal_within_declared_text"])
+        self.assertTrue(literal["literal_overlaps_selected_range"])
+        self.assertTrue(literal["literal_is_scanned_instruction_start"])
+        self.assertFalse(literal["literal_value_read"])
+        self.assertTrue(any("literal referenced" in w for w in result["control_flow"]["warnings"]))
+
+    def test_rejects_a32_literal_address_outside_uint32_without_wrapping(self):
+        self.put_arm([0xE51F0FFF])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "A32 literal address.*outside the 32-bit"):
+            ranges.inspect_code_range(
+                "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                title_id="00040000001B5000",
+            )
+
     def test_maps_virtual_address_to_code_file_offset(self):
         self.put_thumb([0x2005], offset=4)
         result = ranges.inspect_code_range(
