@@ -128,6 +128,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Registrar chamadas diretas e indiretas sem inventar destino de execução ou identidade de função.
 - [x] Tratar instruções desconhecidas como barreiras e sinalizar LDR literal que se sobrepõe ao intervalo examinado.
 - [x] Ampliar POC-002 com ADD/SUB Thumb-1 de três operandos, tanto registrador quanto imediato de 3 bits, com NZCV validado em C nativo.
+- [x] Adicionar LSL/LSR/ASR Thumb-1 com imediato, incluindo as regras de imm5=0 e carry validadas por C nativo.
 - [ ] Usar entrada local autorizada de Ultra Sun ou Ultra Moon com endereço/estado verificados; revisar o grafo localmente sem publicar bytes nem relatório derivado.
 - [ ] Definir o contrato de uma função candidata e um oráculo independente antes de converter código real em C.
 

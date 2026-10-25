@@ -12,6 +12,9 @@ Complementar a POC-001 ARM A32 com uma segunda demonstração independente e igu
 | `ADDS Rd, #imm8` | Soma uint32; atualiza NZCV |
 | `SUBS Rd, #imm8` | Subtrai uint32; atualiza NZCV |
 | `CMP Rn, #imm8` | Subtrai para flags sem alterar o registrador |
+| `LSL Rd, Rm, #imm5` | Desloca à esquerda; `LSL #0` preserva C |
+| `LSR Rd, Rm, #imm5` | `LSR #0` é deslocamento de 32 bits e copia o bit 31 para C |
+| `ASR Rd, Rm, #imm5` | `ASR #0` é deslocamento aritmético de 32 bits |
 | `ADDS Rd, Rn, Rm` | Soma registradores baixos e atualiza NZCV |
 | `SUBS Rd, Rn, Rm` | Subtrai registradores baixos e atualiza NZCV |
 | `ADDS Rd, Rn, #imm3` | Soma imediato de 3 bits e atualiza NZCV |
@@ -40,6 +43,8 @@ Executar testes:
 
 A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma tabela booleana independente. Outros testes compilam C com C11, `-Wall -Wextra -Werror` e executam um laço com término esperado e outro com orçamento esgotado.
 
+A cobertura inclui também os deslocamentos imediatos Thumb-1 LSL, LSR e ASR. Os testes classificam todos os encodings de 0x0000 a 0x17FF e executam testes C nativos para carry, preservação de C/V e os casos em que imm5=0 tem significado especial.
+
 A cobertura inclui agora a família Thumb-1 de três operandos ADD/SUB (registrador ou imediato de 3 bits). Todos os encodings no intervalo 0x1800..0x1FFF são classificados nos testes; a execução nativa verifica carry/no-borrow, overflow e resultados. Isso não adiciona acesso à memória nem chamadas.
 
 ## Limites
@@ -50,4 +55,4 @@ Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado e
 
 ## Evidência de validação — POC-002
 
-No commit `f14aa07a23867fd3bd79c547006bcce57f8b2006`, a suíte completa passou: 136 testes, zero falhas e zero ignorados, com Python 3.14.4 e GCC 15.2.0. O workflow compilou e executou a fixture Thumb padrão, testou as 224 combinações de condição/flags, validou o laço limitado e passou pelo verificador de segurança. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158610342). Nenhum arquivo de jogo real foi fornecido nem lido; a POC-002 continua sendo uma tradução de halfwords sintéticos.
+A validação mais recente desta extensão, no commit `2996f7f6ae6f0d44b0f2de3d71bcda40aa4dd495`, passou em **224 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195030086).

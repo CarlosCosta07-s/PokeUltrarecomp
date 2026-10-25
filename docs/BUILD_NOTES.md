@@ -406,3 +406,11 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - A POC-002 emite C com soma alargada em `uint64_t` para carry, sem-borrow para C na subtração e fórmulas explícitas de overflow assinado. Memória, stack e calls permanecem fora da tradução.
 - Testes adicionados: quatro formas de decodificação, classificação exaustiva do espaço `0x1800..0x1FFF`, compilação/execução de duas funções nativas cobrindo os casos immediate3/register, e formatação de mnemônicos pelo inspetor de intervalo.
 - A verificação integral desta mudança está pendente neste registro; nenhum ExHeader ou `.code` real foi usado. O resultado valida a POC sintética, não gameplay.
+
+## Ampliação Thumb-1: deslocamentos imediatos LSL/LSR/ASR — 2026-10-25
+
+- Implementadas as três codificações Thumb-1 de deslocamento imediato: LSL (`00000 imm5 Rm Rd`), LSR (`00001 imm5 Rm Rd`) e ASR (`00010 imm5 Rm Rd`), preservando o mapeamento de r0–r7 e a atualização correta de N/Z/C, com V preservado.
+- Semântica de imm5=0: LSL equivale a mover e preserva C; LSR desloca 32 bits, retorna zero e copia o bit 31 de origem para C; ASR desloca 32 bits, replica o bit de sinal e copia o bit 31 para C. Para ASR com amount não zero, o C gerado implementa a extensão de sinal explicitamente em uint32, sem depender de shift à direita de inteiro assinado em C.
+- Testes cobrem todos os 6144 encodings nos espaços 0x0000..0x17FF, casos nativos de LSL overflow, LSR #32, ASR #32, LSR #1, preservação de C/V em LSL #0 e extensão de sinal em ASR #1, mais a formatação do inspetor.
+- **Validação integral:** [run 40195030086](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195030086), commit `2996f7f6ae6f0d44b0f2de3d71bcda40aa4dd495`: `Ran 224 tests in 2.270s`, `OK`; Python 3.14.4, GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS com 41 caminhos indexados e zero arquivos não ignorados não rastreados.
+- Nenhum `.code` real foi usado. A evidência valida apenas tradução sintética/inspeção, não gameplay ou runtime.
