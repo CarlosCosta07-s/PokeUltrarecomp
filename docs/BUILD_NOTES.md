@@ -168,3 +168,16 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Resultado observado: **26 testes aprovados, zero falhas e zero ignorados** — 17 da POC e 9 do verificador de segurança. O C emitido foi compilado com C11 e `-Wall -Wextra -Werror`; o binário foi executado e confirmou retorno 15.
 - Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
 - Limites: o teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI do verificador não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
+
+
+## POC-001 — iteração 5: EOR imediato e revalidação — 2026-10-24
+
+- Alteração: adicionado suporte restrito a `EOR` imediato, com condição AL, registradores `r0-r3`, sem atualização de flags e limite de 256 palavras.
+- Fixture sintética atual: `E3A0000C E2400008 E2800003 E2000007 E3800008 E2200001 E12FFF1E` — `MOV r0,#12`, `SUB r0,r0,#8`, `ADD r0,r0,#3`, `AND r0,r0,#7`, `ORR r0,r0,#8`, `EOR r0,r0,#1`, `BX LR`; resultado esperado: 14.
+- Testes adicionais: decodificação de `EOR`, rejeição do registrador de origem `r4`, emissão do operador XOR em C e teste host atualizado para exigir retorno 14.
+- Os hashes de objeto Git dos quatro arquivos usados na execução coincidem com os blobs publicados na `main`: `tools/arm_subset_poc.py` = `ad0421c3fe1b4c73979c5f03e3314f5f37220829`; `tests/test_arm_subset_poc.py` = `51f3719ffa2923ec2e9a90dbede0f3cc97b1c0db`; `tools/check_repository_safety.py` = `a372a3880723f5a17ae87cd81d4a41bd45d70edc`; `tests/test_repository_safety.py` = `3bd44115751390dc6c613e758c94ef90f988eae2`.
+- Ambiente: Linux 6.18.55 x86_64; Python 3.13.5; GCC 14.2.0; Git 2.47.3.
+- Comandos: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
+- Resultado observado: **28 testes aprovados, zero falhas e zero ignorados** — 19 da POC e 9 do verificador de segurança. O C emitido foi compilado com C11 e `-Wall -Wextra -Werror`; o executável rodou e confirmou retorno 14.
+- Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
+- Limites: o teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI do verificador ainda não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
