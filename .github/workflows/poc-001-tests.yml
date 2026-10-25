@@ -1,0 +1,45 @@
+name: POC-001 full suite
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/**"
+      - "tests/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/poc-001-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: poc-001-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python tests and native C validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the complete main tree
+        uses: actions/checkout@v4
+
+      - name: Report toolchain
+        run: |
+          python3 --version
+          cc --version
+
+      - name: Check Python syntax
+        run: python3 -m py_compile tools/*.py tests/*.py
+
+      - name: Run the arithmetic differential matrix
+        run: python3 tools/arm_differential_poc.py
+
+      - name: Run the complete unit-test suite
+        run: python3 -B -m unittest discover -s tests -v
+
+      - name: Check repository safety
+        run: python3 tools/check_repository_safety.py
