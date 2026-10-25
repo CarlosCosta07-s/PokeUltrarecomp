@@ -33,6 +33,8 @@ REQUIRED_FILES = (
     "tests/test_arm_subset_poc.py",
     "tools/arm_flags.py",
     "tests/test_arm_flags.py",
+    "tools/arm_differential_poc.py",
+    "tests/test_arm_differential_poc.py",
 )
 
 # These extensions commonly contain title images, executable modules, or
