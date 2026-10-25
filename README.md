@@ -84,6 +84,10 @@ Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e 
 
 A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`, e aceita ainda `ADDS`, `SUBS` e `CMN` em fixtures de teste específicas. O suporte não inclui todas as instruções ARM, o CPSR completo nem instruções lógicas com bit S ou shifter-carry. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
+## Direção do runtime e uso de emuladores
+
+O objetivo é executar o código recompilado em um runtime próprio para Windows, sem depender de um emulador de Nintendo 3DS. Testes do tradutor começam com fixtures sintéticas e resultados esperados a partir da especificação ARM; usar um emulador não é requisito dessa etapa. Se for realmente necessário comparar o comportamento do jogo original no futuro, o Azahar será a referência externa preferida, usada de forma opcional e sem ser incorporada ao runtime ou ao produto final.
+
 ## Como acompanhar o progresso
 
 Use GitHub Issues para pesquisas ou problemas com escopo claro. Registre sempre o commit e as versões exatas das ferramentas, comandos executados, resultados observados, logs redigidos e critérios de aceitação. Diferencie resultados reproduzidos de resultados apenas relatados em documentação externa.
