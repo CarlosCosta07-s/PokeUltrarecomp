@@ -37,6 +37,21 @@ def decode_word(word: int) -> tuple[object, ...]:
         return ("return",)
 
     condition = (word >> 28) & 0xF
+
+    # B (not BL) supports only AL, EQ and NE in this deliberately small POC.
+    # ARM A32 computes the destination from PC+8 plus sign-extended imm24<<2.
+    # Since this fixture is word-indexed, target = index + 2 + sign_extend(imm24).
+    if ((word >> 25) & 0b111) == 0b101:
+        if (word >> 24) & 1:
+            raise UnsupportedInstruction(f"branch-with-link is unsupported: 0x{word:08X}")
+        if condition not in (0xE, 0x0, 0x1):
+            raise UnsupportedInstruction(f"branch condition is unsupported in 0x{word:08X}")
+        offset = word & 0x00FFFFFF
+        if offset & 0x00800000:
+            offset -= 0x01000000
+        branch_condition = {0xE: "al", 0x0: "eq", 0x1: "ne"}[condition]
+        return ("branch", branch_condition, offset)
+
     if condition != 0xE:
         raise UnsupportedInstruction(f"condition code is not AL in 0x{word:08X}")
 
@@ -136,6 +151,16 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
     if any(instruction == ("return",) for instruction in decoded[:-1]):
         raise UnsupportedInstruction("instructions after BX LR are unsupported")
 
+    branch_targets: dict[int, int] = {}
+    for instruction_index, instruction in enumerate(decoded):
+        if instruction[0] == "branch":
+            target = instruction_index + 2 + instruction[2]
+            if not 0 <= target < len(decoded):
+                raise UnsupportedInstruction(
+                    f"branch at instruction {instruction_index} targets out-of-range instruction {target}"
+                )
+            branch_targets[instruction_index] = target
+
     used_registers = {0}  # r0 is the return register, even if not written.
     for instruction in decoded[:-1]:
         if instruction[0] in ("mov", "mvn"):
@@ -158,8 +183,22 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         "    uint32_t flag_v = 0;",
     ]
     lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
-    for instruction in decoded[:-1]:
-        if instruction[0] == "mov":
+    branch_target_indices = set(branch_targets.values())
+    for instruction_index, instruction in enumerate(decoded[:-1]):
+        if instruction_index in branch_target_indices:
+            lines.append(f"arm_label_{instruction_index}: ;")
+        if instruction[0] == "branch":
+            condition, _offset = instruction[1], instruction[2]
+            target = branch_targets[instruction_index]
+            if condition == "al":
+                lines.append(f"    goto arm_label_{target};")
+            elif condition == "eq":
+                lines.append(f"    if (flag_z != 0U) goto arm_label_{target};")
+            elif condition == "ne":
+                lines.append(f"    if (flag_z == 0U) goto arm_label_{target};")
+            else:  # decoder closes the supported condition set.
+                raise UnsupportedInstruction(f"internal unsupported branch condition: {condition!r}")
+        elif instruction[0] == "mov":
             _, rd, immediate = instruction
             lines.append(f"    r{rd} = UINT32_C({immediate});")
         elif instruction[0] == "mvn":
@@ -212,6 +251,10 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         else:  # defensive: decode/translation tuples are intentionally closed.
             raise UnsupportedInstruction(f"internal unsupported tuple: {instruction!r}")
+    if len(decoded) - 1 in branch_target_indices:
+        # BX LR is represented by the common C epilogue, which is the target
+        # associated with the final guest instruction index.
+        lines.append(f"arm_label_{len(decoded) - 1}: ;")
     lines.extend((
         "    if (nzcv_out != 0) {",
         "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
