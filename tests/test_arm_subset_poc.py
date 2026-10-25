@@ -13,9 +13,12 @@ import arm_subset_poc as poc  # noqa: E402
 
 
 class DecoderTests(unittest.TestCase):
-    def test_default_fixture_decodes_to_mov_add_return(self):
+    def test_default_fixture_decodes_to_mov_sub_add_return(self):
         decoded = [poc.decode_word(word) for word in poc.DEFAULT_WORDS]
-        self.assertEqual([("mov", 0, 3), ("add", 0, 0, 4), ("return",)], decoded)
+        self.assertEqual(
+            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("return",)],
+            decoded,
+        )
 
     def test_rotated_immediate_is_decoded(self):
         self.assertEqual(("mov", 0, 0x80000000), poc.decode_word(0xE3A00102))
@@ -32,12 +35,20 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaises(poc.UnsupportedInstruction):
             poc.decode_word(0xE2900001)  # ADDS r0, r0, #1
 
+    def test_decodes_sub_immediate(self):
+        self.assertEqual(("sub", 0, 0, 3), poc.decode_word(0xE2400003))
+
+    def test_rejects_sub_with_source_outside_supported_registers(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
+            poc.decode_word(0xE2440001)  # SUB r0, r4, #1
+
 
 class TranslationTests(unittest.TestCase):
     def test_emits_c_with_expected_operations(self):
         source = poc.translate(list(poc.DEFAULT_WORDS))
-        self.assertIn("r0 = UINT32_C(3);", source)
-        self.assertIn("r0 = (uint32_t)(r0 + UINT32_C(4));", source)
+        self.assertIn("r0 = UINT32_C(12);", source)
+        self.assertIn("r0 = (uint32_t)(r0 - UINT32_C(8));", source)
+        self.assertIn("r0 = (uint32_t)(r0 + UINT32_C(3));", source)
         self.assertIn("return r0;", source)
 
     def test_requires_bx_lr_as_final_instruction(self):
@@ -57,6 +68,8 @@ class TranslationTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, msg=result.stderr)
         self.assertIn("uint32_t synthetic_entry(void)", result.stdout)
+        self.assertIn("UINT32_C(12)", result.stdout)
+        self.assertIn("UINT32_C(8)", result.stdout)
         self.assertIn("UINT32_C(3)", result.stdout)
         self.assertIn("return r0;", result.stdout)
 
