@@ -96,6 +96,64 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                 raise arm.UnsupportedInstruction("BLX register with Rm=PC is not decoded by this inspector")
             return ("blx_reg", rm)
 
+        # A32 extra load/store immediate: LDRH/STRH/LDRSB/LDRSH.
+        # The fixed halfword markers are bits[7] and [4]; I=1 selects imm4H:imm4L.
+        if ((word >> 25) & 0b111) == 0b000 and (word & 0x90) == 0x90 and ((word >> 22) & 1):
+            preindexed = ((word >> 24) & 1) == 1
+            add_offset = ((word >> 23) & 1) == 1
+            writeback = ((word >> 21) & 1) == 1
+            load = ((word >> 20) & 1) == 1
+            rn = (word >> 16) & 0xF
+            rd = (word >> 12) & 0xF
+            sign = ((word >> 6) & 1) == 1
+            half = ((word >> 5) & 1) == 1
+            if rn == 15:
+                raise arm.UnsupportedInstruction(
+                    "A32 PC-based extra load/store (literal form) is not decoded by this inspector"
+                )
+            if rd in (13, 15):
+                raise arm.UnsupportedInstruction(
+                    "A32 extra load/store with Rt=SP/PC is outside this conservative inspector subset"
+                )
+            if not preindexed and writeback:
+                raise arm.UnsupportedInstruction(
+                    "A32 unprivileged extra load/store encoding (P=0, W=1) is not decoded"
+                )
+            if not sign and half:
+                operation = "ldrh" if load else "strh"
+                width = 2
+                sign_extend = False
+            elif sign and not half and load:
+                operation = "ldrsb"
+                width = 1
+                sign_extend = True
+            elif sign and half and load:
+                operation = "ldrsh"
+                width = 2
+                sign_extend = True
+            else:
+                raise arm.UnsupportedInstruction(
+                    "reserved A32 extra load/store operation (L/S/H combination)"
+                )
+            imm8 = (((word >> 8) & 0xF) << 4) | (word & 0xF)
+            offset = imm8 if add_offset else -imm8
+            writeback_effective = (not preindexed) or writeback
+            if writeback_effective and rn == rd:
+                raise arm.UnsupportedInstruction(
+                    "A32 extra load/store writeback with Rn=Rt is architecturally unpredictable"
+                )
+            return (
+                "a32_mem_extra_imm",
+                operation,
+                width,
+                rd,
+                rn,
+                offset,
+                preindexed,
+                writeback_effective,
+                sign_extend,
+            )
+
         # A32 LDR (literal), word form: P=1, B=0, W=0, L=1, Rn=PC,
         # immediate offset. Reject Rt=PC here because it is an indirect branch.
         if ((word >> 26) & 0b11) == 0b01:
@@ -187,6 +245,17 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
+    if state == "arm" and decoded[0] == "a32_mem_extra_imm":
+        operation, _width, rt, rn, offset, preindexed, writeback, _sign_extend = decoded[1:]
+        names = {13: "sp", 14: "lr", 15: "pc"}
+        rt_name = names.get(int(rt), f"r{rt}")
+        rn_name = names.get(int(rn), f"r{rn}")
+        mnemonic = str(operation).upper()
+        offset_text = f"#{int(offset):+d}"
+        if bool(preindexed):
+            suffix = "!" if bool(writeback) else ""
+            return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
+        return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -268,15 +337,19 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
 
 
 def a32_memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
-    """Describe an A32 immediate word/byte access without reading memory."""
-    if not decoded or decoded[0] != "a32_mem_imm":
+    """Describe an A32 immediate memory access without reading memory."""
+    if not decoded or decoded[0] not in ("a32_mem_imm", "a32_mem_extra_imm"):
         raise TargetRangeError(f"not a decoded A32 immediate memory access: {decoded!r}")
-    _op, operation, width, rt, rn, offset, preindexed, writeback = decoded
     names = {13: "sp", 14: "lr", 15: "pc"}
+    if decoded[0] == "a32_mem_imm":
+        _op, operation, width, rt, rn, offset, preindexed, writeback = decoded
+        sign_extend = False
+    else:
+        _op, operation, width, rt, rn, offset, preindexed, writeback, sign_extend = decoded
     return {
-        "direction": "load" if operation == "ldr" else "store",
+        "direction": "store" if str(operation).startswith("str") else "load",
         "width_bytes": int(width),
-        "sign_extend": False,
+        "sign_extend": bool(sign_extend),
         "addressing_mode": "pre-indexed" if bool(preindexed) else "post-indexed",
         "base_register": names.get(int(rn), f"r{rn}"),
         "data_register": names.get(int(rt), f"r{rt}"),
@@ -530,9 +603,9 @@ def inspect_code_range(
                         )
                 if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
                     item["memory_access"] = memory_access_metadata(decoded)
-                if state == "arm" and decoded[0] == "a32_mem_imm":
+                if state == "arm" and decoded[0] in ("a32_mem_imm", "a32_mem_extra_imm"):
                     item["memory_access"] = a32_memory_access_metadata(decoded)
-                    if decoded[1] == "ldr" and int(decoded[3]) == 15:
+                    if decoded[0] == "a32_mem_imm" and decoded[1] == "ldr" and int(decoded[3]) == 15:
                         item["indirect_branch"] = True
                         item["branch_target_virtual_address"] = None
                         item["branch_target_note"] = (

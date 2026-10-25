@@ -237,6 +237,41 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual("indirect-branch", effect["control_flow"])
         self.assertEqual("read", effect["memory"])
 
+    def test_decodes_a32_halfword_and_signed_load_immediate_forms(self):
+        # LDRH r2,[r1,#0x23]; STRH r2,[r3,#-8]!; LDRSB r4,[r5],#-7; LDRSH r0,[r1,#2]
+        self.put_arm([0xE1D122B3, 0xE16320B8, 0xE05540D7, 0xE1D10F02])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
+            title_id="00040000001B5000",
+        )
+        ldrh, strh, ldrsb, ldrsh = result["instructions"]
+        self.assertEqual("LDRH r2, [r1, #+35]", ldrh["mnemonic"])
+        self.assertEqual(2, ldrh["memory_access"]["width_bytes"])
+        self.assertFalse(ldrh["memory_access"]["sign_extend"])
+        self.assertEqual("STRH r2, [r3, #-8]!", strh["mnemonic"])
+        self.assertTrue(strh["memory_access"]["base_register_writeback"])
+        self.assertEqual(-8, strh["memory_access"]["offset_bytes"])
+        self.assertEqual("LDRSB r4, [r5], #-7", ldrsb["mnemonic"])
+        self.assertEqual(1, ldrsb["memory_access"]["width_bytes"])
+        self.assertTrue(ldrsb["memory_access"]["sign_extend"])
+        self.assertEqual("LDRSH r0, [r1, #+2]", ldrsh["mnemonic"])
+        self.assertEqual(2, ldrsh["memory_access"]["width_bytes"])
+        self.assertTrue(ldrsh["memory_access"]["sign_extend"])
+        self.assertEqual(["read", "write", "read", "read"],
+                         [item["memory"] for item in result["dataflow"]["instructions"]])
+
+    def test_rejects_unsupported_a32_extra_load_store_conservatively(self):
+        # Invalid writeback alias, unprivileged form, reserved signed-store encoding,
+        # PC-based literal variants, and an extra-load form targeting SP.
+        for word in (0xE1F11B04, 0xE0F120B4, 0xE1C120D3, 0xE1DF20B3, 0xE1D1DBB3):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_decodes_a32_stack_multiple_transfer_prologue_epilogue(self):
         self.put_arm([0xE92D40F0, 0xE8BD80F0, 0xE12FFF1E])
         result = ranges.inspect_code_range(
