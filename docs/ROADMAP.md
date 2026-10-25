@@ -105,7 +105,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
 
-**Estado:** implementação e suíte sintética aprovadas no checkout completo da `main`. O modo estrito rejeita encodings desconhecidos; o modo `--include-unsupported` registra-os como brutos e agrupa prefixos Thumb-2 de 32 bits. A execução integral da extensão aprovou 156 testes, matriz diferencial 96/96 e verificador de segurança. O próximo passo real depende de um intervalo local autorizado cuja localização e estado ARM/Thumb tenham sido confirmados.
+**Estado:** a inspeção de intervalos ARM/Thumb é executável num `.code` local e tem fixtures sintéticas aprovadas. O relatório agora reconhece o grupo completo de ALU Thumb-1, load/store por registrador/imediato/SP, ADR, ADD/SUB SP, calls e transferências indiretas sem inventar destinos/valores. A suíte integral passou em **245 testes**, matriz diferencial 96/96 e verificador de segurança PASS no [run 40197731282](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197731282). Nenhum `.code` real foi lido. O próximo passo que depende do mantenedor é selecionar localmente uma região autorizada e confirmar endereço/estado ARM/Thumb; não varrer todo `.text` sem classificação de dados e fluxo.
 
 **Tarefas**
 - [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
@@ -113,6 +113,9 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Adicionar modo de inspeção parcial que registra encodings desconhecidos sem mnemônicos inventados e agrupa prefixos Thumb-2 de 32 bits para preservar alinhamento.
 - [x] Decodificar somente o subconjunto reconhecido e falhar de forma clara ao encontrar instrução não suportada.
 - [x] Informar destinos de branch e se caem dentro do intervalo e do `.text` declarado.
+- [x] Decodificar e formatar load/store Thumb-1 por registrador, imediato e SP; registrar largura/acesso, offsets escalados e extensão de sinal sem ler a memória.
+- [x] Decodificar ADR e ADD/SUB SP com alvo PC alinhado e delta de pilha, mantendo o cálculo de valores dinâmicos não resolvido.
+- [ ] Integrar o resultado a uma seleção de intervalo candidato que exija confirmação do mantenedor do endereço inicial e do estado ARM/Thumb.
 - [x] Executar testes sintéticos na suíte completa; 151 testes passaram no commit 78bad708b8e561d58f934f133fef68d9e1d1f2cb.
 - [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
 - [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.

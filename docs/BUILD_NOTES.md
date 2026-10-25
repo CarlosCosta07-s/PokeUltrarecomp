@@ -437,3 +437,13 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - O inspetor de intervalos agora formata `LSLS/LSRS/ASRS/RORS` por registrador e `MULS`; foi adicionado teste de formatação para os cinco opcodes.
 - **Validação integral:** [run 40197061451](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197061451), commit `aebc07b88024de06e899ae849f1fd33c026012a7`: `Ran 234 tests in 2.538s`, `OK`; Python 3.14.4/GCC 15.2.0; matriz diferencial 96/96 e verificador de segurança PASS em 41 caminhos indexados, sem arquivos não ignorados e não rastreados.
 - Nenhuma entrada real de jogo foi usada. O grupo Thumb-1 está agora coberto sintaticamente/testado no tradutor limitado, mas o decoder geral ainda não cobre todas as famílias de memória, Thumb-2 ou o ABI do jogo.
+
+## Thumb-1 — load/store e cálculo de endereço para inspeção local — 2026-10-25
+
+- `tools/thumb_subset_poc.py` agora decodifica os oito formatos register-offset do grupo `0x5000..0x5FFF`: STR, STRH, STRB, LDRSB, LDR, LDRH, LDRB e LDRSH. Decodifica também STR/LDR word, byte e halfword com `imm5` escalado pelo tamanho (×4/×1/×2), e word STR/LDR relativo a SP com `imm8 × 4`.
+- `tools/inspect_3ds_code_range.py` formata esses mnemônicos e anexa `memory_access` com read/write, largura, signed extension, modo de endereçamento, registrador base, offset e flags explícitas `runtime_effective_address_resolved: false` / `memory_value_read_by_inspector: false`.
+- Adicionados `ADR Rd, PC, #imm8×4`, `ADD Rd, SP, #imm8×4` e `ADD/SUB SP, #imm7×4`. ADR reporta `Align4(address + 4) + offset`; os ajustes diretos informam `stack_pointer_delta_bytes`, sem supor o valor do stack pointer.
+- Esses formatos são somente para inspeção. O tradutor sintético recusa-os porque não possui modelo de memória, PC/SP ou ABI; a ferramenta não lê valores de memória nem resolve valores de registradores em tempo de execução.
+- Os testes classificam exaustivamente os 4096 encodings register-offset, os 16384 encodings de transferência imediata/SP, os 4096 encodings ADR/SP-address e os 256 encodings de ajuste direto SP; testes de integração verificam mnemônicos e metadados.
+- **Validação integral:** [run 40197731282](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197731282), commit `633fed650d578119000e14e56120e4b6a92ea35a`: `Ran 245 tests in 2.779s`, `OK`; Python 3.14.4/GCC 15.2.0, matriz diferencial 96/96, verificador de segurança PASS em 41 caminhos indexados.
+- Nenhum arquivo de jogo foi usado. Este avanço aumenta a cobertura sintática para análise de intervalos locais; não demonstra que qualquer região real dos jogos foi localizada ou que o runtime funciona.
