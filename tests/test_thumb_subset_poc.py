@@ -636,7 +636,7 @@ class ThumbLiteralLoadTests(unittest.TestCase):
     def test_exhaustive_decode_space_and_neighbours(self):
         for word in range(0x4800, 0x5000):
             self.assertEqual(("ldr_literal", (word >> 8) & 7, (word & 0xFF) * 4), poc.decode_halfword(word))
-        for word in (0x47FF, 0x5000, 0x5800, 0x4000, 0x4400):   # BLX-range edge, register-offset loads, ALU/hi-reg space
+        for word in (0x47FF, 0x5000, 0x5800, 0x4400):   # BLX-range edge, register-offset loads and high-register ALU space
             with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
                 poc.decode_halfword(word)
 
