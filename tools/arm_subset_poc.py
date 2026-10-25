@@ -138,12 +138,16 @@ def decode_word(word: int) -> tuple[object, ...]:
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
 
 
-def translate(words: tuple[int, ...] | list[int]) -> str:
+def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
     """Translate a bounded instruction sequence to a standalone C function.
 
-    Note: N/Z/C/V start at 0 in the generated C. A BEQ/BNE with no earlier
-    flag-setting instruction therefore sees Z=0, not caller-provided flags.
+    ``initial_nzcv`` is the explicit entry state of the flags, as the nibble
+    N:bit3, Z:bit2, C:bit1, V:bit0 (the same layout as ``*nzcv_out``). It
+    defaults to 0, so a BEQ/BNE with no earlier flag-setting instruction sees
+    Z=0 unless the caller chooses another entry state.
     """
+    if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
+        raise UnsupportedInstruction(f"initial NZCV must be a 4-bit value (0..15): {initial_nzcv!r}")
     if not words:
         raise UnsupportedInstruction("empty instruction sequence")
     if len(words) > MAX_INSTRUCTIONS:
@@ -185,10 +189,10 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         "/* Generated only from the synthetic instruction sequence supplied. */",
         "uint32_t synthetic_entry(uint8_t *nzcv_out)",
         "{",
-        "    uint32_t flag_n = 0;",
-        "    uint32_t flag_z = 0;",
-        "    uint32_t flag_c = 0;",
-        "    uint32_t flag_v = 0;",
+        f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1};",
+        f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1};",
+        f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1};",
+        f"    uint32_t flag_v = {initial_nzcv & 1};",
     ]
     lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
     branch_target_indices = set(branch_targets.values())
@@ -284,6 +288,16 @@ def parse_word(token: str) -> int:
     return value
 
 
+def parse_nzcv(token: str) -> int:
+    try:
+        value = int(token, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer 0..15 for NZCV, got {token!r}") from exc
+    if not 0 <= value <= 0xF:
+        raise argparse.ArgumentTypeError(f"NZCV must be a 4-bit value (0..15): {token!r}")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Translate a tiny, synthetic ARM A32 instruction subset into C; no game files are read."
@@ -293,10 +307,14 @@ def main(argv: list[str] | None = None) -> int:
         help="hex instruction words (default: MOV r0,#12; SUB r0,r0,#8; ADD r0,r0,#3; AND r0,r0,#7; ORR r0,r0,#8; EOR r0,r0,#1; BIC r0,r0,#2; MVN r1,#0; AND r0,r1,#12; BX LR)",
     )
     parser.add_argument("--output", type=Path, help="write generated C to a file instead of stdout")
+    parser.add_argument(
+        "--initial-nzcv", type=parse_nzcv, default=0,
+        help="entry flag state as a 4-bit nibble N:bit3 Z:bit2 C:bit1 V:bit0 (default: 0)",
+    )
     args = parser.parse_args(argv)
 
     try:
-        source = translate(args.words or list(DEFAULT_WORDS))
+        source = translate(args.words or list(DEFAULT_WORDS), initial_nzcv=args.initial_nzcv)
         if args.output:
             args.output.write_text(source, encoding="utf-8", newline="\n")
         else:

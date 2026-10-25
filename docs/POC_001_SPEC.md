@@ -29,7 +29,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 
 ## Subconjunto implementado
 
-- ARM A32, condição AL (incondicional) apenas.
+- ARM A32, condição AL (incondicional) para instruções de dados; `B` aceita AL, EQ e NE.
 - `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags.
 - `B` incondicional e `BEQ`/`BNE` com destinos à frente dentro da própria fixture; os saltos preservam NZCV.
 - Formas aritméticas imediatas com flags: `ADDS`, `SUBS`, `CMN` e `CMP`, com flags NZCV expostas em parâmetro de saída.
@@ -42,9 +42,11 @@ BL, condições de salto diferentes de AL/EQ/NE, saltos para fora da fixture ou 
 
 ## Modelo NZCV e integração restrita do tradutor
 
-O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas. No tradutor, `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV, mas ainda não existe execução condicional baseada nessas flags.
+O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas. No tradutor, `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV, e `BEQ`/`BNE` consomem apenas a flag Z; instruções de dados condicionais continuam recusadas.
 
-**Integração mínima concluída:** o C gerado usa `uint32_t synthetic_entry(uint8_t *nzcv_out)` e retorna NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos em condições restritas. `CMN` calcula flags de soma e `CMP` calcula flags de subtração, sem escrever o resultado no registrador de destino. Testes nativos cobrem os dois casos de comparação. O módulo `arm_flags.py` permanece um modelo de referência separado; ainda não há CPSR completo. Formas lógicas com bit S, shifter-carry e desvios condicionais continuam recusadas.
+**Integração mínima concluída:** o C gerado usa `uint32_t synthetic_entry(uint8_t *nzcv_out)` e retorna NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos em condições restritas. `CMN` calcula flags de soma e `CMP` calcula flags de subtração, sem escrever o resultado no registrador de destino. Testes nativos cobrem os dois casos de comparação. O módulo `arm_flags.py` permanece um modelo de referência separado; ainda não há CPSR completo. Formas lógicas com bit S e shifter-carry continuam recusadas; os desvios condicionais suportados são apenas `BEQ` e `BNE`.
+
+**Estado inicial de NZCV (política definida):** a ABI continua sendo `synthetic_entry(uint8_t *nzcv_out)`, sem entrada de flags em tempo de execução. O estado de entrada é escolhido na geração, por `translate(words, initial_nzcv=...)` ou `--initial-nzcv` na CLI, como nibble `N:bit3 Z:bit2 C:bit1 V:bit0` (padrão 0, valores fora de 0..15 são rejeitados). Um `BEQ`/`BNE` sem instrução anterior que defina flags decide, portanto, apenas pelo estado de entrada escolhido. Isso é uma convenção da POC, não uma afirmação sobre o CPSR real de qualquer chamador.
 
 ## Arquivos
 
@@ -98,9 +100,9 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte do tradutor POC-001: **44 testes aprovados**, cobrindo `CMP`, decodificação/rejeição de desvios, destino dentro da fixture e execução nativa de `B`, `BEQ` e `BNE`.
+- Suíte do tradutor POC-001: **52 testes aprovados**, cobrindo `CMP`, decodificação/rejeição de desvios, extremos de sinal do imm24, limites de destino, execução nativa de `B`, `BEQ` (tomado e não tomado) e `BNE`, e o estado inicial de NZCV.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- A suíte atual soma **75 testes aprovados, zero falhas e zero ignorados**: 44 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial.
+- A suíte atual soma **83 testes aprovados, zero falhas e zero ignorados** (execução de 24/10/2026): 52 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
@@ -112,5 +114,5 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 1. Resolver a pendência de licença/procedência registrada em [issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1).
 2. Executar o verificador de repositório contra uma cópia de trabalho completa da `main`.
 3. Ampliar a validação sintética baseada na especificação ARM, com casos esperados independentes para resultados, flags e limites; não é necessário usar emulador para essa etapa. Se futuramente uma comparação do comportamento do jogo original for realmente útil, o Azahar poderá ser usado somente como referência externa opcional, nunca como dependência do runtime.
-4. Definir o estado inicial de NZCV/CPSR e a política de preservação de flags na ABI da função gerada.
-5. Só então ampliar formas aritméticas/lógicas com bit S ou implementar desvios condicionais; não chamar esta POC de runtime ou porta nativa.
+4. ~~Definir o estado inicial de NZCV~~ — feito (ver "Estado inicial de NZCV"). Ainda aberta: a política de preservação de flags na ABI de uma função real, que exige evidência além desta fixture.
+5. Só então ampliar formas aritméticas/lógicas com bit S ou outros desvios condicionais; avaliar separadamente, com decisão de design explícita, desvios para trás (hoje rejeitados como proteção contra laços infinitos). Não chamar esta POC de runtime ou porta nativa.

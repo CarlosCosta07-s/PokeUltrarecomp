@@ -175,6 +175,48 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("if (flag_z == 0U) goto arm_label_2;", bne)
         self.assertIn("arm_label_2: ;", bne)
 
+    def test_initial_nzcv_sets_entry_flags_and_defaults_to_zero(self):
+        words = [0xE3A00001, 0xE12FFF1E]
+        self.assertEqual(poc.translate(words), poc.translate(words, initial_nzcv=0))
+        source = poc.translate(words, initial_nzcv=0b1010)
+        self.assertIn("uint32_t flag_n = 1;", source)
+        self.assertIn("uint32_t flag_z = 0;", source)
+        self.assertIn("uint32_t flag_c = 1;", source)
+        self.assertIn("uint32_t flag_v = 0;", source)
+
+    def test_rejects_invalid_initial_nzcv(self):
+        for bad in (-1, 16, True, "4", None):
+            with self.subTest(bad=bad), self.assertRaisesRegex(poc.UnsupportedInstruction, "initial NZCV"):
+                poc.translate([0xE3A00001, 0xE12FFF1E], initial_nzcv=bad)
+
+    def test_cli_initial_nzcv_option(self):
+        script = str(ROOT / "tools" / "arm_subset_poc.py")
+        ok = subprocess.run([sys.executable, script, "--initial-nzcv", "0x4"], capture_output=True, text=True, check=False)
+        self.assertEqual(0, ok.returncode, msg=ok.stderr)
+        self.assertIn("uint32_t flag_z = 1;", ok.stdout)
+        bad = subprocess.run([sys.executable, script, "--initial-nzcv", "16"], capture_output=True, text=True, check=False)
+        self.assertNotEqual(0, bad.returncode)
+        self.assertIn("NZCV", bad.stderr)
+
+    def test_generated_c_beq_uses_caller_entry_flags_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        # BEQ with no earlier flag-setting instruction: the outcome is decided only by the entry Z flag.
+        words = [0x0A000000, 0xE3A00001, 0xE12FFF1E]
+        cases = ((0b0000, 1, 0), (0b0100, 0, 4))
+        for initial_nzcv, expected_result, expected_flags in cases:
+            with self.subTest(initial_nzcv=initial_nzcv), tempfile.TemporaryDirectory() as directory:
+                src = Path(directory) / "entry_flags.c"
+                exe = Path(directory) / ("entry_flags.exe" if os.name == "nt" else "entry_flags")
+                source = poc.translate(words, initial_nzcv=initial_nzcv)
+                harness = source + f"\nint main(void) {{ uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C({expected_result}) && flags == UINT8_C({expected_flags}) ? 0 : 1; }}\n"
+                src.write_text(harness, encoding="utf-8")
+                result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+                self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+                run = subprocess.run([str(exe)], capture_output=True, text=True)
+                self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
     def test_generated_c_unconditional_branch_skips_instruction_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
