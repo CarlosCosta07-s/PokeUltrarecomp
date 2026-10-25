@@ -492,3 +492,12 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Referência de codificação/endereçamento: [ARM STR immediate](https://mikhailarkhipov.github.io/ARM-doc/A32/str_i.html) e [ARM LDR literal](https://support.arm.com/documentation/ddi0487/md/-Part-F-The-AArch32-Instruction-Sets/-Chapter-F5-T32-and-A32-Base-Instruction-Set-Instruction-Descriptions/-F5-1-Alphabetical-list-of-T32-and-A32-base-instruction-set-instructions/-F5-1-74-LDR--literal-).
 - **Validação integral:** [run 40200917080](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200917080), commit `6247b2b8ab9cc301101efbd8a843f4836f2ccd5a`: `Ran 271 tests in 2.185s`, `OK`; matriz diferencial 96/96; verificador de segurança PASS em 43 caminhos indexados.
 - Nenhum `.code` real foi usado. Isto amplia a leitura estática de intervalos, não o tradutor C; não prova execução de Ultra Sun/Ultra Moon.
+
+## Inspeção A32 de transferências de memória por registrador — 2026-10-25
+
+- Adicionada inspeção de A32 LDR/STR word/byte por offset em registrador com shift imediato: LSL, LSR, ASR, ROR e RRX. Para LSR/ASR com imm5=0, o relatório mostra shift de 32; ROR com imm5=0 é RRX e o sumário registra leitura de carry.
+- Adicionada inspeção de LDRH/STRH/LDRSB/LDRSH por offset em registrador sem shift, além das formas imediatas já cobertas. O relatório anota largura, sinal, base, registrador de offset, sinal do offset, modo pre/post-index e writeback.
+- O endereço efetivo continua não resolvido e nenhum valor de memória é lido. Casos não cobertos (shift especificado em registrador, PC como base/offset fora de literal, modo não privilegiado, encodings reservados e writeback imprevisível) continuam recusados conservadoramente.
+- A primeira execução do register-offset revelou duas questões nos testes: uma palavra de STRB tinha bit I=0 e portanto era immediate-offset, e um caso de LDR por registrador ainda era listado entre os encodings a rejeitar apesar de já estar suportado. Corrigidos os encodings das fixtures e a lista negativa.
+- **Validação integral:** [run 40201786274](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40201786274), commit `2da6bcdbfabed013e55506bda819bd89b8f51c3d`: `Ran 277 tests in 2.851s`, `OK`; matriz diferencial 96/96; verificador PASS após analisar 43 caminhos rastreados.
+- Nenhum `.code` real foi usado. Isto continua a ser inspeção estática de intervalos selecionados; não executa nem recompila essas operações do jogo.
