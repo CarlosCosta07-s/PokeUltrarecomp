@@ -62,6 +62,28 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                 imm24 -= 1 << 24
             return ("call", "bl", imm24 << 2)
 
+    if condition == 0xE and ((word >> 25) & 0b111) == 0b100:
+        preindexed = ((word >> 24) & 1) == 1
+        increment = ((word >> 23) & 1) == 1
+        status_update = ((word >> 22) & 1) == 1
+        writeback = ((word >> 21) & 1) == 1
+        load = ((word >> 20) & 1) == 1
+        rn = (word >> 16) & 0xF
+        register_mask = word & 0xFFFF
+        if rn == 13 and writeback and not status_update:
+            if preindexed and not increment and not load:
+                if register_mask == 0 or register_mask & ((1 << 13) | (1 << 15)):
+                    raise arm.UnsupportedInstruction(
+                        "A32 STMDB sp! register list is empty or includes SP/PC"
+                    )
+                return ("arm_push", register_mask)
+            if not preindexed and increment and load:
+                if register_mask == 0 or register_mask & (1 << 13):
+                    raise arm.UnsupportedInstruction(
+                        "A32 LDMIA sp! register list is empty or includes SP"
+                    )
+                return ("arm_pop", register_mask)
+
     if condition == 0xE:
         special = word & 0x0FFFFFF0
         rm = word & 0xF
@@ -119,6 +141,12 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         elif decoded[0] == "push" and decoded[2]:
             regs.append("lr")
         return ("PUSH {" if decoded[0] == "push" else "POP {") + ", ".join(regs) + "}"
+    if state == "arm" and decoded[0] in ("arm_push", "arm_pop"):
+        register_mask = int(decoded[1])
+        names = {13: "sp", 14: "lr", 15: "pc"}
+        registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
+        operation = "STMDB" if decoded[0] == "arm_push" else "LDMIA"
+        return f"{operation} sp!, {{{', '.join(registers)}}}"
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -430,6 +458,15 @@ def inspect_code_range(
                         1 if decoded[0] == "pop_pc" or (decoded[0] == "push" and decoded[2]) else 0
                     )
                     item["stack_delta_bytes"] = -4 * count if decoded[0] == "push" else 4 * count
+                if state == "arm" and decoded[0] in ("arm_push", "arm_pop"):
+                    count = int(decoded[1]).bit_count()
+                    item["stack_delta_bytes"] = -4 * count if decoded[0] == "arm_push" else 4 * count
+                    if decoded[0] == "arm_pop" and (int(decoded[1]) & (1 << 15)):
+                        item["indirect_branch"] = True
+                        item["branch_target_virtual_address"] = None
+                        item["branch_target_note"] = (
+                            "PC is loaded from the stack at run time; target is not resolved"
+                        )
                 if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
                     item["memory_access"] = memory_access_metadata(decoded)
                 if state == "thumb" and decoded[0] == "adr":

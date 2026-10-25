@@ -146,6 +146,21 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
         reads.add("pc")
         writes.add(_reg(int(op_ir[1])))
         memory = "read"
+    elif op in ("arm_push", "arm_pop"):
+        mask = int(op_ir[1])
+        regs = {_reg(n) for n in range(16) if (mask >> n) & 1}
+        reads.add("sp")
+        writes.add("sp")
+        if op == "arm_push":
+            reads |= regs
+            memory = "write"
+        else:
+            writes |= regs
+            memory = "read"
+            if mask & (1 << 15):
+                flow = "return-or-indirect-branch"
+                base["status"] = "partial"
+                notes.append("PC is loaded from the stack; the target and function-return status are unknown")
     elif op in ("push", "pop", "pop_pc"):
         mask = int(op_ir[1])
         regs = {_reg(n) for n in range(8) if (mask >> n) & 1}

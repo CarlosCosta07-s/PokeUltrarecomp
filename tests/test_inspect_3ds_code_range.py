@@ -164,6 +164,38 @@ class ExplicitRangeTests(unittest.TestCase):
                 title_id="00040000001B5000",
             )
 
+    def test_decodes_a32_stack_multiple_transfer_prologue_epilogue(self):
+        self.put_arm([0xE92D40F0, 0xE8BD80F0, 0xE12FFF1E])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        push, pop = result["instructions"][:2]
+        self.assertEqual("STMDB sp!, {r4, r5, r6, r7, lr}", push["mnemonic"])
+        self.assertEqual(-20, push["stack_delta_bytes"])
+        push_effect = result["dataflow"]["instructions"][0]
+        self.assertEqual("write", push_effect["memory"])
+        self.assertIn("lr", push_effect["registers_read"])
+        self.assertIn("sp", push_effect["registers_written"])
+        self.assertEqual("LDMIA sp!, {r4, r5, r6, r7, pc}", pop["mnemonic"])
+        self.assertEqual(20, pop["stack_delta_bytes"])
+        self.assertTrue(pop["indirect_branch"])
+        self.assertIsNone(pop["branch_target_virtual_address"])
+        pop_effect = result["dataflow"]["instructions"][1]
+        self.assertEqual("read", pop_effect["memory"])
+        self.assertIn("pc", pop_effect["registers_written"])
+        self.assertEqual("return-or-indirect-branch", pop_effect["control_flow"])
+
+    def test_rejects_a32_stack_multiple_transfer_lists_with_invalid_base_entries(self):
+        for word in (0xE92D2000, 0xE92D8000, 0xE8BD2000):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_maps_virtual_address_to_code_file_offset(self):
         self.put_thumb([0x2005], offset=4)
         result = ranges.inspect_code_range(
