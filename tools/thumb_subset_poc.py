@@ -101,6 +101,8 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             0x0: "ands_reg",
             0x1: "eors_reg",
             0x8: "tst_reg",
+            0xA: "cmp_reg",
+            0xB: "cmn_reg",
             0xC: "orrs_reg",
             0xE: "bics_reg",
             0xF: "mvns_reg",
@@ -306,7 +308,7 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
-        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
+        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg"):
             used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
@@ -402,11 +404,16 @@ def translate(
             lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
-        elif op in ("adds", "subs", "cmp", "adds_imm3", "subs_imm3", "adds_reg", "subs_reg"):
+        elif op in ("adds", "subs", "cmp", "cmp_reg", "cmn_reg", "adds_imm3", "subs_imm3", "adds_reg", "subs_reg"):
             if op == "cmp":
                 _, rn, immediate = inst
                 rd = None
                 rhs_register = None
+            elif op in ("cmp_reg", "cmn_reg"):
+                _, rn, rm = inst
+                rd = None
+                immediate = None
+                rhs_register = rm
             elif op in ("adds", "subs"):
                 _, rd, immediate = inst
                 rn = rd
@@ -422,7 +429,7 @@ def translate(
             lhs = f"thumb_lhs_{suffix}"
             rhs = f"thumb_rhs_{suffix}"
             result = f"thumb_result_{suffix}"
-            operation = "adds" if op.startswith("adds") else "subs"
+            operation = "adds" if op.startswith("adds") or op == "cmn_reg" else "subs"
             lines.append(f"    uint32_t {lhs} = r{rn};")
             if rhs_register is not None:
                 lines.append(f"    uint32_t {rhs} = r{rhs_register};")
