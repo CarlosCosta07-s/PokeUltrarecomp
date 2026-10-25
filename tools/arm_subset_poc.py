@@ -44,6 +44,16 @@ class UnsupportedInstruction(ValueError):
     """The input is outside this demonstrator's intentionally small subset."""
 
 
+def _apply_condition(condition: int, instruction: tuple[object, ...]) -> tuple[object, ...]:
+    """Wrap a supported non-AL data-processing instruction with its A32 predicate."""
+    if condition == 0xE:
+        return instruction
+    mnemonic = BRANCH_CONDITION_NAMES.get(condition)
+    if mnemonic is None or mnemonic == "al":
+        raise UnsupportedInstruction(f"unsupported data-processing condition 0x{condition:X}")
+    return ("predicated", mnemonic, instruction)
+
+
 def ror32(value: int, amount: int) -> int:
     amount %= 32
     value &= 0xFFFFFFFF
@@ -77,8 +87,8 @@ def decode_word(word: int) -> tuple[object, ...]:
         branch_condition = BRANCH_CONDITION_NAMES[condition]
         return ("branch", branch_condition, offset)
 
-    if condition != 0xE:
-        raise UnsupportedInstruction(f"condition code is not AL in 0x{word:08X}")
+    if condition == 0xF:
+        raise UnsupportedInstruction(f"condition code 0xF is unsupported in 0x{word:08X}")
 
     # Only ARM data-processing instructions with an immediate operand.
     if ((word >> 25) & 0b111) != 0b001:
@@ -105,7 +115,7 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction("only canonical CMN encoding with Rd=0 is supported")
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("cmn", rn, immediate)
+        return _apply_condition(condition, ("cmn", rn, immediate))
 
     if opcode == 0b1010:  # CMP (immediate): subtract for flags, no destination write
         if not set_flags:
@@ -114,7 +124,7 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction("only canonical CMP encoding with Rd=0 is supported")
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("cmp", rn, immediate)
+        return _apply_condition(condition, ("cmp", rn, immediate))
 
     # Restrict this POC to r0-r3 so the generated C and tests stay auditable.
     if rd > 3:
@@ -123,42 +133,42 @@ def decode_word(word: int) -> tuple[object, ...]:
     if opcode == 0b1101:  # MOV (immediate)
         if rn != 0:
             raise UnsupportedInstruction("only the canonical MOV immediate encoding with Rn=0 is supported")
-        return ("mov", rd, immediate)
+        return _apply_condition(condition, ("mov", rd, immediate))
 
     if opcode == 0b1111:  # MVN (immediate)
         if rn != 0:
             raise UnsupportedInstruction("only the canonical MVN immediate encoding with Rn=0 is supported")
-        return ("mvn", rd, immediate)
+        return _apply_condition(condition, ("mvn", rd, immediate))
 
     if opcode == 0b0000:  # AND (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("and", rd, rn, immediate)
+        return _apply_condition(condition, ("and", rd, rn, immediate))
 
     if opcode == 0b1100:  # ORR (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("orr", rd, rn, immediate)
+        return _apply_condition(condition, ("orr", rd, rn, immediate))
 
     if opcode == 0b0001:  # EOR (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("eor", rd, rn, immediate)
+        return _apply_condition(condition, ("eor", rd, rn, immediate))
 
     if opcode == 0b1110:  # BIC (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("bic", rd, rn, immediate)
+        return _apply_condition(condition, ("bic", rd, rn, immediate))
 
     if opcode == 0b0100:  # ADD (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("adds" if set_flags else "add", rd, rn, immediate)
+        return _apply_condition(condition, ("adds" if set_flags else "add", rd, rn, immediate))
 
     if opcode == 0b0010:  # SUB (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("subs" if set_flags else "sub", rd, rn, immediate)
+        return _apply_condition(condition, ("subs" if set_flags else "sub", rd, rn, immediate))
 
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
 
@@ -200,6 +210,8 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
 
     used_registers = {0}  # r0 is the return register, even if not written.
     for instruction in decoded[:-1]:
+        if instruction[0] == "predicated":
+            instruction = instruction[2]
         if instruction[0] in ("mov", "mvn"):
             used_registers.add(instruction[1])
         elif instruction[0] in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
@@ -224,6 +236,11 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
     for instruction_index, instruction in enumerate(decoded[:-1]):
         if instruction_index in branch_target_indices:
             lines.append(f"arm_label_{instruction_index}: ;")
+        condition_name: str | None = None
+        if instruction[0] == "predicated":
+            _, condition_name, instruction = instruction
+            lines.append(f"    if ({BRANCH_CONDITION_C[condition_name]}) {{")
+        conditional_body_start = len(lines)
         if instruction[0] == "branch":
             condition, _offset = instruction[1], instruction[2]
             target = branch_targets[instruction_index]
@@ -286,6 +303,10 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         else:  # defensive: decode/translation tuples are intentionally closed.
             raise UnsupportedInstruction(f"internal unsupported tuple: {instruction!r}")
+        if condition_name is not None:
+            for line_index in range(conditional_body_start, len(lines)):
+                lines[line_index] = "    " + lines[line_index]
+            lines.append("    }")
     if len(decoded) - 1 in branch_target_indices:
         # BX LR is represented by the common C epilogue, which is the target
         # associated with the final guest instruction index.
