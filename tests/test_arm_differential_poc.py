@@ -12,10 +12,17 @@ import arm_differential_poc as differential  # noqa: E402
 class DifferentialFixtureTests(unittest.TestCase):
     def test_matrix_covers_all_operations_and_boundary_values(self):
         cases = differential.build_cases()
-        self.assertEqual(72, len(cases))
-        self.assertEqual(72, len({case.name for case in cases}))
-        for operation in ("adds", "subs", "cmn"):
+        self.assertEqual(96, len(cases))
+        self.assertEqual(96, len({case.name for case in cases}))
+        for operation in ("adds", "subs", "cmn", "cmp"):
             self.assertEqual(24, sum(case.name.startswith(operation + "-") for case in cases))
+
+    def test_cmp_fixtures_keep_r0_as_result_and_still_check_flags(self):
+        cases = differential.build_cases()
+        cmp_cases = [case for case in cases if case.name.startswith("cmp-")]
+        self.assertEqual(24, len(cmp_cases))
+        for case in cmp_cases:
+            self.assertEqual(case.initial_value, case.expected_result, case.name)
 
     def test_cmn_fixtures_keep_r0_as_result_and_still_check_flags(self):
         cases = differential.build_cases()
@@ -30,7 +37,7 @@ class DifferentialFixtureTests(unittest.TestCase):
             self.skipTest("no C compiler found; native differential proof requires cc, gcc, or clang")
         selected, count = differential.run_differential(compiler)
         self.assertEqual(compiler, selected)
-        self.assertEqual(72, count)
+        self.assertEqual(96, count)
 
 
 if __name__ == "__main__":
