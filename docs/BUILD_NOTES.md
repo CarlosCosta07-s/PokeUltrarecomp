@@ -90,3 +90,10 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Limitações: os nove testes e os cenários de integração foram executados numa área temporária, não contra toda a árvore da `main`. O verificador não examina histórico Git, arquivos ignorados que ainda não estão rastreados, conteúdo semântico arbitrário, licenças, direitos sobre dados ou compatibilidade do jogo. Um arquivo adicionado à força pode contornar regras de ignore; toda alteração ainda requer revisão de diff.
 - Estado do runtime e teste de referência 001: continuam **NOT RUN / NOT VERIFIED**.
 
+## Verificação remota de links internos — 2026-10-24
+
+- Método: consultar documentos pela API do GitHub e verificar os destinos Markdown relativos contra arquivos publicados na branch `main`.
+- Escopo: 14 documentos Markdown do projeto; 10 destinos locais únicos foram validados; nenhum link local quebrado foi encontrado nesse conjunto.
+- Não foi usado GitHub Actions nem um clone completo do repositório.
+- Limitação: esta é uma checagem documental remota, não a execução do script `tools/check_repository_safety.py` contra a árvore completa da `main`. Links externos foram identificados, mas não constituem uma auditoria de disponibilidade ou conteúdo.
+
