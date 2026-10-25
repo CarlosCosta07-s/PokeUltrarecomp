@@ -501,3 +501,12 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - A primeira execução do register-offset revelou duas questões nos testes: uma palavra de STRB tinha bit I=0 e portanto era immediate-offset, e um caso de LDR por registrador ainda era listado entre os encodings a rejeitar apesar de já estar suportado. Corrigidos os encodings das fixtures e a lista negativa.
 - **Validação integral:** [run 40201786274](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40201786274), commit `2da6bcdbfabed013e55506bda819bd89b8f51c3d`: `Ran 277 tests in 2.851s`, `OK`; matriz diferencial 96/96; verificador PASS após analisar 43 caminhos rastreados.
 - Nenhum `.code` real foi usado. Isto continua a ser inspeção estática de intervalos selecionados; não executa nem recompila essas operações do jogo.
+
+
+## Primeira expansão de processamento de registradores A32 — 2026-10-25
+
+- Foi adicionado ao inspetor um subconjunto sintático de instruções A32 de processamento de registradores com shift imediato: AND/EOR/SUB/RSB/ADD/ORR/MOV/BIC/MVN e TST/TEQ/CMP/CMN, com N/Z/C/V descritos conservadoramente no sumário de efeitos.
+- LSL/LSR/ASR/ROR imediatos são formatados; LSR/ASR com quantidade codificada zero são apresentados como 32, e ROR #0 como RRX, registrando leitura de carry. A forma é apenas inspecionada: não é traduzida pelo gerador C.
+- O primeiro [run 40202767862](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202767862), commit `dd3be2f80327e62eca5ac3fdb6bdfab8f6ed4e5d`, executou 282 testes e encontrou quatro problemas de fixture/expectativa: tupla IR comparada com lista JSON, ordenação canônica de flags, um encoding de TST sem S que era na verdade ANDS e a antiga fixture NOP que agora é reconhecida como MOV.
+- Corrigidas as fixtures/expectativas para comparar a forma serializada correta, usar TST sem S, usar uma instrução ainda não reconhecida para o teste de encoding desconhecido e testar MOV RRX sem S. O subconjunto mantém recusas para execução condicional, shift controlado por registrador e operandos PC.
+- Validação da revisão corrigida pendente. Não declarar equivalência semântica ou cobertura dos jogos; nenhum arquivo `.code` real foi usado.
