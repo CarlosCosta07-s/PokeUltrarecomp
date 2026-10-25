@@ -1,4 +1,5 @@
-"""Unit tests for path policy and relative Markdown link validation."""
+"""Unit tests for path policy and staged/working-tree Markdown validation."""
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -65,6 +66,42 @@ class MarkdownLinkTests(unittest.TestCase):
             errors = guard.local_markdown_link_errors(root, Path("docs/guide.md"), "[outside](../../outside.md)")
             self.assertEqual(1, len(errors))
             self.assertIn("escapes repository root", errors[0])
+
+
+class IndexAndWorkingTreeTests(unittest.TestCase):
+    def make_git_repo(self, root: Path, readme: str) -> None:
+        subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Safety Test"], cwd=root, check=True)
+        for relative in guard.REQUIRED_FILES:
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if relative == "README.md":
+                body = readme
+            elif target.suffix.casefold() == ".md":
+                body = "# Test document\n"
+            else:
+                body = "test fixture; not a project license\n"
+            target.write_text(body, encoding="utf-8")
+        subprocess.run(["git", "add", "--all"], cwd=root, check=True)
+
+    def test_detects_bad_working_tree_even_when_index_is_clean(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_git_repo(root, "[roadmap](docs/ROADMAP.md)\n")
+            (root / "README.md").write_text("[missing](not-present.md)\n", encoding="utf-8")
+            errors, _notes = guard.check_repository(root)
+            self.assertTrue(any("working tree" in error and "not-present.md" in error for error in errors))
+            self.assertFalse(any("Git index" in error and "not-present.md" in error for error in errors))
+
+    def test_detects_bad_staged_content_even_when_working_tree_is_clean(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_git_repo(root, "[missing](not-present.md)\n")
+            (root / "README.md").write_text("[roadmap](docs/ROADMAP.md)\n", encoding="utf-8")
+            errors, _notes = guard.check_repository(root)
+            self.assertTrue(any("Git index" in error and "not-present.md" in error for error in errors))
+            self.assertFalse(any("working tree" in error and "not-present.md" in error for error in errors))
 
 
 if __name__ == "__main__":
