@@ -49,6 +49,12 @@ O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência im
 - Implementação: [`tools/arm_subset_poc.py`](../tools/arm_subset_poc.py)
 - Testes: [`tests/test_arm_subset_poc.py`](../tests/test_arm_subset_poc.py)
 
+## Política para emuladores e referência externa
+
+O objetivo do PokeUltrarecomp é investigar recompilação e execução nativas no Windows, não criar uma solução que dependa de um emulador de Nintendo 3DS. Os testes de instruções e de lógica da ferramenta devem priorizar fixtures sintéticas, resultados definidos pela especificação ARM e modelos de referência próprios testáveis. Nenhum emulador é necessário para a validação atual.
+
+Se um dia for necessário observar o comportamento do jogo original para comparar uma parte recompilada, o Azahar é a opção externa indicada pelo mantenedor. Nesse caso, ele será apenas uma referência de comparação fora do runtime: não será ligado como dependência, embutido no produto final nem tratado como substituto da recompilação nativa. A integração de código de qualquer projeto externo exigiria avaliação separada de licença e escopo.
+
 ## Matriz diferencial sintética
 
 A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 72 fixtures, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN. Ela compila o C emitido, executa as funções e compara tanto o retorno quanto o NZCV com o modelo separado tools/arm_flags.py. Execute com:
@@ -103,6 +109,6 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 
 1. Resolver a pendência de licença/procedência registrada em [issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1).
 2. Executar o verificador de repositório contra uma cópia de trabalho completa da `main`.
-3. Construir validação diferencial com um emulador independente/licenciado, comparando resultado e NZCV para fixtures sintéticas.
+3. Ampliar a validação sintética baseada na especificação ARM, com casos esperados independentes para resultados, flags e limites; não é necessário usar emulador para essa etapa. Se futuramente uma comparação do comportamento do jogo original for realmente útil, o Azahar poderá ser usado somente como referência externa opcional, nunca como dependência do runtime.
 4. Definir o estado inicial de NZCV/CPSR e a política de preservação de flags na ABI da função gerada.
 5. Só então ampliar formas aritméticas/lógicas com bit S ou implementar desvios condicionais; não chamar esta POC de runtime ou porta nativa.
