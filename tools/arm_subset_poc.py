@@ -2,7 +2,8 @@
 """Clean-room proof of concept: translate a tiny synthetic ARM A32 subset to C.
 
 This deliberately tiny demonstrator is not a general-purpose recompiler, does not
-load game files, and supports unconditional MOV/ADD/SUB/AND/ORR/EOR/BIC/MVN immediate plus BX LR.
+load game files, and supports a bounded immediate subset: MOV/ADD/SUB/AND/ORR/EOR/BIC/MVN,
+flag-setting ADDS/SUBS, CMN, and BX LR. Logical S-bit forms remain unsupported.
 """
 from __future__ import annotations
 
