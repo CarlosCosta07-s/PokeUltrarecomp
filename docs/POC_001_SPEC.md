@@ -42,7 +42,7 @@ Instruções condicionais, Thumb, operações com flags no tradutor, registrador
 
 O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas.
 
-**Integração mínima concluída:** o C gerado agora tem assinatura `uint32_t synthetic_entry(uint8_t *nzcv_out)` e pode retornar NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS` e `CMN` imediatos sob condições restritas; `CMN` atualiza flags sem escrever no registrador de destino. Testes C compilados verificam overflow de `ADDS`, carry/overflow em `SUBS` e as flags de `CMN`. O módulo `arm_flags.py` permanece um modelo de referência separado, e ainda não há representação CPSR completa. Formas lógicas com bit S, shifter-carry e desvios condicionais continuam recusadas até uma futura integração/teste end-to-end.
+**Integração mínima concluída:** o C gerado usa `uint32_t synthetic_entry(uint8_t *nzcv_out)` e retorna NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos em condições restritas. `CMN` calcula flags de soma e `CMP` calcula flags de subtração, sem escrever o resultado no registrador de destino. Testes nativos cobrem os dois casos de comparação. O módulo `arm_flags.py` permanece um modelo de referência separado; ainda não há CPSR completo. Formas lógicas com bit S, shifter-carry e desvios condicionais continuam recusadas.
 
 ## Arquivos
 
@@ -57,11 +57,11 @@ Se um dia for necessário observar o comportamento do jogo original para compara
 
 ## Matriz diferencial sintética
 
-A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 72 fixtures, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN. Ela compila o C emitido, executa as funções e compara tanto o retorno quanto o NZCV com o modelo separado tools/arm_flags.py. Execute com:
+A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 96 fixtures, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN/CMP. Ela compila o C emitido e compara o valor retornado e NZCV com o modelo separado `tools/arm_flags.py`. Execute com:
 
     python tools/arm_differential_poc.py
 
-O teste compara duas implementações dentro deste projeto; **não é uma validação contra emulador independente**, não substitui o teste de referência 001 e não prova compatibilidade com o jogo. Uma execução inicial no workspace temporário retornou 72/72 correspondências com C11 e -Wall -Wextra -Werror. Depois, a conferência de hashes mostrou que as cópias locais do tradutor e do modelo NZCV não correspondiam aos blobs atuais de `main`; portanto, o resultado é preliminar e ainda não valida a versão publicada. A matriz precisa ser repetida num checkout sincronizado.
+O teste compara o C gerado com o modelo NZCV separado do projeto; **não é validação contra um emulador independente** e não prova compatibilidade com o jogo. Depois de sincronizar os arquivos Python de implementação e teste aos blobs verificados de `main` e conferir os hashes Git dos arquivos alterados, a matriz executou **96/96 correspondências** com C11, `-Wall -Wextra -Werror`. O checkout integral do repositório não pôde ser clonado neste ambiente por falha de resolução DNS; por isso, a evidência é do conjunto de arquivos Python verificados, não de um checkout integral.
 
 ## Como reproduzir
 
@@ -96,9 +96,9 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte do tradutor POC-001: **31 testes aprovados**, incluindo decodificação de `ADDS`, `SUBS` e `CMN`, testes negativos e compilação/execução nativa de fixtures com NZCV esperado.
+- Suíte do tradutor POC-001: **36 testes aprovados**, incluindo decodificação e rejeições de `CMP`, além de compilação/execução nativa de comparações.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- As três suítes preexistentes das ferramentas Python tinham **58 testes aprovados**, sem falhas ou testes ignorados (31 do tradutor, 18 do modelo NZCV e 9 do verificador de segurança). A nova suíte diferencial acrescenta 3 testes, executados isoladamente; o conjunto combinado de 61 testes ainda precisa ser repetido num checkout limpo da main.
+- A suíte atual soma **67 testes aprovados, zero falhas e zero ignorados**: 36 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
