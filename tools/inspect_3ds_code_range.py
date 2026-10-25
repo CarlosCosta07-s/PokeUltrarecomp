@@ -72,8 +72,14 @@ def inspect_code_range(
     *,
     title_id: str | None = None,
     allow_unverified_target: bool = False,
+    include_unsupported: bool = False,
 ) -> dict[str, Any]:
-    """Decode exactly the requested fixed-width range inside declared .text."""
+    """Decode a user-selected instruction range inside declared .text.
+
+    With include_unsupported=True, unknown instructions are recorded as raw
+    encodings. Thumb-2 prefix halfwords consume two halfwords as one unknown
+    32-bit instruction so the remainder of the range stays aligned.
+    """
     if state not in ("arm", "thumb"):
         raise TargetRangeError("instruction state must be 'arm' or 'thumb'")
     if isinstance(instruction_count, bool) or not isinstance(instruction_count, int):
@@ -106,8 +112,7 @@ def inspect_code_range(
             f"start address 0x{start_address:08X} lies outside declared .text "
             f"0x{text_start:08X}..0x{text_start + text_size:08X}"
         )
-    byte_count = unit * instruction_count
-    if relative + byte_count > text_size:
+    if relative + unit > text_size:
         raise TargetRangeError(
             f"requested range extends beyond declared .text payload ({text_size} bytes); page padding is not code"
         )
@@ -119,42 +124,111 @@ def inspect_code_range(
     if hashlib.sha256(code).hexdigest() != checked["inputs"]["decompressed_code"]["sha256"]:
         raise TargetRangeError(".code changed during inspection; retry with a stable local file")
     file_offset = int(text["code_file_offset"]) + relative
-    raw = code[file_offset:file_offset + byte_count]
-    if len(raw) != byte_count:
-        raise TargetRangeError("selected range is truncated in .code")
 
     instructions: list[dict[str, Any]] = []
-    for index in range(instruction_count):
-        cursor = index * unit
-        word = int.from_bytes(raw[cursor:cursor + unit], "little")
-        address = start_address + cursor
-        try:
-            decoded = arm.decode_word(word) if state == "arm" else thumb.decode_halfword(word)
-            mnemonic = mnemonic_for(state, decoded)
-        except (arm.UnsupportedInstruction, thumb.UnsupportedThumbInstruction, TargetRangeError) as exc:
-            digits = unit * 2
+    cursor = 0
+    index = 0
+    while index < instruction_count:
+        if relative + cursor + unit > text_size:
             raise TargetRangeError(
-                f"unsupported instruction at 0x{address:08X} (0x{word:0{digits}X}): {exc}"
-            ) from exc
-        item: dict[str, Any] = {
+                f"requested range extends beyond declared .text payload ({text_size} bytes); page padding is not code"
+            )
+        absolute_offset = file_offset + cursor
+        unit_bytes = code[absolute_offset:absolute_offset + unit]
+        if len(unit_bytes) != unit:
+            raise TargetRangeError("selected range is truncated in .code")
+        word = int.from_bytes(unit_bytes, "little")
+        address = start_address + cursor
+        instruction_size = unit
+        unknown_reason: str | None = None
+        thumb32_second: int | None = None
+        is_thumb32 = state == "thumb" and (word & 0xF800) in (0xE800, 0xF000, 0xF800)
+        if is_thumb32:
+            instruction_size = 4
+            if relative + cursor + instruction_size > text_size:
+                raise TargetRangeError(
+                    f"32-bit Thumb instruction prefix at 0x{address:08X} crosses the declared .text boundary"
+                )
+            second_offset = absolute_offset + 2
+            second_bytes = code[second_offset:second_offset + 2]
+            if len(second_bytes) != 2:
+                raise TargetRangeError(f"truncated 32-bit Thumb instruction at 0x{address:08X}")
+            thumb32_second = int.from_bytes(second_bytes, "little")
+            unknown_reason = "Thumb-2 32-bit instruction decoding is not implemented"
+        else:
+            try:
+                decoded = arm.decode_word(word) if state == "arm" else thumb.decode_halfword(word)
+                mnemonic = mnemonic_for(state, decoded)
+            except (arm.UnsupportedInstruction, thumb.UnsupportedThumbInstruction, TargetRangeError) as exc:
+                unknown_reason = str(exc)
+            else:
+                item = {
+                    "index": index,
+                    "virtual_address": f"0x{address:08X}",
+                    "decompressed_code_file_offset": absolute_offset,
+                    "instruction_size_bytes": instruction_size,
+                    "encoding": f"0x{word:0{unit * 2}X}",
+                    "decode_status": "decoded",
+                    "mnemonic": mnemonic,
+                    "decoded_ir": decoded,
+                }
+                if decoded[0] == "branch":
+                    target_address = address + (2 + int(decoded[2])) * unit
+                    item["branch_target_virtual_address"] = f"0x{target_address:08X}"
+                    item["branch_target_within_declared_text"] = text_start <= target_address < text_start + text_size
+                instructions.append(item)
+                cursor += instruction_size
+                index += 1
+                continue
+
+        if not include_unsupported:
+            if is_thumb32:
+                message = (
+                    f"unsupported 32-bit Thumb instruction at 0x{address:08X} "
+                    f"(halfwords 0x{word:04X} 0x{thumb32_second:04X}): {unknown_reason}; "
+                    "use --include-unsupported to record raw encodings without decoding them"
+                )
+            else:
+                digits = unit * 2
+                message = (
+                    f"unsupported instruction at 0x{address:08X} (0x{word:0{digits}X}): "
+                    f"{unknown_reason}; use --include-unsupported to continue with raw encodings"
+                )
+            raise TargetRangeError(message)
+
+        item = {
             "index": index,
             "virtual_address": f"0x{address:08X}",
-            "decompressed_code_file_offset": file_offset + cursor,
-            "encoding": f"0x{word:0{unit * 2}X}",
-            "mnemonic": mnemonic,
-            "decoded_ir": decoded,
+            "decompressed_code_file_offset": absolute_offset,
+            "instruction_size_bytes": instruction_size,
+            "encoding": (
+                f"0x{word:04X} 0x{thumb32_second:04X}" if is_thumb32
+                else f"0x{word:0{unit * 2}X}"
+            ),
+            "decode_status": "unsupported-thumb32" if is_thumb32 else "unsupported",
+            "mnemonic": None,
+            "decoded_ir": None,
+            "reason": unknown_reason,
         }
-        if decoded[0] == "branch":
-            target_index = index + 2 + int(decoded[2])
-            target_address = address + (2 + int(decoded[2])) * unit
-            item["branch_target_virtual_address"] = f"0x{target_address:08X}"
-            item["branch_target_within_selected_range"] = 0 <= target_index < instruction_count
-            item["branch_target_within_declared_text"] = text_start <= target_address < text_start + text_size
+        if is_thumb32:
+            item["halfwords"] = [f"0x{word:04X}", f"0x{thumb32_second:04X}"]
         instructions.append(item)
+        cursor += instruction_size
+        index += 1
 
+    selected_end = start_address + cursor
+    scanned_starts = {int(item["virtual_address"], 16) for item in instructions}
+    for item in instructions:
+        target_text = item.get("branch_target_virtual_address")
+        if target_text is not None:
+            branch_address = int(target_text, 16)
+            item["branch_target_within_selected_range"] = start_address <= branch_address < selected_end
+            item["branch_target_is_scanned_instruction_start"] = branch_address in scanned_starts
+
+    has_unknown = any(item["decode_status"] != "decoded" for item in instructions)
     return {
         "schema_version": 1,
-        "status": "decoded-explicit-range",
+        "status": "partially-decoded-explicit-range" if has_unknown else "decoded-explicit-range",
         "target": {
             "target_id": checked["target"]["target_id"],
             "display_name": checked["target"]["display_name"],
@@ -167,11 +241,12 @@ def inspect_code_range(
             "start_address": f"0x{start_address:08X}",
             "instruction_count": instruction_count,
             "unit_bytes": unit,
-            "byte_count": byte_count,
+            "byte_count": cursor,
             "decompressed_code_file_offset": file_offset,
             "text_virtual_start": f"0x{text_start:08X}",
             "text_declared_size_bytes": text_size,
-            "selected_range_end": f"0x{start_address + byte_count:08X}",
+            "selected_range_end": f"0x{selected_end:08X}",
+            "includes_unsupported_raw_encodings": include_unsupported and has_unknown,
             "semantic_warning": "This is syntax-only; register, flag, control-flow and ABI assumptions are not proven to match the game.",
         },
         "input": {
@@ -183,7 +258,9 @@ def inspect_code_range(
         "instructions": instructions,
         "limitations": [
             "Only the explicit fixed-width range is decoded; no function discovery or automatic ARM/Thumb state detection.",
-            "Only the current narrow synthetic subsets are recognized; unknown instructions are rejected.",
+            "Only the current narrow ARM A32 and Thumb-16 subsets are decoded.",
+            "With --include-unsupported, unknown encodings are recorded as raw bytes; they are not disassembled or semantically analyzed.",
+            "Thumb-2 32-bit instructions are detected and kept together as two halfwords, but are not decoded.",
             "Literal pools, embedded data, relocations, calls, memory effects, ABI and control-flow context are not resolved.",
             "Reports contain instruction encodings derived from local game code; keep them local unless reviewed and redacted.",
         ],
@@ -203,6 +280,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instruction-count", required=True, type=int)
     parser.add_argument("--title-id", help="optional NCCH/container ID, separate from the ExHeader Program ID")
     parser.add_argument("--allow-unverified-target", action="store_true")
+    parser.add_argument(
+        "--include-unsupported", action="store_true",
+        help="record unknown encodings as raw data and continue; 32-bit Thumb instructions stay grouped",
+    )
     parser.add_argument("--report", type=Path, help="write a local JSON report outside the repository")
     args = parser.parse_args(argv)
     try:
@@ -210,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             args.target, args.exheader, args.code, args.state,
             args.start_address, args.instruction_count, title_id=args.title_id,
             allow_unverified_target=args.allow_unverified_target,
+            include_unsupported=args.include_unsupported,
         )
         rendered = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
         if args.report:

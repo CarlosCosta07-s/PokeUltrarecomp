@@ -144,6 +144,63 @@ class ExplicitRangeTests(unittest.TestCase):
         self.put_thumb([0x46C0])
         with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction at 0x00100000"):
             ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 1)
+ 
+    def test_thumb32_prefix_is_rejected_in_strict_mode_without_splitting(self):
+        self.put_thumb([0xF000, 0xF800, 0x4770])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported 32-bit Thumb instruction"):
+            ranges.inspect_code_range(
+                "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 2,
+                title_id="00040000001B5000",
+            )
+
+    def test_include_unsupported_groups_thumb32_and_keeps_following_instruction_aligned(self):
+        self.put_thumb([0xF000, 0xF800, 0x4770])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 2,
+            title_id="00040000001B5000", include_unsupported=True,
+        )
+        self.assertEqual("partially-decoded-explicit-range", result["status"])
+        self.assertEqual(6, result["range"]["byte_count"])
+        first, second = result["instructions"]
+        self.assertEqual("unsupported-thumb32", first["decode_status"])
+        self.assertEqual(4, first["instruction_size_bytes"])
+        self.assertEqual(["0xF000", "0xF800"], first["halfwords"])
+        self.assertEqual("0x00100004", second["virtual_address"])
+        self.assertEqual("decoded", second["decode_status"])
+        self.assertEqual("BX LR", second["mnemonic"])
+
+    def test_include_unsupported_records_unknown_thumb16_without_lying_about_mnemonic(self):
+        self.put_thumb([0x46C0, 0x4770])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 2,
+            title_id="00040000001B5000", include_unsupported=True,
+        )
+        self.assertEqual("partially-decoded-explicit-range", result["status"])
+        self.assertEqual("unsupported", result["instructions"][0]["decode_status"])
+        self.assertIsNone(result["instructions"][0]["mnemonic"])
+        self.assertIsNone(result["instructions"][0]["decoded_ir"])
+        self.assertEqual("BX LR", result["instructions"][1]["mnemonic"])
+
+    def test_include_unsupported_records_unknown_arm32_without_lying_about_mnemonic(self):
+        self.put_arm([0xE1A00000, 0xE12FFF1E])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 2,
+            title_id="00040000001B5000", include_unsupported=True,
+        )
+        self.assertEqual("partially-decoded-explicit-range", result["status"])
+        self.assertEqual("unsupported", result["instructions"][0]["decode_status"])
+        self.assertIsNone(result["instructions"][0]["mnemonic"])
+        self.assertEqual("BX LR", result["instructions"][1]["mnemonic"])
+
+    def test_thumb32_prefix_cannot_cross_declared_text_boundary(self):
+        self.exheader.write_bytes(build_exheader(text_size=2))
+        self.put_thumb([0xF000, 0xF800])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "crosses the declared .text boundary"):
+            ranges.inspect_code_range(
+                "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 1,
+                title_id="00040000001B5000", include_unsupported=True,
+            )
+
 
     def test_rejects_invalid_instruction_count(self):
         for count in (0, 257, True):
