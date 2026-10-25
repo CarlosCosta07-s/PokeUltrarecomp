@@ -3,7 +3,7 @@
 
 This deliberately tiny demonstrator is not a general-purpose recompiler, does not
 load game files, and supports a bounded immediate subset: MOV/ADD/SUB/AND/ORR/EOR/BIC/MVN,
-flag-setting ADDS/SUBS, CMN, and BX LR. Logical S-bit forms remain unsupported.
+flag-setting ADDS/SUBS, CMN/CMP, and BX LR. Logical S-bit forms remain unsupported.
 """
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def decode_word(word: int) -> tuple[object, ...]:
     # This integration stage deliberately enables only flag-setting ADD/SUB and
     # canonical CMN. Logical S-bit forms require shifter-carry semantics and stay
     # unsupported until that behavior is modeled end-to-end.
-    if set_flags and opcode not in (0b0100, 0b0010, 0b1011):
+    if set_flags and opcode not in (0b0100, 0b0010, 0b1011, 0b1010):
         raise UnsupportedInstruction(f"flag-setting form is unsupported: 0x{word:08X}")
 
     if opcode == 0b1011:  # CMN (immediate): arithmetic flags, no destination write
@@ -66,6 +66,15 @@ def decode_word(word: int) -> tuple[object, ...]:
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
         return ("cmn", rn, immediate)
+
+    if opcode == 0b1010:  # CMP (immediate): subtract for flags, no destination write
+        if not set_flags:
+            raise UnsupportedInstruction("CMP requires the S bit to be set")
+        if rd != 0:
+            raise UnsupportedInstruction("only canonical CMP encoding with Rd=0 is supported")
+        if rn > 3:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        return ("cmp", rn, immediate)
 
     # Restrict this POC to r0-r3 so the generated C and tests stay auditable.
     if rd > 3:
@@ -134,7 +143,7 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         elif instruction[0] in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
-        elif instruction[0] == "cmn":
+        elif instruction[0] in ("cmn", "cmp"):
             used_registers.add(instruction[1])
 
     lines = [
@@ -174,9 +183,9 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         elif instruction[0] == "sub":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
-        elif instruction[0] in ("adds", "subs", "cmn"):
+        elif instruction[0] in ("adds", "subs", "cmn", "cmp"):
             operation = instruction[0]
-            if operation == "cmn":
+            if operation in ("cmn", "cmp"):
                 _, rn, immediate = instruction
                 rd = None
             else:
