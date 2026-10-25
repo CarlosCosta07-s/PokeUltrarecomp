@@ -159,6 +159,10 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
                 raise UnsupportedInstruction(
                     f"branch at instruction {instruction_index} targets out-of-range instruction {target}"
                 )
+            if target <= instruction_index:
+                raise UnsupportedInstruction(
+                    f"backward or self-targeting branch at instruction {instruction_index} is unsupported"
+                )
             branch_targets[instruction_index] = target
 
     used_registers = {0}  # r0 is the return register, even if not written.
