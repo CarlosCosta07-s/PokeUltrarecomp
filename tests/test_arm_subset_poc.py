@@ -275,6 +275,37 @@ int main(void) {
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+    def test_predicated_cmp_preserves_or_updates_flags_according_to_condition(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native conditional-CMP proof requires cc, gcc, or clang")
+        # CMPEQ r0,#0 is skipped for entry NZCV=0x8 (Z=0), preserving N.
+        # CMPNE r0,#0 executes for the same entry state, yielding Z=1 and C=1.
+        skipped = poc.translate([0x03500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
+            "uint32_t synthetic_entry(", "conditional_cmp_skipped("
+        )
+        executed = poc.translate([0x13500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
+            "uint32_t synthetic_entry(", "conditional_cmp_executed("
+        )
+        harness = "\\n".join((skipped, executed)) + """
+int main(void) {
+    uint8_t skipped_flags = 0;
+    uint8_t executed_flags = 0;
+    return conditional_cmp_skipped(&skipped_flags) == UINT32_C(0)
+        && skipped_flags == UINT8_C(8)
+        && conditional_cmp_executed(&executed_flags) == UINT32_C(0)
+        && executed_flags == UINT8_C(6) ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "conditional_cmp.c"
+            exe = Path(directory) / ("conditional_cmp.exe" if os.name == "nt" else "conditional_cmp")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
     def test_initial_nzcv_sets_entry_flags_and_defaults_to_zero(self):
         words = [0xE3A00001, 0xE12FFF1E]
         self.assertEqual(poc.translate(words), poc.translate(words, initial_nzcv=0))
