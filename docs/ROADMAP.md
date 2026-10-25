@@ -40,8 +40,6 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [ ] Manter entradas locais e diretórios temporários fora do repositório.
 - [ ] Executar um diagnóstico de compilador e um teste trivial independente de dados proprietários.
 
-A direção do projeto é uma execução nativa no Windows. Emuladores não são dependências planejadas. Se surgir uma necessidade concreta de comparação com o comportamento do jogo original, usar Azahar apenas como referência externa opcional, fora do runtime e sem incorporá-lo ao produto.
-
 **Dependências:** fases 1 e 2.
 
 **Critério de conclusão:** um ambiente limpo reproduz o diagnóstico e o teste trivial; versões e resultados estão registrados em BUILD_NOTES.md; nenhum conteúdo proprietário é necessário.
@@ -78,10 +76,12 @@ A direção do projeto é uma execução nativa no Windows. Emuladores não são
 
 ## Fase 6 — Investigar runtime próprio para Windows
 
+**Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
+
 **Tarefas**
 - [ ] Inventariar chamadas de sistema, serviços do 3DS e contratos de runtime exigidos pelos caminhos de código selecionados.
 - [ ] Mapear estado da CPU, exceções, memória, sincronização, módulos dinâmicos e callbacks.
-- [ ] Estudar se código recompilado pode operar sem o emulador e quais stubs ainda seriam necessários.
+- [ ] Definir e implementar a camada host necessária para executar código recompilado sem depender de um emulador de Nintendo 3DS.
 - [ ] Comparar alternativas de renderização e janela no Windows com uma prova isolada; não escolher API com base em suposição.
 - [ ] Documentar limites e dependências remanescentes para cada caminho exercitado.
 
