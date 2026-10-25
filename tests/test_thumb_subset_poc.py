@@ -51,7 +51,7 @@ class ThumbDecodeTests(unittest.TestCase):
         self.assertEqual(("mvns_reg", 0, 1), poc.decode_halfword(0x43C8))
 
     def test_classifies_data_processing_register_space_conservatively(self):
-        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x5: "adcs_reg", 0x6: "sbcs_reg", 0x8: "tst_reg", 0x9: "rsbs_zero", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
+        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x2: "lsls_reg", 0x3: "lsrs_reg", 0x4: "asrs_reg", 0x5: "adcs_reg", 0x6: "sbcs_reg", 0x7: "rors_reg", 0x8: "tst_reg", 0x9: "rsbs_zero", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
         for word in range(0x4000, 0x4400):
             opcode = (word >> 6) & 0xF
             with self.subTest(word=f"0x{word:04X}"):
