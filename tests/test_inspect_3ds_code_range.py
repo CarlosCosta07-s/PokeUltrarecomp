@@ -146,7 +146,7 @@ class ExplicitRangeTests(unittest.TestCase):
             ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 1)
  
     def test_thumb32_prefix_is_rejected_in_strict_mode_without_splitting(self):
-        self.put_thumb([0xF000, 0xF800, 0x4770])
+        self.put_thumb([0xF000, 0x0000, 0x4770])
         with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported 32-bit Thumb instruction"):
             ranges.inspect_code_range(
                 "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 2,
@@ -154,7 +154,7 @@ class ExplicitRangeTests(unittest.TestCase):
             )
 
     def test_include_unsupported_groups_thumb32_and_keeps_following_instruction_aligned(self):
-        self.put_thumb([0xF000, 0xF800, 0x4770])
+        self.put_thumb([0xF000, 0x0000, 0x4770])
         result = ranges.inspect_code_range(
             "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 2,
             title_id="00040000001B5000", include_unsupported=True,
@@ -164,7 +164,7 @@ class ExplicitRangeTests(unittest.TestCase):
         first, second = result["instructions"]
         self.assertEqual("unsupported-thumb32", first["decode_status"])
         self.assertEqual(4, first["instruction_size_bytes"])
-        self.assertEqual(["0xF000", "0xF800"], first["halfwords"])
+        self.assertEqual(["0xF000", "0x0000"], first["halfwords"])
         self.assertEqual("0x00100004", second["virtual_address"])
         self.assertEqual("decoded", second["decode_status"])
         self.assertEqual("BX LR", second["mnemonic"])
@@ -194,7 +194,7 @@ class ExplicitRangeTests(unittest.TestCase):
 
     def test_thumb32_prefix_cannot_cross_declared_text_boundary(self):
         self.exheader.write_bytes(build_exheader(text_size=2))
-        self.put_thumb([0xF000, 0xF800])
+        self.put_thumb([0xF000, 0x0000])
         with self.assertRaisesRegex(ranges.TargetRangeError, "crosses the declared .text boundary"):
             ranges.inspect_code_range(
                 "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, 1,
@@ -210,6 +210,104 @@ class ExplicitRangeTests(unittest.TestCase):
     def test_rejects_unknown_instruction_state(self):
         with self.assertRaisesRegex(ranges.TargetRangeError, "instruction state"):
             ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "thumb2", 0x00100000, 1)
+
+    def inspect_thumb(self, count, **kwargs):
+        return ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "thumb", 0x00100000, count,
+            title_id="00040000001B5000", **kwargs,
+        )
+
+    def test_decodes_thumb_bl_pair_as_one_four_byte_call(self):
+        self.put_thumb([0xF000, 0xF800, 0x4770])
+        result = self.inspect_thumb(2)
+        self.assertEqual("decoded-explicit-range", result["status"])
+        self.assertEqual(6, result["range"]["byte_count"])
+        call, ret = result["instructions"]
+        self.assertEqual("BL", call["mnemonic"])
+        self.assertEqual(4, call["instruction_size_bytes"])
+        self.assertEqual("0xF000 0xF800", call["encoding"])
+        self.assertEqual(["call", "bl", 0], list(call["decoded_ir"]))
+        self.assertEqual("0x00100005", call["link_register_value"])
+        self.assertEqual("0x00100004", call["branch_target_virtual_address"])
+        self.assertEqual("thumb", call["branch_target_state"])
+        self.assertTrue(call["branch_target_within_declared_text"])
+        self.assertTrue(call["branch_target_within_selected_range"])
+        self.assertTrue(call["branch_target_is_scanned_instruction_start"])
+        self.assertEqual("0x00100004", ret["virtual_address"])
+        self.assertEqual("BX LR", ret["mnemonic"])
+
+    def test_blx_target_is_arm_state_and_never_counts_as_scanned_thumb_start(self):
+        self.put_thumb([0xF000, 0xE800, 0x4770])   # target 0x00100004 is also a Thumb start
+        call = self.inspect_thumb(2)["instructions"][0]
+        self.assertEqual("BLX", call["mnemonic"])
+        self.assertEqual("0x00100004", call["branch_target_virtual_address"])
+        self.assertEqual("arm", call["branch_target_state"])
+        self.assertTrue(call["branch_target_within_selected_range"])
+        self.assertFalse(call["branch_target_is_scanned_instruction_start"])
+
+    def test_blx_at_halfword_aligned_address_aligns_target_down(self):
+        self.put_thumb([0x4770, 0xF000, 0xE800])
+        call = self.inspect_thumb(2)["instructions"][1]
+        self.assertEqual("0x00100002", call["virtual_address"])
+        self.assertEqual("0x00100004", call["branch_target_virtual_address"])   # 0x100006 aligned down
+
+    def test_bl_self_target_and_target_outside_text_are_reported(self):
+        self.put_thumb([0x4770, 0xF7FF, 0xFFFE])   # "bl ." at 0x00100002
+        call = self.inspect_thumb(2)["instructions"][1]
+        self.assertEqual("0x00100002", call["branch_target_virtual_address"])
+        self.assertTrue(call["branch_target_is_scanned_instruction_start"])
+        self.put_thumb([0xF3FF, 0xFFFF])
+        far = self.inspect_thumb(1)["instructions"][0]
+        self.assertEqual("0x00500002", far["branch_target_virtual_address"])
+        self.assertFalse(far["branch_target_within_declared_text"])
+        self.assertFalse(far["branch_target_within_selected_range"])
+
+    def test_call_target_below_address_zero_is_unsupported_not_wrapped(self):
+        self.put_thumb([0xF400, 0xF800, 0x4770])   # raw target 0x100004 - 0x400000 < 0
+        with self.assertRaisesRegex(ranges.TargetRangeError, "outside the 32-bit address space"):
+            self.inspect_thumb(1)
+        result = self.inspect_thumb(2, include_unsupported=True)
+        first, second = result["instructions"]
+        self.assertEqual("unsupported-thumb32", first["decode_status"])
+        self.assertIsNone(first["mnemonic"])
+        self.assertEqual("0x00100004", second["virtual_address"])
+        self.assertEqual("BX LR", second["mnemonic"])
+
+    def test_other_thumb32_pairs_are_not_mistaken_for_calls(self):
+        for words in ([0xF000, 0xF000], [0xF000, 0xE801], [0xE800, 0xF800], [0xF800, 0xF800], [0xF000, 0xD000]):
+            with self.subTest(words=[hex(w) for w in words]):
+                self.put_thumb(words + [0x4770])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported 32-bit Thumb instruction"):
+                    self.inspect_thumb(1)
+                first, second = self.inspect_thumb(2, include_unsupported=True)["instructions"]
+                self.assertEqual("unsupported-thumb32", first["decode_status"])
+                self.assertEqual("BX LR", second["mnemonic"])
+
+    def test_bl_exactly_at_text_end_decodes_but_next_pair_may_not_cross(self):
+        self.exheader.write_bytes(build_exheader(text_size=4))
+        self.put_thumb([0xF000, 0xF800])
+        self.assertEqual("BL", self.inspect_thumb(1)["instructions"][0]["mnemonic"])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "extends beyond declared .text"):
+            self.inspect_thumb(2)
+
+    def test_arm_state_ignores_thumb_call_pairs(self):
+        self.put_arm([0xF800F000])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction at 0x00100000"):
+            ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1)
+
+    def test_cli_reports_bl_call(self):
+        self.put_thumb([0xF000, 0xF800, 0x4770])
+        run = subprocess.run([
+            sys.executable, str(ROOT / "tools" / "inspect_3ds_code_range.py"),
+            "--target", "ultra-sun", "--exheader", str(self.exheader),
+            "--code", str(self.code), "--state", "thumb",
+            "--start-address", "0x00100000", "--instruction-count", "2",
+            "--title-id", "00040000001B5000",
+        ], capture_output=True, text=True)
+        self.assertEqual(0, run.returncode, msg=run.stderr)
+        first = json.loads(run.stdout)["instructions"][0]
+        self.assertEqual("BL", first["mnemonic"])
+        self.assertEqual(["call", "bl", 0], first["decoded_ir"])
 
     def test_cli_emits_json_for_synthetic_inputs(self):
         self.put_thumb([0x4770])

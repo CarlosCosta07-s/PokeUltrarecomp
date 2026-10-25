@@ -37,6 +37,8 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
     if decoded[0] == "branch":
         cond = decoded[1]
         return "B" if cond == "al" else f"B{str(cond).upper()}"
+    if decoded[0] == "call":
+        return str(decoded[1]).upper()
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -154,7 +156,33 @@ def inspect_code_range(
             if len(second_bytes) != 2:
                 raise TargetRangeError(f"truncated 32-bit Thumb instruction at 0x{address:08X}")
             thumb32_second = int.from_bytes(second_bytes, "little")
-            unknown_reason = "Thumb-2 32-bit instruction decoding is not implemented"
+            try:
+                decoded = thumb.decode_call_pair(word, thumb32_second)
+                call_target, call_state = thumb.call_target(address, decoded)
+            except thumb.UnsupportedThumbInstruction as exc:
+                unknown_reason = (
+                    "32-bit Thumb pair is not a decodable ARMv6K BL/BLX immediate: " + str(exc)
+                )
+            else:
+                instructions.append({
+                    "index": index,
+                    "virtual_address": f"0x{address:08X}",
+                    "decompressed_code_file_offset": absolute_offset,
+                    "instruction_size_bytes": instruction_size,
+                    "encoding": f"0x{word:04X} 0x{thumb32_second:04X}",
+                    "halfwords": [f"0x{word:04X}", f"0x{thumb32_second:04X}"],
+                    "decode_status": "decoded",
+                    "mnemonic": mnemonic_for(state, decoded),
+                    "decoded_ir": decoded,
+                    "branch_links": True,
+                    "link_register_value": f"0x{(address + 4) | 1:08X}",
+                    "branch_target_virtual_address": f"0x{call_target:08X}",
+                    "branch_target_state": call_state,
+                    "branch_target_within_declared_text": text_start <= call_target < text_start + text_size,
+                })
+                cursor += instruction_size
+                index += 1
+                continue
         else:
             try:
                 decoded = arm.decode_word(word) if state == "arm" else thumb.decode_halfword(word)
@@ -223,7 +251,9 @@ def inspect_code_range(
         if target_text is not None:
             branch_address = int(target_text, 16)
             item["branch_target_within_selected_range"] = start_address <= branch_address < selected_end
-            item["branch_target_is_scanned_instruction_start"] = branch_address in scanned_starts
+            item["branch_target_is_scanned_instruction_start"] = (
+                item.get("branch_target_state", state) == state and branch_address in scanned_starts
+            )
 
     has_unknown = any(item["decode_status"] != "decoded" for item in instructions)
     return {
@@ -260,7 +290,8 @@ def inspect_code_range(
             "Only the explicit fixed-width range is decoded; no function discovery or automatic ARM/Thumb state detection.",
             "Only the current narrow ARM A32 and Thumb-16 subsets are decoded.",
             "With --include-unsupported, unknown encodings are recorded as raw bytes; they are not disassembled or semantically analyzed.",
-            "Thumb-2 32-bit instructions are detected and kept together as two halfwords, but are not decoded.",
+            "Only the ARMv6K Thumb BL/BLX immediate pair is decoded among 32-bit Thumb forms; every other 32-bit Thumb pair is kept together as two raw halfwords.",
+            "BL/BLX decoding computes the call target only; callee identity, return address use, argument registers and ABI are not resolved, and BLX targets are ARM state, not scanned in the Thumb range.",
             "Literal pools, embedded data, relocations, calls, memory effects, ABI and control-flow context are not resolved.",
             "Reports contain instruction encodings derived from local game code; keep them local unless reviewed and redacted.",
         ],

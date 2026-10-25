@@ -21,7 +21,7 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 - Exige o estado ARM/Thumb e a contagem explicitamente. Não há descoberta de funções, linear sweep ou detecção automática de estado.
 - Por padrão, se uma palavra/halfword estiver fora do pequeno subconjunto, falha na primeira instrução não suportada e apresenta o endereço.
 - Com `--include-unsupported`, encodings desconhecidos são preservados como brutos, com `mnemonic` e `decoded_ir` nulos; o status geral muda para `partially-decoded-explicit-range`.
-- Prefixos Thumb-2 de 32 bits são agrupados em uma entrada de 4 bytes. O decodificador Thumb-2 permanece ausente; o agrupamento evita tratar a segunda metade como outra instrução.
+- Entre as formas Thumb de 32 bits, apenas o par `BL`/`BLX` imediato do ARMv6K é decodificado (`11110 imm11` + `11111 imm11` para BL; `11101 imm11` com bit 0 zerado para BLX). O relatório informa `branch_target_virtual_address`, `branch_target_state` (`thumb` para BL, `arm` para BLX, com alinhamento a 4 bytes) e `link_register_value`. Destinos fora de 0..2^32-1 não sofrem wraparound: a instrução passa a ser tratada como desconhecida. Todos os demais pares de 32 bits (inclusive as formas Thumb-2 com J1/J2, que o ARM11 do 3DS não implementa) continuam agrupados em uma entrada bruta de 4 bytes, sem decodificação.
 - Informa os destinos calculados de branches e se caem dentro do intervalo selecionado e do `.text` declarado. Não resolve funções chamadas, memória, literal pools, tabelas de dados, relocations ou ABI.
 
 ## Limites

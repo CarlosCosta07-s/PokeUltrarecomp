@@ -77,6 +77,65 @@ def decode_halfword(word: int) -> tuple[object, ...]:
     raise UnsupportedThumbInstruction(f"unsupported Thumb-16 instruction 0x{word:04X}")
 
 
+def _check_uint16(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFF:
+        raise UnsupportedThumbInstruction(f"{label} outside uint16: {value!r}")
+    return value
+
+
+def decode_call_pair(first: int, second: int) -> tuple[object, ...]:
+    """Decode a Thumb BL/BLX (immediate) halfword pair as one logical call.
+
+    Only the ARMv6K prefix/suffix form is accepted (the 3DS ARM11 has no
+    Thumb-2): first = 11110 imm11, second = 11111 imm11 (BL) or
+    11101 imm11 with bit 0 clear (BLX, switches to ARM). The Thumb-2
+    J1/J2 forms and every other 32-bit pair are left undecoded.
+    Returns ("call", "bl"|"blx", byte_offset) with the offset relative to PC,
+    where PC = instruction address + 4.
+    """
+    first = _check_uint16(first, "first Thumb halfword")
+    second = _check_uint16(second, "second Thumb halfword")
+    if (first & 0xF800) != 0xF000:
+        raise UnsupportedThumbInstruction(f"0x{first:04X} is not a Thumb BL/BLX prefix")
+    suffix = second & 0xF800
+    if suffix == 0xF800:
+        kind = "bl"
+    elif suffix == 0xE800:
+        if second & 1:
+            raise UnsupportedThumbInstruction(
+                f"BLX suffix 0x{second:04X} has bit 0 set; refusing an undefined encoding"
+            )
+        kind = "blx"
+    else:
+        raise UnsupportedThumbInstruction(
+            f"0x{first:04X} 0x{second:04X} is not an ARMv6K Thumb BL/BLX pair"
+        )
+    offset = (_sign_extend(first & 0x7FF, 11) << 12) + ((second & 0x7FF) << 1)
+    return ("call", kind, offset)
+
+
+def call_target(address: int, decoded: tuple[object, ...]) -> tuple[int, str]:
+    """Return (target address, target state) for a decoded Thumb call.
+
+    BL stays in Thumb at PC + offset; BLX enters ARM at Align(PC + offset, 4).
+    Targets outside uint32 are refused rather than wrapped.
+    """
+    if isinstance(address, bool) or not isinstance(address, int) or not 0 <= address < (1 << 32):
+        raise UnsupportedThumbInstruction(f"call address must fit uint32: {address!r}")
+    if address & 1:
+        raise UnsupportedThumbInstruction(f"Thumb call address must be halfword aligned: 0x{address:08X}")
+    if len(decoded) != 3 or decoded[0] != "call" or decoded[1] not in ("bl", "blx") or not isinstance(decoded[2], int):
+        raise UnsupportedThumbInstruction(f"not a decoded Thumb call: {decoded!r}")
+    raw = address + 4 + decoded[2]
+    if not 0 <= raw < (1 << 32):
+        raise UnsupportedThumbInstruction(
+            f"call at 0x{address:08X} targets 0x{raw & 0xFFFFFFFF:08X} outside the 32-bit address space (raw {raw})"
+        )
+    if decoded[1] == "bl":
+        return raw, "thumb"
+    return raw & ~3, "arm"
+
+
 def translate(
     halfwords: tuple[int, ...] | list[int],
     initial_nzcv: int = 0,

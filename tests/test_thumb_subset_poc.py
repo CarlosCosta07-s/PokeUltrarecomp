@@ -260,5 +260,96 @@ int main(void) {
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
 
+class ThumbCallPairTests(unittest.TestCase):
+    """BL/BLX (immediate) pair; expected offsets are hand-derived, not recomputed."""
+
+    def test_bl_offsets_including_limits(self):
+        cases = {
+            (0xF000, 0xF800): 0,
+            (0xF000, 0xF801): 2,
+            (0xF000, 0xFFFF): 4094,
+            (0xF001, 0xF800): 4096,
+            (0xF3FF, 0xFFFF): 0x3FFFFE,      # largest positive offset
+            (0xF400, 0xF800): -0x400000,     # most negative offset
+            (0xF7FF, 0xFFFE): -4,            # "bl ."
+            (0xF7FF, 0xFFFF): -2,
+        }
+        for (first, second), offset in cases.items():
+            with self.subTest(first=hex(first), second=hex(second)):
+                self.assertEqual(("call", "bl", offset), poc.decode_call_pair(first, second))
+
+    def test_blx_offsets_and_bit0_rule(self):
+        cases = {(0xF000, 0xE800): 0, (0xF000, 0xE802): 4, (0xF7FF, 0xEFFE): -4, (0xF3FF, 0xEFFE): 0x3FFFFC}
+        for (first, second), offset in cases.items():
+            with self.subTest(first=hex(first), second=hex(second)):
+                self.assertEqual(("call", "blx", offset), poc.decode_call_pair(first, second))
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "bit 0"):
+            poc.decode_call_pair(0xF000, 0xE801)
+
+    def test_every_prefix_value_and_every_non_suffix_is_classified(self):
+        for first in range(0x10000):
+            if (first & 0xF800) == 0xF000:
+                continue
+            with self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_call_pair(first, 0xF800)
+        for second in range(0x10000):
+            high = second & 0xF800
+            if high == 0xF800 or (high == 0xE800 and not second & 1):
+                continue
+            with self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_call_pair(0xF000, second)
+
+    def test_thumb2_j1_j2_and_other_pairs_stay_undecoded(self):
+        for second in (0xF000, 0xD000, 0xE000, 0xC800, 0x0000, 0x4770):
+            with self.subTest(second=hex(second)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_call_pair(0xF000, second)
+
+    def test_rejects_non_uint16_inputs(self):
+        for bad in (True, -1, 0x10000, "F000", None):
+            with self.subTest(bad=bad):
+                with self.assertRaises(poc.UnsupportedThumbInstruction):
+                    poc.decode_call_pair(bad, 0xF800)
+                with self.assertRaises(poc.UnsupportedThumbInstruction):
+                    poc.decode_call_pair(0xF000, bad)
+
+    def test_lone_prefix_is_still_not_a_16_bit_instruction(self):
+        for word in (0xF000, 0xF800, 0xE800):
+            with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_halfword(word)
+
+    def test_call_target_bl_stays_thumb(self):
+        bl0 = ("call", "bl", 0)
+        self.assertEqual((0x00100004, "thumb"), poc.call_target(0x00100000, bl0))
+        self.assertEqual((0x00100006, "thumb"), poc.call_target(0x00100002, bl0))
+        self.assertEqual((0x00100000, "thumb"), poc.call_target(0x00100000, poc.decode_call_pair(0xF7FF, 0xFFFE)))
+
+    def test_call_target_blx_enters_arm_and_aligns_down(self):
+        blx0 = ("call", "blx", 0)
+        self.assertEqual((0x00100004, "arm"), poc.call_target(0x00100000, blx0))
+        self.assertEqual((0x00100004, "arm"), poc.call_target(0x00100002, blx0))   # 0x100006 -> 0x100004
+        self.assertEqual((0x00100008, "arm"), poc.call_target(0x00100002, ("call", "blx", 4)))  # 0x10000A -> 0x100008
+
+    def test_call_target_address_space_limits(self):
+        self.assertEqual((0xFFFFFFFE, "thumb"), poc.call_target(0xFFFFFFFA, ("call", "bl", 0)))
+        self.assertEqual((0, "thumb"), poc.call_target(0, poc.decode_call_pair(0xF7FF, 0xFFFE)))
+        for address, decoded in (
+            (0xFFFFFFFC, ("call", "bl", 0)),                         # raw 2**32
+            (0x00000000, poc.decode_call_pair(0xF7FF, 0xFFFD)),      # raw -2
+            (0x00100000, poc.decode_call_pair(0xF400, 0xF800)),      # raw < 0
+        ):
+            with self.subTest(address=hex(address), decoded=decoded):
+                with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "outside the 32-bit"):
+                    poc.call_target(address, decoded)
+
+    def test_call_target_rejects_bad_inputs(self):
+        ok = ("call", "bl", 0)
+        for address in (True, -2, 1 << 32, 0x00100001, "0x100000"):
+            with self.subTest(address=address), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.call_target(address, ok)
+        for decoded in (("return",), ("call", "bx", 0), ("call", "bl"), ("call", "bl", "0"), ("branch", "al", 0)):
+            with self.subTest(decoded=decoded), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.call_target(0x00100000, decoded)
+
+
 if __name__ == "__main__":
     unittest.main()

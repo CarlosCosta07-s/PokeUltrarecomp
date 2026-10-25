@@ -38,7 +38,7 @@ A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma 
 
 ## Limites
 
-Isto não é um disassembler geral nem um recompilador de jogos. Ainda faltam os formatos Thumb-1 restantes, Thumb-2 (não é o foco para ARMv6K), BL/BLX, literal loads, acesso à memória, stack, calls, funções descobertas, relocations, CRO e ABI real. O scanner não deve ser aplicado a todo `.text` como se cada halfword fosse instrução: áreas de dados/literal pools e transições ARM/Thumb exigem análise de fluxo e proveniência.
+Isto não é um disassembler geral nem um recompilador de jogos. Ainda faltam os formatos Thumb-1 restantes, Thumb-2 (não é o foco para ARMv6K), tradução de BL/BLX (apenas a inspeção explícita de intervalos decodifica o par e calcula o destino), literal loads, acesso à memória, stack, calls, funções descobertas, relocations, CRO e ABI real. O scanner não deve ser aplicado a todo `.text` como se cada halfword fosse instrução: áreas de dados/literal pools e transições ARM/Thumb exigem análise de fluxo e proveniência.
 
 Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado em testes. A validação cobre apenas as fixtures sintéticas da POC-002. A etapa que conecta um range ARM/Thumb identificado no executável local aos tradutores ainda está pendente.
 
