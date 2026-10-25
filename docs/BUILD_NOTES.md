@@ -142,3 +142,16 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Classificação: **PASS para as duas suítes sintéticas Python e a compilação/execução host da POC no ambiente Linux descrito**.
 - Limites: não executa o teste Rust de referência 001, não testa Windows, não verifica a árvore completa da `main` com o CLI do verificador e não prova equivalência, runtime ou gameplay. Nenhuma ROM ou recurso extraído foi usado.
 
+
+
+## POC-001 — iteração 3: AND imediato e revalidação — 2026-10-24
+
+- Alteração: adicionado suporte limitado a `AND` imediato, mantendo condição AL, registradores `r0-r3`, operação sem atualização de flags e limite de 256 palavras.
+- Fixture sintética atual: `E3A0000C E2400008 E2800003 E2000007 E12FFF1E` — `MOV r0,#12`, `SUB r0,r0,#8`, `ADD r0,r0,#3`, `AND r0,r0,#7`, `BX LR`; resultado esperado: 7.
+- Testes adicionais: decodificação de `AND`, rejeição de registrador de origem `r4`, verificação da emissão C do operador AND e atualização da fixture padrão.
+- Os hashes de objeto Git dos quatro arquivos testados coincidem com os blobs publicados na `main`: `tools/arm_subset_poc.py` = `a4b7ee931829b317e6102060e848bdb61f90ded0`; `tests/test_arm_subset_poc.py` = `0001a5bbacace37eb305172b66983fe084ac43da`; `tools/check_repository_safety.py` = `a372a3880723f5a17ae87cd81d4a41bd45d70edc`; `tests/test_repository_safety.py` = `3bd44115751390dc6c613e758c94ef90f988eae2`.
+- Ambiente: Linux 6.18.55 x86_64; Python 3.13.5; GCC 14.2.0; Git 2.47.3.
+- Comandos: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
+- Resultado observado: **24 testes aprovados, zero falhas e zero ignorados** — 15 da POC e 9 do verificador de segurança. O C emitido foi compilado com C11 e `-Wall -Wextra -Werror`; o binário executou e confirmou retorno 7.
+- Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
+- Limites: teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI do verificador não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
