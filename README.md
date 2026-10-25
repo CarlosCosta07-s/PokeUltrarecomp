@@ -78,7 +78,7 @@ Foi criada uma pesquisa de **nove repositórios de código** relacionados a reco
 
 Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que traduz fixtures ARM A32 sintéticas para C. As instruções de dados suportadas aceitam predicação pelas 14 condições padrão de ARM (EQ a LE), assim como os desvios `B`. `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV; instruções predicadas que não passam na condição preservam registradores e flags. O estado de entrada NZCV é selecionado na geração por `translate(..., initial_nzcv=...)` ou `--initial-nzcv`. A matriz nativa cobre 448 combinações de desvio/predicação (14 condições × 16 estados NZCV) com uma tabela de condições independente, além dos 96 casos aritméticos da matriz diferencial. O tradutor agora aceita desvios para trás/autoalvo **somente** quando é fornecido um orçamento explícito entre 1 e 100.000 instruções executadas (`max_execution_steps` ou `--max-execution-steps`); o C gerado relata término normal (status 0) ou esgotamento do orçamento (status 1) e a contagem de passos. Sem orçamento, a API original permanece igual e laços continuam rejeitados.
 
-A suíte completa do repositório passou em **106 testes, sem falhas ou testes ignorados**, no commit `85bbe6eb91cc53ee596c674b551bc74ea5df4bb3`, em Ubuntu com Python 3.14.4 e GCC 15.2.0. A execução incluiu os 92 testes dos componentes POC-001 (61 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial) mais 14 testes do novo inspetor de alvos. A matriz diferencial registrou 96/96 correspondências; o verificador de segurança retornou PASS após analisar 33 caminhos indexados. [Registro da execução integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40157669355). Isso valida ferramentas sintéticas e metadados, não a execução do jogo nem compatibilidade com Pokémon Ultra Sun/Ultra Moon.
+A suíte completa do repositório passou em **109 testes, sem falhas ou testes ignorados**, no commit `c05ae90e6ea6f201f597cca1e00b851311ee3c73`, em Ubuntu com Python 3.14.4 e GCC 15.2.0. A execução incluiu 92 testes de POC-001 e 17 testes do inspetor de alvos (Program ID ACI, separação dos jogos e layout page-padded). A matriz diferencial registrou 96/96 correspondências; o verificador de segurança retornou PASS após analisar 33 caminhos indexados. [Registro da execução integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40158271156). Isso valida ferramentas sintéticas e metadados, não a execução do jogo nem compatibilidade com Pokémon Ultra Sun/Ultra Moon.
 
     python tools/arm_subset_poc.py
     python tools/arm_differential_poc.py
@@ -95,6 +95,10 @@ Exemplo (substitua por caminhos locais de entradas do mesmo executável):
     python tools/inspect_3ds_target.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --title-id 00040000001B5000
 
 Esta é uma preparação real de entrada para os alvos, **não** um desassemblador, recompilador ou runtime. Veja [Preparação de executáveis de Ultra Sun / Ultra Moon](docs/GAME_TARGET_INTAKE.md) para pré-requisitos, formato e limites.
+
+## POC-002 — primeiro subconjunto Thumb-16 → C
+
+Foi adicionada a [POC-002](docs/THUMB_POC_002.md), um tradutor Thumb-16 separado da POC ARM A32. O subconjunto cobre `MOVS`, `ADDS`, `SUBS`, `CMP` imediatos, desvios condicionais EQ..LE, desvio incondicional e `BX LR`. A fixture padrão retorna 7 e NZCV=6; a matriz nativa avalia 224 combinações (14 condições × 16 estados NZCV) contra uma tabela independente. Laços para trás exigem orçamento explícito de execução. Essa é uma segunda prova sintética, não um disassembler ou uma cobertura das instruções dos jogos.
 
 ## Direção do runtime e uso de emuladores
 

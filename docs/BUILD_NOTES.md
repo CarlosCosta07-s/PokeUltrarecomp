@@ -325,3 +325,12 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Os testes sintéticos foram ampliados para verificar os candidatos de tamanho sem ler dados do jogo.
 - A suíte integral executada no checkout completo `85bbe6eb91cc53ee596c674b551bc74ea5df4bb3` passou: **106 testes em 1,288 s, OK**; Python 3.14.4, GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS com 33 caminhos indexados. [Run 40157669355](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40157669355).
 - **Limite:** ainda não foi analisado nenhum executável real de Ultra Sun/Ultra Moon nesta CI. O passo real com dados de jogo depende do mantenedor executar o inspetor sobre os próprios arquivos locais extraídos da cópia que pode usar legalmente e manter o relatório/dados fora do Git. A ferramenta atual é intake, não disassembler, recompilador ou runtime.
+
+## POC-002 — primeiro subconjunto Thumb-16 — 2026-10-25
+
+- Adicionado `tools/thumb_subset_poc.py`, uma ferramenta independente da POC ARM A32, para uma sequência explícita de halfwords Thumb-16 sintéticos.
+- Subconjunto implementado: `MOVS Rd,#imm8`, `ADDS Rd,#imm8`, `SUBS Rd,#imm8`, `CMP Rn,#imm8`, `B` incondicional, `B<cond>` para as 14 condições EQ..LE e `BX LR` como terminador exato. Operandos limitam-se a r0–r7 e imediatos de 8 bits.
+- Os ramos usam o PC Thumb (instrução atual + 4); alvos fora da fixture são rejeitados. Desvios para trás/autoalvos são recusados sem orçamento e limitados a 1–100.000 passos quando o orçamento é fornecido.
+- A fixture sintética padrão deve retornar r0=7 com NZCV=6; a matriz nativa usa uma tabela independente para as 224 combinações de 14 condições × 16 estados NZCV. Foram adicionados 27 métodos de teste para decodificação, rejeições, CLI, compilação C11, flags, condição e orçamento.
+- **Limite:** isto não identifica automaticamente instruções, não descobre funções e não deve ser aplicado por linear sweep a todo `.text`; literal pools, dados embutidos e transições entre ARM/Thumb requerem análise de fluxo. Nenhum dado de jogo foi usado.
+- Estado da execução integral para este commit: PENDENTE até o workflow `POC-001 full suite` confirmar resultado. Próximo critério é executar o tradutor e os testes no checkout integral da `main`, além da matriz diferencial e do verificador de segurança.

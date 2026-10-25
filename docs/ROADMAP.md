@@ -89,6 +89,19 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Critério de conclusão:** preflight reproduzível em entradas locais dos dois jogos, revisão exata identificada e nenhuma entrada/extração/saída derivada publicada. A etapa atual ainda não é desassemblagem nem recompilação.
 
+## Fase 5B — POC-002: subconjunto Thumb-16
+
+**Estado:** primeira implementação do subconjunto sintético adicionada; a aceitação depende da execução da suíte completa da `main` no workflow.
+
+**Cobertura atual**
+- [x] Decodificar `MOVS`, `ADDS`, `SUBS` e `CMP` imediatos.
+- [x] Traduzir branches incondicionais e condicionais EQ..LE com offsets Thumb relativos ao PC (endereço atual + 4).
+- [x] Modelar flags NZCV, entrada explícita, sequência com `BX LR` e limite de execução para laços.
+- [x] Testar a fixture nativa e as 224 combinações de condição/estado NZCV contra tabela independente.
+- [ ] Conectar a tradução somente a intervalos de código identificados por análise de fluxo/estado ARM-Thumb; não fazer linear sweep indiscriminado em `.text`.
+
+**Critério de conclusão:** teste sintético reproduzível e limites da implementação claros. Não inferir compatibilidade com jogo até haver descoberta de funções, análise de dados embutidos e verificação diferencial independente.
+
 ## Fase 6 — Investigar runtime próprio para Windows
 
 **Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
