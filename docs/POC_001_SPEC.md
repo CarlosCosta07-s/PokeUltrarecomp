@@ -36,7 +36,13 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 - `BX LR` como terminador único no final da sequência.
 - Limite de 256 palavras de instrução por sequência.
 
-Instruções condicionais, Thumb, operações com flags, registradores fora do subconjunto, acessos à memória, saltos internos, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+Instruções condicionais, Thumb, operações com flags no tradutor, registradores fora do subconjunto, acessos à memória, saltos internos, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+
+## Modelo isolado de flags NZCV
+
+O módulo [\`tools/arm_flags.py\`](../tools/arm_flags.py) implementa uma representação imutável das flags N, Z, C e V para aritmética de 32 bits e atualização de N/Z em operações lógicas. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação de C/V em operações lógicas quando o shifter não produz um novo carry.
+
+Esse modelo está **separado do tradutor ARM A32 → C**. Ainda não muda a emissão de C, não implementa o CPSR completo e não habilita instruções com o bit S. O módulo tem testes próprios em [\`tests/test_arm_flags.py\`](../tests/test_arm_flags.py). A integração com o tradutor e o suporte a instruções como CMN permanecem pendentes até existir uma representação de estado/flags na execução recompilada.
 
 ## Arquivos
 
@@ -76,7 +82,9 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte da POC: 23 testes aprovados no ambiente temporário desta sessão, incluindo decodificação de `MVN`, rejeição de um encoding não canônico e verificação da emissão C.
+- Suíte do tradutor POC-001: 23 testes aprovados no ambiente temporário desta sessão.
+- Modelo de flags NZCV isolado: 18 testes aprovados, cobrindo resultados de 32 bits, carry, borrow, overflow assinado, N/Z e preservação/substituição de C nas operações lógicas.
+- Suíte completa das ferramentas Python: 50 testes aprovados, sem falhas ou testes ignorados (23 do tradutor, 18 do modelo NZCV e 9 do verificador de segurança).
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
