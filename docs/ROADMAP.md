@@ -105,7 +105,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
 
-**Estado:** inspeção sintática explícita de intervalos ARM/Thumb, grafo candidato de controle e resumo conservador de efeitos. A cobertura A32 inclui `BL`/`BLX` imediato, `BX Rm`/`BLX Rm`, `LDR` literal word e formas comuns `STMDB sp!`/`LDMIA sp!`. A suíte integral passou em **267 testes**, matriz diferencial 96/96 e verificador de segurança PASS em 43 caminhos no [run 40200493912](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200493912). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
+**Estado:** inspeção sintática explícita de intervalos ARM/Thumb, grafo candidato de controle e resumo conservador de efeitos. A cobertura A32 inclui `BL`/`BLX`, `BX Rm`/`BLX Rm`, `LDR` literal, prólogos/epílogos `STMDB sp!`/`LDMIA sp!` e LDR/STR word/byte por offset imediato. A suíte integral passou em **271 testes**, matriz diferencial 96/96 e verificador de segurança PASS em 43 caminhos no [run 40200917080](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200917080). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
 
 **Tarefas**
 - [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
@@ -119,8 +119,9 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Decodificar chamadas A32 `BL`/`BLX` imediato e `BX Rm`/`BLX Rm` sem inventar destino de registrador.
 - [x] Decodificar A32 `LDR` literal word PC-relativo, reportando o endereço sem ler o valor.
 - [x] Identificar formas comuns de prólogo/epílogo `STMDB sp!`/`LDMIA sp!`, efeito de stack/memória e PC carregado como fluxo indireto.
+- [x] Decodificar A32 LDR/STR word/byte com offset imediato, modos pre/post-index e writeback; registrar efeitos sem resolver endereço efetivo ou ler memória.
 - [ ] Integrar o resultado a uma seleção de intervalo candidato que exija confirmação do mantenedor do endereço inicial e do estado ARM/Thumb.
-- [x] Executar testes sintéticos na suíte completa; validação mais recente: 267 testes no [run 40200493912](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200493912), incluindo inspeção A32 de chamadas, literais e transferências de stack.
+- [x] Executar testes sintéticos na suíte completa; validação mais recente: 271 testes no [run 40200917080](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200917080), incluindo inspeção A32 de chamadas, literais, stack e LDR/STR imediato.
 - [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
 - [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.
 
@@ -147,7 +148,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5F — Efeitos observados de registradores e flags
 
-**Estado:** sumário sintático conservador implementado e validado como parte dos 267 testes do [run 40200493912](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200493912). Não é análise de vivacidade, execução simbólica ou inferência de ABI.
+**Estado:** sumário sintático conservador implementado e validado como parte dos 271 testes do [run 40200917080](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200917080). Não é análise de vivacidade, execução simbólica ou inferência de ABI.
 
 - [x] Relatar leituras/escritas observadas de registradores para o subconjunto conhecido de ARM A32/Thumb.
 - [x] Relatar leitura/escrita de NZCV para condições, aritmética, comparações e operações Thumb suportadas.

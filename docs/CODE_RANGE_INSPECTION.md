@@ -41,6 +41,22 @@ O inspetor seleciona somente a faixa indicada pelo mantenedor e reconhece um sub
 
 Esses encodings são cobertos por fixtures sintéticas na suíte completa aprovada: [run 40200493912](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200493912), 267 testes, matriz diferencial 96/96 e verificador de segurança PASS. Referências de formato: [BL/BLX immediate A32](https://mikhailarkhipov.github.io/ARM-doc/A32/bl_i.html) e [LDR literal](https://support.arm.com/documentation/ddi0487/md/-Part-F-The-AArch32-Instruction-Sets/-Chapter-F5-T32-and-A32-Base-Instruction-Set-Instruction-Descriptions/-F5-1-Alphabetical-list-of-T32-and-A32-base-instruction-set-instructions/-F5-1-74-LDR--literal-).
 
+## A32 load/store word/byte por offset imediato
+
+O inspetor reconhece o grupo A32 de transferência simples quando o encoding é AL, usa offset imediato e corresponde a LDR/STR de palavra ou byte. O relatório inclui `memory_access` com direção, largura em bytes, registrador base/dados, offset assinado, addressing mode e writeback:
+
+- `LDR/STR Rt, [Rn, #+/-imm12]` — offset/pre-index sem writeback.
+- `LDR/STR Rt, [Rn, #+/-imm12]!` — pre-index com writeback.
+- `LDR/STR Rt, [Rn], #+/-imm12` — post-index, que atualiza a base.
+- `LDRB/STRB` usam largura de 1 byte; `LDR/STR` usam largura de 4 bytes.
+- `LDR pc, [Rn, #offset]` é marcado como transferência indireta, mas o destino permanece nulo porque o valor carregado não é lido.
+
+`runtime_effective_address_resolved: false` e `memory_value_read_by_inspector: false` indicam que o inspetor não lê memória nem presume valores dos registradores. Os sumários de efeitos registram leituras/escritas e writeback, não valores reais nem semântica executada.
+
+Por precaução, offsets por registrador, operações halfword/signed-byte, transferências não privilegiadas (`P=0, W=1`), base PC fora do caso de LDR literal e writeback com `Rn=Rt` ficam fora deste subconjunto. A instrução desconhecida continua explicitamente desconhecida.
+
+Essa classificação segue os campos P/U/B/W/L de A32 e as regras de pre/post-index descritas em [ARM STR immediate](https://mikhailarkhipov.github.io/ARM-doc/A32/str_i.html) e [ARM LDR literal](https://support.arm.com/documentation/ddi0487/md/-Part-F-The-AArch32-Instruction-Sets/-Chapter-F5-T32-and-A32-Base-Instruction-Set-Instruction-Descriptions/-F5-1-Alphabetical-list-of-T32-and-A32-base-instruction-set-instructions/-F5-1-74-LDR--literal-). O teste de integração mais recente foi aprovado no [run 40200917080](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200917080), com 271 testes.
+
 ## Grafo estrutural de fluxo
 
 O decodificador Thumb-16 também reconhece o grupo de processamento entre registradores completo de 16 opcodes: ANDS/EORS/LSLS/LSRS/ASRS/ADCS/SBCS/RORS/TST/RSBS/CMP/CMN/ORRS/MULS/BICS/MVNS. Os shifts por registrador usam Rs[7:0] como quantidade e a formatação do relatório preserva os dois operandos. A ferramenta não simula registradores nem infere valores em tempo de execução; a semântica C e os testes de NZCV pertencem à POC-002 sintética.
