@@ -91,8 +91,7 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         rd = word & 0x7
         return (shift_names[shift_opcode], rd, rm, amount)
 
-    # Thumb-1 data-processing register group (low registers only).
-    # Unimplemented ALU opcodes remain explicit failures.
+    # Complete Thumb-1 data-processing register group, using low registers only.
     if (word & 0xFC00) == 0x4000:
         opcode = (word >> 6) & 0xF
         rm = (word >> 3) & 0x7
@@ -111,6 +110,7 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             0xA: "cmp_reg",
             0xB: "cmn_reg",
             0xC: "orrs_reg",
+            0xD: "muls_reg",
             0xE: "bics_reg",
             0xF: "mvns_reg",
         }
@@ -315,7 +315,7 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
-        elif inst[0] in ("ands_reg", "eors_reg", "lsls_reg", "lsrs_reg", "asrs_reg", "adcs_reg", "sbcs_reg", "rors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
+        elif inst[0] in ("ands_reg", "eors_reg", "lsls_reg", "lsrs_reg", "asrs_reg", "adcs_reg", "sbcs_reg", "rors_reg", "orrs_reg", "muls_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
             used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
@@ -382,6 +382,21 @@ def translate(
             lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+        elif op == "muls_reg":
+            _, rd, rm = inst
+            suffix = str(index)
+            lhs = f"thumb_muls_lhs_{suffix}"
+            rhs = f"thumb_muls_rhs_{suffix}"
+            wide = f"thumb_muls_wide_{suffix}"
+            result = f"thumb_muls_result_{suffix}"
+            lines.append(f"    uint32_t {lhs} = r{rd};")
+            lines.append(f"    uint32_t {rhs} = r{rm};")
+            lines.append(f"    uint64_t {wide} = (uint64_t){lhs} * (uint64_t){rhs};")
+            lines.append(f"    uint32_t {result} = (uint32_t){wide};")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+            # Thumb-1 MULS updates N/Z; C/V remain unchanged.
         elif op in ("lsls_reg", "lsrs_reg", "asrs_reg", "rors_reg"):
             _, rd, rm = inst
             suffix = str(index)

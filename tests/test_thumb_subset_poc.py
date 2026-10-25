@@ -50,8 +50,8 @@ class ThumbDecodeTests(unittest.TestCase):
         self.assertEqual(("bics_reg", 0, 1), poc.decode_halfword(0x4388))
         self.assertEqual(("mvns_reg", 0, 1), poc.decode_halfword(0x43C8))
 
-    def test_classifies_data_processing_register_space_conservatively(self):
-        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x2: "lsls_reg", 0x3: "lsrs_reg", 0x4: "asrs_reg", 0x5: "adcs_reg", 0x6: "sbcs_reg", 0x7: "rors_reg", 0x8: "tst_reg", 0x9: "rsbs_zero", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
+    def test_classifies_all_thumb_data_processing_register_opcodes(self):
+        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x2: "lsls_reg", 0x3: "lsrs_reg", 0x4: "asrs_reg", 0x5: "adcs_reg", 0x6: "sbcs_reg", 0x7: "rors_reg", 0x8: "tst_reg", 0x9: "rsbs_zero", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xD: "muls_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
         for word in range(0x4000, 0x4400):
             opcode = (word >> 6) & 0xF
             with self.subTest(word=f"0x{word:04X}"):
@@ -833,6 +833,40 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(cases)} register-shift cases mismatched")
+
+
+    def test_native_muls_updates_nz_preserves_cv_and_wraps_to_32_bits(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb MULS proof requires cc, gcc, or clang")
+        cases = (
+            # 15 * 17 = 255; carry and overflow enter set and must remain set.
+            ("muls_small", [0x200F, 0x2111, 0x4348, 0x4770], 0x3, 0x000000FF, 0x3),
+            # Zero product updates Z while preserving both C and V.
+            ("muls_zero", [0x2010, 0x2100, 0x4348, 0x4770], 0x3, 0x00000000, 0x7),
+            # 0x80000000 * 2 wraps to the lower 32 bits (zero); V remains set.
+            ("muls_wrap", [0x2080, 0x0600, 0x2102, 0x4348, 0x4770], 0x1, 0x00000000, 0x5),
+        )
+        generated = []
+        checks = []
+        for name, halfwords, initial_nzcv, expected_result, expected_flags in cases:
+            source = poc.translate(halfwords, initial_nzcv=initial_nzcv).replace(
+                "uint32_t thumb_entry(", f"uint32_t {name}("
+            )
+            generated.append(source)
+            checks.append(
+                f"    {{ uint8_t f = 0; if (!({name}(&f) == UINT32_C(0x{expected_result:08X}) "
+                f"&& f == UINT8_C(0x{expected_flags:X}))) bad++; }}"
+            )
+        harness = "\n".join(generated) + "\nint main(void) {\n    int bad = 0;\n" + "\n".join(checks) + "\n    return bad;\n}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_muls.c"
+            exe = Path(directory) / ("thumb_muls.exe" if os.name == "nt" else "thumb_muls")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(cases)} MULS cases mismatched")
 
 if __name__ == "__main__":
     unittest.main()
