@@ -49,6 +49,14 @@ O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência im
 - Implementação: [`tools/arm_subset_poc.py`](../tools/arm_subset_poc.py)
 - Testes: [`tests/test_arm_subset_poc.py`](../tests/test_arm_subset_poc.py)
 
+## Matriz diferencial sintética
+
+A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 72 fixtures, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN. Ela compila o C emitido, executa as funções e compara tanto o retorno quanto o NZCV com o modelo separado tools/arm_flags.py. Execute com:
+
+    python tools/arm_differential_poc.py
+
+O teste compara duas implementações dentro deste projeto; **não é uma validação contra emulador independente**, não substitui o teste de referência 001 e não prova compatibilidade com o jogo. A matriz foi executada localmente com um compilador C11 e -Wall -Wextra -Werror, resultando em 72/72 correspondências.
+
 ## Como reproduzir
 
 Requisitos: Python 3.10+, Git e compilador C compatível com C11 (GCC ou Clang é o caminho testado nesta POC).
@@ -84,7 +92,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 - Python: verificação sintática aprovada.
 - Suíte do tradutor POC-001: **31 testes aprovados**, incluindo decodificação de `ADDS`, `SUBS` e `CMN`, testes negativos e compilação/execução nativa de fixtures com NZCV esperado.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- Suíte completa das ferramentas Python: **58 testes aprovados**, sem falhas ou testes ignorados (31 do tradutor, 18 do modelo NZCV e 9 do verificador de segurança).
+- As três suítes preexistentes das ferramentas Python tinham **58 testes aprovados**, sem falhas ou testes ignorados (31 do tradutor, 18 do modelo NZCV e 9 do verificador de segurança). A nova suíte diferencial acrescenta 3 testes, executados isoladamente; o conjunto combinado de 61 testes ainda precisa ser repetido num checkout limpo da main.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
