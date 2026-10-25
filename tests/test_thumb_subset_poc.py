@@ -41,6 +41,7 @@ class ThumbDecodeTests(unittest.TestCase):
         self.assertEqual(("ands_reg", 0, 1), poc.decode_halfword(0x4008))
         self.assertEqual(("eors_reg", 0, 1), poc.decode_halfword(0x4048))
         self.assertEqual(("tst_reg", 0, 1), poc.decode_halfword(0x4208))
+        self.assertEqual(("rsbs_zero", 0, 1), poc.decode_halfword(0x4248))
         self.assertEqual(("cmp_reg", 0, 1), poc.decode_halfword(0x4288))
         self.assertEqual(("cmn_reg", 0, 1), poc.decode_halfword(0x42C8))
         self.assertEqual(("orrs_reg", 0, 1), poc.decode_halfword(0x4308))
@@ -48,7 +49,7 @@ class ThumbDecodeTests(unittest.TestCase):
         self.assertEqual(("mvns_reg", 0, 1), poc.decode_halfword(0x43C8))
 
     def test_classifies_data_processing_register_space_conservatively(self):
-        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x8: "tst_reg", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
+        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x8: "tst_reg", 0x9: "rsbs_zero", 0xA: "cmp_reg", 0xB: "cmn_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
         for word in range(0x4000, 0x4400):
             opcode = (word >> 6) & 0xF
             with self.subTest(word=f"0x{word:04X}"):
@@ -335,6 +336,34 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "thumb_cmp_cmn.c"
             exe = Path(directory) / ("thumb_cmp_cmn.exe" if os.name == "nt" else "thumb_cmp_cmn")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_native_rsb_zero_negates_and_reports_signed_overflow(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb RSB proof requires cc, gcc, or clang")
+        neg_one = poc.translate([0x2101, 0x4248, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_neg_one("
+        )
+        neg_min = poc.translate([0x2101, 0x07C9, 0x4248, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_neg_min("
+        )
+        harness = "\n".join((neg_one, neg_min)) + """
+int main(void) {
+    uint8_t flags = 0;
+    if (!(thumb_neg_one(&flags) == UINT32_MAX && flags == UINT8_C(8))) return 1;
+    flags = 0;
+    if (!(thumb_neg_min(&flags) == UINT32_C(0x80000000) && flags == UINT8_C(9))) return 2;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_rsb.c"
+            exe = Path(directory) / ("thumb_rsb.exe" if os.name == "nt" else "thumb_rsb")
             src.write_text(harness, encoding="utf-8")
             result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
