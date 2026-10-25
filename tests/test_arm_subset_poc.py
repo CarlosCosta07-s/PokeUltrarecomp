@@ -178,6 +178,22 @@ class TranslationTests(unittest.TestCase):
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+    def test_generated_c_reports_subs_no_borrow_and_overflow_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
+        words = [0xE3A00102, 0xE2500001, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(0x7FFFFFFF) && flags == UINT8_C(3) ? 0 : 1; }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "subs.c"
+            exe = Path(directory) / ("subs.exe" if os.name == "nt" else "subs")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
     def test_generated_c_reports_cmn_flags_without_writing_destination_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
