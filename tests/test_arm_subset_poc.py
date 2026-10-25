@@ -188,7 +188,7 @@ class TranslationTests(unittest.TestCase):
                 self.assertEqual(("branch", name, 0), poc.decode_word((code << 28) | 0x0A000000))
         self.assertEqual(("branch", "al", 0), poc.decode_word(0xEA000000))
 
-    def test_all_branch_conditions_match_arm_spec_for_all_entry_flag_states_when_compiler_exists(self):
+    def test_branches_and_data_predication_match_arm_condition_table_for_all_flag_states_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
             self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
