@@ -43,6 +43,19 @@ class DecoderTests(unittest.TestCase):
     def test_decodes_cmp_immediate(self):
         self.assertEqual(("cmp", 0, 1), poc.decode_word(0xE3500001))
 
+    def test_decodes_unconditional_and_conditional_branches(self):
+        self.assertEqual(("branch", "al", 0), poc.decode_word(0xEA000000))
+        self.assertEqual(("branch", "eq", 1), poc.decode_word(0x0A000001))
+        self.assertEqual(("branch", "ne", -1), poc.decode_word(0x1AFFFFFF))
+
+    def test_rejects_branch_with_link(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "branch-with-link"):
+            poc.decode_word(0xEB000000)
+
+    def test_rejects_unsupported_branch_condition(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "branch condition"):
+            poc.decode_word(0xCA000000)  # BGT
+
     def test_rejects_unsupported_flag_setting_instruction(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
             poc.decode_word(0xE3B00001)  # MOVS remains unsupported
@@ -133,6 +146,63 @@ class TranslationTests(unittest.TestCase):
     def test_enforces_instruction_limit(self):
         with self.assertRaises(poc.UnsupportedInstruction):
             poc.translate([0xE3A00003] * (poc.MAX_INSTRUCTIONS + 1))
+
+    def test_rejects_branch_target_outside_fixture(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "out-of-range instruction"):
+            poc.translate([0xEA000001, 0xE12FFF1E])
+
+    def test_generated_c_unconditional_branch_skips_instruction_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        words = [0xE3A00001, 0xEA000000, 0xE3A00002, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(1) && flags == UINT8_C(0) ? 0 : 1; }\\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "branch.c"
+            exe = Path(directory) / ("branch.exe" if os.name == "nt" else "branch")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_generated_c_beq_taken_uses_cmp_flags_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        # CMP sets Z; BEQ branches to MOV #2 and bypasses MOV #1.
+        words = [0xE3A00000, 0xE3500000, 0x0A000001, 0xE3A00001, 0xEA000000, 0xE3A00002, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(2) && flags == UINT8_C(6) ? 0 : 1; }\\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "beq.c"
+            exe = Path(directory) / ("beq.exe" if os.name == "nt" else "beq")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_generated_c_bne_taken_and_not_taken_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        cases = (
+            ([0xE3A00001, 0xE3500000, 0x1A000001, 0xE3A00002, 0xEA000000, 0xE3A00003, 0xE12FFF1E], 3, 2),
+            ([0xE3A00000, 0xE3500000, 0x1A000001, 0xE3A00001, 0xEA000000, 0xE3A00003, 0xE12FFF1E], 1, 6),
+        )
+        for index, (words, expected_result, expected_flags) in enumerate(cases):
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as directory:
+                src = Path(directory) / "bne.c"
+                exe = Path(directory) / ("bne.exe" if os.name == "nt" else "bne")
+                source = poc.translate(words)
+                harness = source + f"\\nint main(void) {{ uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C({expected_result}) && flags == UINT8_C({expected_flags}) ? 0 : 1; }}\\n"
+                src.write_text(harness, encoding="utf-8")
+                result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+                self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+                run = subprocess.run([str(exe)], capture_output=True, text=True)
+                self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_cli_emits_c_for_the_default_synthetic_fixture(self):
         result = subprocess.run(
