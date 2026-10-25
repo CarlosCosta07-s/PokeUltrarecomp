@@ -4,12 +4,13 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 1 — Organização e auditoria
 
-**Estado:** documentação e auditoria inicial publicadas; pendente decisão do mantenedor sobre o LICENSE preexistente e revisão final de governança.
+**Estado:** documentação, auditoria inicial e verificador local de segurança publicados; a verificação integral da árvore da `main`, a decisão do mantenedor sobre o LICENSE preexistente e a revisão final de governança continuam pendentes.
 
 **Tarefas**
 - [ ] Manter README, arquitetura, regras de contribuição, segurança e avisos legais consistentes.
 - [ ] Registrar os commits e documentos de cada projeto de referência em [AUDIT.md](AUDIT.md).
 - [ ] Separar fatos publicados, evidências autorrelatadas, hipóteses e perguntas abertas.
+- [x] Adicionar verificador local sem dependências para caminhos sensíveis e links Markdown, cobrindo blobs do índice Git e versões da pasta de trabalho.
 - [ ] Confirmar que não há conteúdo de jogo, segredos, chaves ou artefatos de build no Git.
 - [ ] Revisar o arquivo LICENSE preexistente, cuja procedência e abrangência não estão documentadas.
 
