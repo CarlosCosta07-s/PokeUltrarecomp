@@ -100,6 +100,8 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         supported_ops = {
             0x0: "ands_reg",
             0x1: "eors_reg",
+            0x5: "adcs_reg",
+            0x6: "sbcs_reg",
             0x8: "tst_reg",
             0x9: "rsbs_zero",
             0xA: "cmp_reg",
@@ -309,7 +311,7 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
-        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
+        elif inst[0] in ("ands_reg", "eors_reg", "adcs_reg", "sbcs_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
             used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
@@ -349,6 +351,33 @@ def translate(
             lines.append(f"    r{rd} = UINT32_C({immediate});")
             lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif op in ("adcs_reg", "sbcs_reg"):
+            _, rd, rm = inst
+            suffix = str(index)
+            lhs = f"thumb_carry_lhs_{suffix}"
+            rhs = f"thumb_carry_rhs_{suffix}"
+            result = f"thumb_carry_result_{suffix}"
+            lines.append(f"    uint32_t {lhs} = r{rd};")
+            lines.append(f"    uint32_t {rhs} = r{rm};")
+            if op == "adcs_reg":
+                carry_in = f"thumb_carry_in_{suffix}"
+                wide = f"thumb_adc_wide_{suffix}"
+                lines.append(f"    uint32_t {carry_in} = flag_c;")
+                lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs} + (uint64_t){carry_in};")
+                lines.append(f"    uint32_t {result} = (uint32_t){wide};")
+                lines.append(f"    flag_c = (uint32_t)(({wide} >> 32) & UINT64_C(1));")
+                lines.append(f"    flag_v = (uint32_t)((~({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            else:
+                borrow_in = f"thumb_sbc_borrow_{suffix}"
+                subtrahend = f"thumb_sbc_subtrahend_{suffix}"
+                lines.append(f"    uint32_t {borrow_in} = (uint32_t)(flag_c == 0U);")
+                lines.append(f"    uint64_t {subtrahend} = (uint64_t){rhs} + (uint64_t){borrow_in};")
+                lines.append(f"    uint32_t {result} = (uint32_t)((uint64_t){lhs} - {subtrahend});")
+                lines.append(f"    flag_c = (uint32_t)((uint64_t){lhs} >= {subtrahend});")
+                lines.append(f"    flag_v = (uint32_t)((({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         elif op == "rsbs_zero":
             _, rd, rm = inst
             suffix = str(index)
