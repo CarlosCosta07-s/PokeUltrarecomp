@@ -437,8 +437,7 @@ class ExplicitRangeTests(unittest.TestCase):
                 self.assertTrue(effect["conditional"])
                 self.assertEqual(expected_flags[name], effect["flags_read"])
                 self.assertEqual("read", effect["memory"])
-                self.assertEqual("0x00100000" if instruction["index"] == 0 else instruction["virtual_address"],
-                                 instruction["virtual_address"])
+                self.assertEqual(4, instruction["memory_access"]["offset_bytes"])
 
     def test_conditional_a32_memory_access_reports_condition_and_effects(self):
         # LDRNE r0,[r1,#4]; STRNE r2,[r3,#8]
