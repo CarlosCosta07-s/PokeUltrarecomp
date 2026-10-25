@@ -77,7 +77,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 - Decodificação correta de um imediato rotacionado sintético.
 - Rejeição de condição não suportada, atualização de flags, registrador de origem/destino fora do limite, sequência sem `BX LR`, instruções após o retorno e sequência longa demais.
 - C emitido passa por compilador C11 com avisos ativados e `-Werror` no ambiente que suportar essas opções.
-- Executável gerado termina com código zero apenas quando `synthetic_entry()` retorna 12.
+- Executável gerado termina com código zero quando `synthetic_entry(&nzcv_out)` retorna 12 e o nibble NZCV corresponde ao caso de teste.
 
 ## Evidência atual e limites
 
