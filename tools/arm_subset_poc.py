@@ -51,8 +51,20 @@ def decode_word(word: int) -> tuple[object, ...]:
     imm8 = word & 0xFF
     immediate = ror32(imm8, rotate)
 
-    if set_flags:
-        raise UnsupportedInstruction(f"flag-setting instructions are unsupported: 0x{word:08X}")
+    # This integration stage deliberately enables only flag-setting ADD/SUB and
+    # canonical CMN. Logical S-bit forms require shifter-carry semantics and stay
+    # unsupported until that behavior is modeled end-to-end.
+    if set_flags and opcode not in (0b0100, 0b0010, 0b1011):
+        raise UnsupportedInstruction(f"flag-setting form is unsupported: 0x{word:08X}")
+
+    if opcode == 0b1011:  # CMN (immediate): arithmetic flags, no destination write
+        if not set_flags:
+            raise UnsupportedInstruction("CMN requires the S bit to be set")
+        if rd != 0:
+            raise UnsupportedInstruction("only canonical CMN encoding with Rd=0 is supported")
+        if rn > 3:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        return ("cmn", rn, immediate)
 
     # Restrict this POC to r0-r3 so the generated C and tests stay auditable.
     if rd > 3:
@@ -91,12 +103,12 @@ def decode_word(word: int) -> tuple[object, ...]:
     if opcode == 0b0100:  # ADD (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("add", rd, rn, immediate)
+        return ("adds" if set_flags else "add", rd, rn, immediate)
 
     if opcode == 0b0010:  # SUB (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        return ("sub", rd, rn, immediate)
+        return ("subs" if set_flags else "sub", rd, rn, immediate)
 
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
 
@@ -118,16 +130,22 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
     for instruction in decoded[:-1]:
         if instruction[0] in ("mov", "mvn"):
             used_registers.add(instruction[1])
-        elif instruction[0] in ("and", "orr", "eor", "bic", "add", "sub"):
+        elif instruction[0] in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
+        elif instruction[0] == "cmn":
+            used_registers.add(instruction[1])
 
     lines = [
         "#include <stdint.h>",
         "",
         "/* Generated only from the synthetic instruction sequence supplied. */",
-        "uint32_t synthetic_entry(void)",
+        "uint32_t synthetic_entry(uint8_t *nzcv_out)",
         "{",
+        "    uint32_t flag_n = 0;",
+        "    uint32_t flag_z = 0;",
+        "    uint32_t flag_c = 0;",
+        "    uint32_t flag_v = 0;",
     ]
     lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
     for instruction in decoded[:-1]:
@@ -155,9 +173,43 @@ def translate(words: tuple[int, ...] | list[int]) -> str:
         elif instruction[0] == "sub":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
+        elif instruction[0] in ("adds", "subs", "cmn"):
+            operation = instruction[0]
+            if operation == "cmn":
+                _, rn, immediate = instruction
+                rd = None
+            else:
+                _, rd, rn, immediate = instruction
+            suffix = f"{len(lines)}"
+            lhs = f"flag_lhs_{suffix}"
+            result = f"flag_result_{suffix}"
+            rhs = f"flag_rhs_{suffix}"
+            lines.append(f"    uint32_t {lhs} = r{rn};")
+            lines.append(f"    uint32_t {rhs} = UINT32_C({immediate});")
+            if operation in ("adds", "cmn"):
+                wide = f"flag_wide_{suffix}"
+                lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs};")
+                lines.append(f"    uint32_t {result} = (uint32_t){wide};")
+                lines.append(f"    flag_c = (uint32_t)(({wide} >> 32) & UINT64_C(1));")
+                lines.append(f"    flag_v = (uint32_t)((~({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            else:
+                lines.append(f"    uint32_t {result} = (uint32_t)({lhs} - {rhs});")
+                lines.append(f"    flag_c = (uint32_t)({lhs} >= {rhs});")
+                lines.append(f"    flag_v = (uint32_t)((({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            if rd is not None:
+                lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         else:  # defensive: decode/translation tuples are intentionally closed.
             raise UnsupportedInstruction(f"internal unsupported tuple: {instruction!r}")
-    lines.extend(("    return r0;", "}", ""))
+    lines.extend((
+        "    if (nzcv_out != 0) {",
+        "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
+        "    }",
+        "    return r0;",
+        "}",
+        "",
+    ))
     return "\n".join(lines)
 
 
