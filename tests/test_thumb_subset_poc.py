@@ -37,6 +37,28 @@ class ThumbDecodeTests(unittest.TestCase):
     def test_decodes_subs_immediate(self):
         self.assertEqual(("subs", 4, 0x11), poc.decode_halfword(0x3C11))
 
+    def test_decodes_selected_data_processing_register_forms(self):
+        self.assertEqual(("ands_reg", 0, 1), poc.decode_halfword(0x4008))
+        self.assertEqual(("eors_reg", 0, 1), poc.decode_halfword(0x4048))
+        self.assertEqual(("tst_reg", 0, 1), poc.decode_halfword(0x4208))
+        self.assertEqual(("orrs_reg", 0, 1), poc.decode_halfword(0x4308))
+        self.assertEqual(("bics_reg", 0, 1), poc.decode_halfword(0x4388))
+        self.assertEqual(("mvns_reg", 0, 1), poc.decode_halfword(0x43C8))
+
+    def test_classifies_data_processing_register_space_conservatively(self):
+        expected = {0x0: "ands_reg", 0x1: "eors_reg", 0x8: "tst_reg", 0xC: "orrs_reg", 0xE: "bics_reg", 0xF: "mvns_reg"}
+        for word in range(0x4000, 0x4400):
+            opcode = (word >> 6) & 0xF
+            with self.subTest(word=f"0x{word:04X}"):
+                if opcode in expected:
+                    decoded = poc.decode_halfword(word)
+                    self.assertEqual(expected[opcode], decoded[0])
+                    self.assertEqual(word & 7, decoded[1])
+                    self.assertEqual((word >> 3) & 7, decoded[2])
+                else:
+                    with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "data-processing register opcode"):
+                        poc.decode_halfword(word)
+
     def test_decodes_immediate_shift_forms(self):
         self.assertEqual(("lsl_imm", 0, 1, 31), poc.decode_halfword(0x07C8))
         self.assertEqual(("lsr_imm", 3, 2, 4), poc.decode_halfword(0x0913))
@@ -244,6 +266,45 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "thumb_shift.c"
             exe = Path(directory) / ("thumb_shift.exe" if os.name == "nt" else "thumb_shift")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_native_logical_register_ops_update_nz_and_preserve_cv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb logical-operation proof requires cc, gcc, or clang")
+        initial = 0x3  # C and V set; logical operations must preserve both.
+        functions = (
+            poc.translate([0x200F, 0x2103, 0x4008, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_ands("),
+            poc.translate([0x200F, 0x2103, 0x4048, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_eors("),
+            poc.translate([0x200F, 0x2103, 0x4308, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_orrs("),
+            poc.translate([0x200F, 0x2103, 0x4388, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_bics("),
+            poc.translate([0x200F, 0x2103, 0x43C8, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_mvns("),
+            poc.translate([0x2008, 0x2103, 0x4208, 0x4770], initial_nzcv=initial).replace("uint32_t thumb_entry(", "uint32_t logical_tst("),
+        )
+        harness = "\n".join(functions) + """
+int main(void) {
+    uint8_t flags = 0;
+    if (!(logical_ands(&flags) == UINT32_C(3) && flags == UINT8_C(3))) return 1;
+    flags = 0;
+    if (!(logical_eors(&flags) == UINT32_C(12) && flags == UINT8_C(3))) return 2;
+    flags = 0;
+    if (!(logical_orrs(&flags) == UINT32_C(15) && flags == UINT8_C(3))) return 3;
+    flags = 0;
+    if (!(logical_bics(&flags) == UINT32_C(12) && flags == UINT8_C(3))) return 4;
+    flags = 0;
+    if (!(logical_mvns(&flags) == UINT32_C(0xFFFFFFFC) && flags == UINT8_C(11))) return 5;
+    flags = 0;
+    if (!(logical_tst(&flags) == UINT32_C(8) && flags == UINT8_C(7))) return 6;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_logic.c"
+            exe = Path(directory) / ("thumb_logic.exe" if os.name == "nt" else "thumb_logic")
             src.write_text(harness, encoding="utf-8")
             result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
