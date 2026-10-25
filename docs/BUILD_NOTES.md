@@ -513,3 +513,11 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 
 
 - A segunda execução após corrigir as quatro expectativas (run [40202893049](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202893049), commit `c3ce8bb27088784e3c515ce23472ed3084d7f261`) executou 282 testes e apontou somente a ordem canônica das flags lógicas: o sumário usa ordem alfabética `c,n,z`. As expectativas de TST/TEQ foram alinhadas a esse contrato. **Resultado da revisão final:** [run 40202960127](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202960127) passou com 282 testes; matriz diferencial 96/96 e verificador de segurança PASS em 43 caminhos.
+
+
+## Predicação em processamento de registradores A32 — 2026-10-25
+
+- O inspetor agora reconhece o subconjunto de processamento de registradores A32 também sob as 14 condições EQ..LE; a condição AL permanece sem sufixo e a condição 0xF continua fora do subconjunto.
+- A saída usa mnemônicos condicionais como `ADDNE` e `CMPNE`. O sumário de efeitos marca a instrução como condicional e registra as flags de condição lidas, além das flags escritas pela operação quando aplicável.
+- **Validação integral aprovada:** [run 40203189860](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40203189860), commit `5528a3cd10bf75f85717cf5aaf2be83bb621ca90`: `Ran 283 tests in 2.788s`, `OK`; matriz diferencial 96/96; verificador de segurança PASS após conferir 43 caminhos indexados. Nenhum `.code` real foi usado.
+- O inspetor não traduz essas instruções para C, não resolve o valor efetivo do operando deslocado e não demonstra equivalência do jogo. Shifts controlados por registrador, operandos PC e encodings especiais seguem recusados.
