@@ -404,8 +404,8 @@ class ExplicitRangeTests(unittest.TestCase):
         cmp_effect, tst_effect, teq_effect, orr_effect = result["dataflow"]["instructions"]
         self.assertEqual([], cmp_effect["registers_written"])
         self.assertEqual(["c", "n", "v", "z"], cmp_effect["flags_written"])
-        self.assertEqual(["n", "z", "c"], tst_effect["flags_written"])
-        self.assertEqual(["n", "z", "c"], teq_effect["flags_written"])
+        self.assertEqual(["c", "n", "z"], tst_effect["flags_written"])
+        self.assertEqual(["c", "n", "z"], teq_effect["flags_written"])
         self.assertEqual(["r0"], orr_effect["registers_written"])
 
     def test_rejects_out_of_scope_a32_register_data_processing_forms(self):

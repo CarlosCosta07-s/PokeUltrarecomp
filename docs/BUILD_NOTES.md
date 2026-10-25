@@ -510,3 +510,6 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - O primeiro [run 40202767862](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202767862), commit `dd3be2f80327e62eca5ac3fdb6bdfab8f6ed4e5d`, executou 282 testes e encontrou quatro problemas de fixture/expectativa: tupla IR comparada com lista JSON, ordenação canônica de flags, um encoding de TST sem S que era na verdade ANDS e a antiga fixture NOP que agora é reconhecida como MOV.
 - Corrigidas as fixtures/expectativas para comparar a forma serializada correta, usar TST sem S, usar uma instrução ainda não reconhecida para o teste de encoding desconhecido e testar MOV RRX sem S. O subconjunto mantém recusas para execução condicional, shift controlado por registrador e operandos PC.
 - Validação da revisão corrigida pendente. Não declarar equivalência semântica ou cobertura dos jogos; nenhum arquivo `.code` real foi usado.
+
+
+- A segunda execução após corrigir as quatro expectativas (run [40202893049](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202893049), commit `c3ce8bb27088784e3c515ce23472ed3084d7f261`) executou 282 testes e apontou somente a ordem canônica das flags lógicas: o sumário usa ordem alfabética `c,n,z`. As expectativas de TST/TEQ foram alinhadas a esse contrato. Nova execução integral pendente.
