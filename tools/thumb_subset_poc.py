@@ -100,8 +100,12 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         supported_ops = {
             0x0: "ands_reg",
             0x1: "eors_reg",
+            0x2: "lsls_reg",
+            0x3: "lsrs_reg",
+            0x4: "asrs_reg",
             0x5: "adcs_reg",
             0x6: "sbcs_reg",
+            0x7: "rors_reg",
             0x8: "tst_reg",
             0x9: "rsbs_zero",
             0xA: "cmp_reg",
@@ -311,7 +315,7 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
-        elif inst[0] in ("ands_reg", "eors_reg", "adcs_reg", "sbcs_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
+        elif inst[0] in ("ands_reg", "eors_reg", "lsls_reg", "lsrs_reg", "asrs_reg", "adcs_reg", "sbcs_reg", "rors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
             used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
@@ -375,6 +379,69 @@ def translate(
                 lines.append(f"    uint32_t {result} = (uint32_t)((uint64_t){lhs} - {subtrahend});")
                 lines.append(f"    flag_c = (uint32_t)((uint64_t){lhs} >= {subtrahend});")
                 lines.append(f"    flag_v = (uint32_t)((({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+        elif op in ("lsls_reg", "lsrs_reg", "asrs_reg", "rors_reg"):
+            _, rd, rm = inst
+            suffix = str(index)
+            source = f"thumb_regshift_source_{suffix}"
+            amount_source = f"thumb_regshift_amount_source_{suffix}"
+            amount = f"thumb_regshift_amount_{suffix}"
+            result = f"thumb_regshift_result_{suffix}"
+            rotation = f"thumb_regshift_rotation_{suffix}"
+            lines.append(f"    uint32_t {source} = r{rd};")
+            lines.append(f"    uint32_t {amount_source} = r{rm};")
+            lines.append(f"    uint32_t {amount} = {amount_source} & UINT32_C(0xFF);")
+            lines.append(f"    uint32_t {result} = {source};")
+            if op == "lsls_reg":
+                lines.append(f"    if ({amount} != 0U) {{")
+                lines.append(f"        if ({amount} < 32U) {{")
+                lines.append(f"            {result} = (uint32_t)({source} << {amount});")
+                lines.append(f"            flag_c = ({source} >> (32U - {amount})) & 1U;")
+                lines.append(f"        }} else if ({amount} == 32U) {{")
+                lines.append(f"            {result} = UINT32_C(0);")
+                lines.append(f"            flag_c = {source} & 1U;")
+                lines.append("        } else {")
+                lines.append(f"            {result} = UINT32_C(0);")
+                lines.append("            flag_c = 0U;")
+                lines.append("        }")
+                lines.append("    }")
+            elif op == "lsrs_reg":
+                lines.append(f"    if ({amount} != 0U) {{")
+                lines.append(f"        if ({amount} < 32U) {{")
+                lines.append(f"            {result} = {source} >> {amount};")
+                lines.append(f"            flag_c = ({source} >> ({amount} - 1U)) & 1U;")
+                lines.append(f"        } else if ({amount} == 32U) {{")
+                lines.append(f"            {result} = UINT32_C(0);")
+                lines.append(f"            flag_c = ({source} >> 31) & 1U;")
+                lines.append("        } else {")
+                lines.append(f"            {result} = UINT32_C(0);")
+                lines.append("            flag_c = 0U;")
+                lines.append("        }")
+                lines.append("    }")
+            elif op == "asrs_reg":
+                lines.append(f"    if ({amount} != 0U) {{")
+                lines.append(f"        if ({amount} < 32U) {{")
+                lines.append(f"            {result} = ({source} >> {amount}) | ")
+                lines.append(f"                (({source} & UINT32_C(0x80000000)) ? (UINT32_MAX << (32U - {amount})) : UINT32_C(0));")
+                lines.append(f"            flag_c = ({source} >> ({amount} - 1U)) & 1U;")
+                lines.append("        } else {")
+                lines.append(f"            {result} = ({source} & UINT32_C(0x80000000)) ? UINT32_MAX : UINT32_C(0);")
+                lines.append(f"            flag_c = ({source} >> 31) & 1U;")
+                lines.append("        }")
+                lines.append("    }")
+            else:  # ROR by register; a nonzero multiple of 32 preserves value but updates C.
+                lines.append(f"    if ({amount} != 0U) {{")
+                lines.append(f"        {rotation} = {amount} & UINT32_C(31);")
+                lines.append(f"        if ({rotation} != 0U) {{")
+                lines.append(f"            {result} = ({source} >> {rotation}) | ({source} << (32U - {rotation}));")
+                lines.append(f"            flag_c = ({result} >> 31) & 1U;")
+                lines.append("        } else {")
+                lines.append(f"            {result} = {source};")
+                lines.append(f"            flag_c = ({source} >> 31) & 1U;")
+                lines.append("        }")
+                lines.append("    }")
             lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
