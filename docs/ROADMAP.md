@@ -61,7 +61,8 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5 — Definir a primeira prova de conceito
 
-**Preparação experimental:** a [POC-001](POC_001_SPEC.md) foi implementada como demonstração independente de três instruções sintéticas ARM A32 traduzidas para C, com testes host que confirmam o resultado 7. Isto não encerra a fase: não é código de jogo, não valida equivalência com Ultra Sun/Ultra Moon e não substitui a reprodução do teste de referência 001 nem a decisão sobre licenças/procedência.
+**Preparação experimental:** a [POC-001](POC_001_SPEC.md) foi ampliada para uma sequência de quatro instruções sintéticas ARM A32 (`MOV`, `SUB`, `ADD` e `BX LR`), traduzida para C e validada com testes host. A suíte específica da POC tem 13 testes aprovados. Isto não encerra a fase: não é código de jogo, não valida equivalência com Ultra Sun/Ultra Moon e não substitui a reprodução do teste de referência 001 nem a decisão sobre licenças/procedência.
+
 **Tarefas**
 - [ ] Escolher apenas uma unidade pequena, com limite de escopo e um resultado observável.
 - [ ] Definir entrada sintética permitida, saída esperada, dependências e como demonstrar a origem do código.
