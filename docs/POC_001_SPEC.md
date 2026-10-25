@@ -102,7 +102,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 - Python: verificação sintática aprovada.
 - Suíte do tradutor POC-001: **56 testes definidos** após a adição da predicação de dados, incluindo uma matriz nativa que cobre as 14 condições e os 16 estados NZCV para desvios e instruções de dados; a suíte completa ainda precisa ser executada contra este commit.
 - Modelo de flags NZCV de referência: 18 testes aprovados, cobrindo resultados uint32, carry/borrow, overflow assinado, N/Z e preservação/substituição de C em operações lógicas.
-- A última execução integral documentada para o commit anterior foi de **85 testes aprovados**. Este commit acrescenta dois testes ao tradutor, totalizando **87 testes esperados** (56 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial); ainda não foi possível reexecutar a suíte após a mudança.
+- A última execução integral documentada para o commit anterior foi de **85 testes aprovados**. Este commit acrescenta dois testes ao tradutor, totalizando **88 testes esperados** (57 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial); ainda não foi possível reexecutar a suíte após a mudança.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 12 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
