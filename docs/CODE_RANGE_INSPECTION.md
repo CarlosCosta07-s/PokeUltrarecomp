@@ -29,6 +29,18 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 - Thumb-16 `ADR`, `ADD Rd, SP, #imm8×4` e `ADD/SUB SP, #imm7×4` são também identificados: ADR calcula o alvo com `Align4(address + 4) + offset`; o relatório expõe base PC/alvo virtual e delta SP, sem avaliar o valor de SP ou o conteúdo de memória. Estas formas continuam recusadas pelo tradutor sintético por não ter modelo de PC/SP real.
 - Informa os destinos calculados de branches e se caem dentro do intervalo selecionado e do `.text` declarado. Não resolve funções chamadas, memória, literal pools, tabelas de dados, relocations ou ABI.
 
+## Inspeção A32 de chamadas e prólogos/epílogos
+
+O inspetor seleciona somente a faixa indicada pelo mantenedor e reconhece um subconjunto adicional de instruções A32:
+
+- `BL`: calcula o destino com `address + 8 + SignExtend(imm24 << 2)`, reporta LR=`address + 4` e trata a transferência como chamada candidata; não afirma a identidade da função chamada.
+- `BLX` imediato: inclui o bit H no deslocamento, reporta estado de destino Thumb e retorno para o estado A32 chamador.
+- `BX Rm` e `BLX Rm`: reporta transferência indireta; o valor de Rm não é conhecido e o alvo fica nulo. `BLX Rm` conserva o estado de retorno de acordo com o estado no qual a instrução foi inspecionada.
+- `LDR Rt, [PC, #±imm12]` word, com `Rt != PC`: informa `address + 8 ± imm12`, largura de 4 bytes e eventual sobreposição com o intervalo. O valor do literal nunca é lido. `LDR PC` literal e casos fora do subconjunto permanecem desconhecidos.
+- `STMDB sp!, {register-list}` e `LDMIA sp!, {register-list}`: identifica os padrões comuns de prólogo/epílogo ARM, lista registradores observados, efeito de memória e delta SP. Se `pc` é carregado da pilha, o relatório marca transferência indireta sem adivinhar o destino ou provar que o trecho é uma função completa.
+
+Esses encodings são cobertos por fixtures sintéticas na suíte completa aprovada: [run 40200493912](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40200493912), 267 testes, matriz diferencial 96/96 e verificador de segurança PASS. Referências de formato: [BL/BLX immediate A32](https://mikhailarkhipov.github.io/ARM-doc/A32/bl_i.html) e [LDR literal](https://support.arm.com/documentation/ddi0487/md/-Part-F-The-AArch32-Instruction-Sets/-Chapter-F5-T32-and-A32-Base-Instruction-Set-Instruction-Descriptions/-F5-1-Alphabetical-list-of-T32-and-A32-base-instruction-set-instructions/-F5-1-74-LDR--literal-).
+
 ## Grafo estrutural de fluxo
 
 O decodificador Thumb-16 também reconhece o grupo de processamento entre registradores completo de 16 opcodes: ANDS/EORS/LSLS/LSRS/ASRS/ADCS/SBCS/RORS/TST/RSBS/CMP/CMN/ORRS/MULS/BICS/MVNS. Os shifts por registrador usam Rs[7:0] como quantidade e a formatação do relatório preserva os dois operandos. A ferramenta não simula registradores nem infere valores em tempo de execução; a semântica C e os testes de NZCV pertencem à POC-002 sintética.
