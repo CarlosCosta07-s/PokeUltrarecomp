@@ -104,7 +104,7 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Entrada: sequência sintética `E3A00003 E2800004 E12FFF1E`, correspondente ao subconjunto limitado `MOV r0,#3`, `ADD r0,r0,#4`, `BX LR`.
 - Ambiente: Linux 6.18.55 x86_64; Python 3.13.5; GCC 14.2.0.
 - Comandos executados: `python -m py_compile tools/arm_subset_poc.py tests/test_arm_subset_poc.py` e `python -m unittest discover -s tests -v`.
-- Resultado observado: **9 testes aprovados**; compilação C11 temporária com `-Wall -Wextra -Werror` e execução do binário concluíram com código zero porque a função gerada retornou 7.
+- Resultado observado: **11 testes aprovados**; compilação C11 temporária com `-Wall -Wextra -Werror` e execução do binário concluíram com código zero porque a função gerada retornou 7.
 - Armazenamento: arquivo C e executável de teste foram criados dentro de diretório temporário e removidos ao final do teste; nenhum artefato de jogo foi usado.
 - Classificação: **PASS para a demonstração sintética neste ambiente Linux**.
 - Limites: não prova equivalência com instruções de jogo, não suporta Thumb, memória, desvios internos, flags, VFP/NEON, ABI do jogo nem serviços de 3DS; não foi executada no Windows. Não é uma porta nem um runtime de jogo.
