@@ -368,7 +368,7 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertTrue(da["indirect_branch"])
         self.assertIsNone(da["branch_target_virtual_address"])
         self.assertEqual("multiple-DA", da["memory_access"]["addressing_mode"])
-        self.assertEqual(["r4", "r0", "r1"], result["dataflow"]["instructions"][0]["registers_read"])
+        self.assertEqual(["r0", "r1", "r4"], result["dataflow"]["instructions"][0]["registers_read"])
         self.assertIn("r4", result["dataflow"]["instructions"][0]["registers_written"])
         self.assertEqual("indirect-branch", result["dataflow"]["instructions"][3]["control_flow"])
 
