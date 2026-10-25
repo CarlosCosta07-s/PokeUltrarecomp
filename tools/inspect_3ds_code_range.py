@@ -116,6 +116,35 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                 if not add_offset:
                     offset = -offset
                 return ("ldr_literal", rd, offset)
+            if immediate_form:
+                if rn == 15:
+                    raise arm.UnsupportedInstruction(
+                        "A32 PC-based load/store outside the supported LDR literal form is not decoded"
+                    )
+                if not preindexed and writeback:
+                    raise arm.UnsupportedInstruction(
+                        "A32 unprivileged LDRT/STRT encoding (P=0, W=1) is not decoded"
+                    )
+                if not load and rd == 15:
+                    raise arm.UnsupportedInstruction("A32 STR from PC is outside this inspector subset")
+                offset = word & 0xFFF
+                if not add_offset:
+                    offset = -offset
+                writeback_effective = (not preindexed) or writeback
+                if writeback_effective and rn == rd:
+                    raise arm.UnsupportedInstruction(
+                        "A32 load/store writeback with Rn=Rt is architecturally unpredictable"
+                    )
+                return (
+                    "a32_mem_imm",
+                    "ldr" if load else "str",
+                    1 if byte_transfer else 4,
+                    rd,
+                    rn,
+                    offset,
+                    preindexed,
+                    writeback_effective,
+                )
 
     return arm.decode_word(word)
 
@@ -147,6 +176,17 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
         operation = "STMDB" if decoded[0] == "arm_push" else "LDMIA"
         return f"{operation} sp!, {{{', '.join(registers)}}}"
+    if state == "arm" and decoded[0] == "a32_mem_imm":
+        operation, width, rt, rn, offset, preindexed, writeback = decoded[1:]
+        names = {13: "sp", 14: "lr", 15: "pc"}
+        rt_name = names.get(int(rt), f"r{rt}")
+        rn_name = names.get(int(rn), f"r{rn}")
+        mnemonic = str(operation).upper() + ("B" if int(width) == 1 else "")
+        offset_text = f"#{int(offset):+d}"
+        if bool(preindexed):
+            suffix = "!" if bool(writeback) else ""
+            return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
+        return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -225,6 +265,27 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
     if op in ("add", "sub", "and", "orr", "eor", "bic", "adds", "subs"):
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
     raise TargetRangeError(f"could not format decoded operation {decoded!r}")
+
+
+def a32_memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
+    """Describe an A32 immediate word/byte access without reading memory."""
+    if not decoded or decoded[0] != "a32_mem_imm":
+        raise TargetRangeError(f"not a decoded A32 immediate memory access: {decoded!r}")
+    _op, operation, width, rt, rn, offset, preindexed, writeback = decoded
+    names = {13: "sp", 14: "lr", 15: "pc"}
+    return {
+        "direction": "load" if operation == "ldr" else "store",
+        "width_bytes": int(width),
+        "sign_extend": False,
+        "addressing_mode": "pre-indexed" if bool(preindexed) else "post-indexed",
+        "base_register": names.get(int(rn), f"r{rn}"),
+        "data_register": names.get(int(rt), f"r{rt}"),
+        "offset_register": None,
+        "offset_bytes": int(offset),
+        "base_register_writeback": bool(writeback),
+        "runtime_effective_address_resolved": False,
+        "memory_value_read_by_inspector": False,
+    }
 
 
 def memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
@@ -469,6 +530,14 @@ def inspect_code_range(
                         )
                 if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
                     item["memory_access"] = memory_access_metadata(decoded)
+                if state == "arm" and decoded[0] == "a32_mem_imm":
+                    item["memory_access"] = a32_memory_access_metadata(decoded)
+                    if decoded[1] == "ldr" and int(decoded[3]) == 15:
+                        item["indirect_branch"] = True
+                        item["branch_target_virtual_address"] = None
+                        item["branch_target_note"] = (
+                            "PC is loaded from memory at run time; effective address and target are unresolved"
+                        )
                 if state == "thumb" and decoded[0] == "adr":
                     pc_base = (address + 4) & ~3
                     item["pc_relative_address"] = {

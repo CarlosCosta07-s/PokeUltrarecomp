@@ -164,6 +164,79 @@ class ExplicitRangeTests(unittest.TestCase):
                 title_id="00040000001B5000",
             )
 
+    def test_decodes_a32_word_and_byte_load_store_with_addressing_modes(self):
+        # LDR r0,[r1,#4]; STRB r2,[r3,#-8]!; LDR r4,[r5],#-12
+        self.put_arm([0xE5910004, 0xE5632008, 0xE415400C])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        load, store, post = result["instructions"]
+        self.assertEqual("LDR r0, [r1, #+4]", load["mnemonic"])
+        self.assertEqual({
+            "direction": "load", "width_bytes": 4, "sign_extend": False,
+            "addressing_mode": "pre-indexed", "base_register": "r1",
+            "data_register": "r0", "offset_register": None, "offset_bytes": 4,
+            "base_register_writeback": False,
+            "runtime_effective_address_resolved": False, "memory_value_read_by_inspector": False,
+        }, load["memory_access"])
+        self.assertEqual("STRB r2, [r3, #-8]!", store["mnemonic"])
+        self.assertEqual("store", store["memory_access"]["direction"])
+        self.assertEqual(1, store["memory_access"]["width_bytes"])
+        self.assertTrue(store["memory_access"]["base_register_writeback"])
+        self.assertEqual(-8, store["memory_access"]["offset_bytes"])
+        self.assertEqual("LDR r4, [r5], #-12", post["mnemonic"])
+        self.assertEqual("post-indexed", post["memory_access"]["addressing_mode"])
+        self.assertTrue(post["memory_access"]["base_register_writeback"])
+        self.assertEqual(-12, post["memory_access"]["offset_bytes"])
+        load_effect, store_effect, post_effect = result["dataflow"]["instructions"]
+        self.assertEqual("read", load_effect["memory"])
+        self.assertEqual(["r1"], load_effect["registers_read"])
+        self.assertEqual(["r0"], load_effect["registers_written"])
+        self.assertEqual("write", store_effect["memory"])
+        self.assertIn("r2", store_effect["registers_read"])
+        self.assertIn("r3", store_effect["registers_written"])
+        self.assertEqual("read", post_effect["memory"])
+        self.assertIn("r5", post_effect["registers_written"])
+
+    def test_a32_pc_relative_literal_keeps_literal_classification(self):
+        self.put_arm([0xE51F0004])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+            title_id="00040000001B5000",
+        )
+        instruction = result["instructions"][0]
+        self.assertEqual("LDR r0, [pc, #-4]", instruction["mnemonic"])
+        self.assertNotIn("memory_access", instruction)
+        self.assertFalse(instruction["literal_value_read"])
+
+    def test_rejects_unsupported_a32_memory_addressing_conservatively(self):
+        # Register-offset form, unprivileged-transfer form, and writeback where
+        # Rn==Rt are deliberately outside the current inspector subset.
+        for word in (0xE7910002, 0xE4B10004, 0xE5B11004):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
+    def test_a32_load_to_pc_marks_indirect_branch_without_inventing_target(self):
+        self.put_arm([0xE591F004])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+            title_id="00040000001B5000",
+        )
+        instruction = result["instructions"][0]
+        self.assertEqual("LDR pc, [r1, #+4]", instruction["mnemonic"])
+        self.assertTrue(instruction["indirect_branch"])
+        self.assertIsNone(instruction["branch_target_virtual_address"])
+        effect = result["dataflow"]["instructions"][0]
+        self.assertEqual("partial", effect["status"])
+        self.assertEqual("indirect-branch", effect["control_flow"])
+        self.assertEqual("read", effect["memory"])
+
     def test_decodes_a32_stack_multiple_transfer_prologue_epilogue(self):
         self.put_arm([0xE92D40F0, 0xE8BD80F0, 0xE12FFF1E])
         result = ranges.inspect_code_range(

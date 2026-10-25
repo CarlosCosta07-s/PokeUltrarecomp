@@ -146,6 +146,23 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
         reads.add("pc")
         writes.add(_reg(int(op_ir[1])))
         memory = "read"
+    elif op == "a32_mem_imm":
+        operation, width, rt, rn, offset, preindexed, writeback = op_ir[1:]
+        base_reg = _reg(int(rn))
+        data_reg = _reg(int(rt))
+        reads.add(base_reg)
+        if operation == "str":
+            reads.add(data_reg)
+            memory = "write"
+        else:
+            writes.add(data_reg)
+            memory = "read"
+            if int(rt) == 15:
+                flow = "indirect-branch"
+                base["status"] = "partial"
+                notes.append("PC is loaded from memory; effective address and branch target are not resolved")
+        if bool(writeback):
+            writes.add(base_reg)
     elif op in ("arm_push", "arm_pop"):
         mask = int(op_ir[1])
         regs = {_reg(n) for n in range(16) if (mask >> n) & 1}
