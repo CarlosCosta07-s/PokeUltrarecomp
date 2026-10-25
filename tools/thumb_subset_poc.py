@@ -104,10 +104,10 @@ def translate(
         raise UnsupportedThumbInstruction(f"sequence exceeds {MAX_INSTRUCTIONS} halfwords")
 
     decoded = [decode_halfword(word) for word in halfwords]
-    if decoded[-1] != ("return",):
-        raise UnsupportedThumbInstruction("sequence must end with BX LR")
     if any(inst == ("return",) for inst in decoded[:-1]):
         raise UnsupportedThumbInstruction("instructions after BX LR are unsupported")
+    if decoded[-1] != ("return",):
+        raise UnsupportedThumbInstruction("sequence must end with BX LR")
 
     branch_targets: dict[int, int] = {}
     for index, inst in enumerate(decoded):
