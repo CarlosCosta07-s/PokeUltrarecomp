@@ -239,7 +239,7 @@ class ExplicitRangeTests(unittest.TestCase):
 
     def test_decodes_a32_halfword_and_signed_load_immediate_forms(self):
         # LDRH r2,[r1,#0x23]; STRH r2,[r3,#-8]!; LDRSB r4,[r5],#-7; LDRSH r0,[r1,#2]
-        self.put_arm([0xE1D122B3, 0xE16320B8, 0xE05540D7, 0xE1D10F02])
+        self.put_arm([0xE1D122B3, 0xE16320B8, 0xE05540D7, 0xE1D100F2])
         result = ranges.inspect_code_range(
             "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
             title_id="00040000001B5000",
