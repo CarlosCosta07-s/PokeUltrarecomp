@@ -208,3 +208,15 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Resultado observado: **32 testes aprovados, zero falhas e zero ignorados** — 23 da POC e 9 do verificador de segurança. O C gerado foi compilado com C11 e `-Wall -Wextra -Werror`; o executável rodou e confirmou retorno 12.
 - Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
 - Limites: CMN permanece pendente porque sua semântica atualiza NZCV e o POC ainda não modela esses flags. O teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI de segurança não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
+
+
+## Modelo isolado de flags NZCV — 2026-10-24
+
+- Arquivos: `tools/arm_flags.py` e `tests/test_arm_flags.py`.
+- Escopo: flags N/Z/C/V para soma/subtração uint32, carry-in/borrow-in, overflow assinado, nibble de flags e atualização de N/Z para resultados lógicos com preservação de V e preservação/substituição explícita de C.
+- Separação intencional: o modelo ainda não está conectado à tradução ARM A32 → C e não habilita o bit S, CMN, CMP, TST ou saltos condicionais. Esses casos exigem definir o estado do CPSR/NZCV no código gerado e testes de execução/diferenciais antes de serem aceitos.
+- Testes: **18 testes específicos aprovados** para o modelo; suíte completa **50 aprovados, zero falhas, zero ignorados** (23 da POC, 18 de NZCV e 9 de segurança).
+- Blobs publicados e conferidos com hashes Git locais: `tools/arm_flags.py` = `0553247b268472b4385d7685f7770a7a95f09e16`; `tests/test_arm_flags.py` = `33071c2c71284dc0f2930e3e1e9ecd203bbfe09f`; `tools/arm_subset_poc.py` = `cd1f8bbc3bcace3142f933a327904def2de48c6e`; `tests/test_arm_subset_poc.py` = `41333a50933b8a6b18a5cdf2896295aad8c7714d`; `tools/check_repository_safety.py` = `a372a3880723f5a17ae87cd81d4a41bd45d70edc`; `tests/test_repository_safety.py` = `3bd44115751390dc6c613e758c94ef90f988eae2`.
+- Ambiente: Linux 6.18.55 x86_64, Python 3.13.5, GCC 14.2.0, Git 2.47.3.
+- Comandos: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
+- Limites: testes sintéticos independentes; nenhum código C do tradutor consome flags NZCV neste estágio, nenhuma ROM foi usada, Windows não foi testado e o teste de referência 001 permanece pendente.
