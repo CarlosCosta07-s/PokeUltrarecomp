@@ -654,13 +654,39 @@ int main(void) {
             self.assertEqual(0, run.returncode, msg=f"runtime A32 input/output/flags/step check failed with {run.returncode}")
 
     def test_runtime_state_io_rejects_null_registers_and_invalid_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 runtime-state validation requires cc, gcc, or clang")
         source = poc.translate(
             [0xE2800001, 0xE12FFF1E],
             max_execution_steps=2,
             runtime_state_io=True,
         ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_validate(")
-        self.assertIn("uint8_t initial_nzcv", source)
-        self.assertIn("initial_nzcv > UINT8_C(15)", source)
+        harness = source + """
+int main(void) {
+    const uint32_t input[4] = {1U, 2U, 3U, 4U};
+    uint32_t output[4] = {UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+                          UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)};
+    uint8_t flags = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = UINT32_C(99);
+    if (a32_runtime_validate(0, UINT8_C(0), &flags, &steps, &status, output) != 0U) return 1;
+    if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 2;
+    for (unsigned i = 0; i < 4; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 3;
+    flags = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = UINT32_C(99);
+    if (a32_runtime_validate(input, UINT8_C(16), &flags, &steps, &status, output) != 0U) return 4;
+    if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 5;
+    for (unsigned i = 0; i < 4; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 6;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_runtime_invalid.c"
+            exe = Path(directory) / ("a32_runtime_invalid.exe" if os.name == "nt" else "a32_runtime_invalid")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"invalid A32 runtime input handling failed with {run.returncode}")
 
     def test_runtime_state_io_requires_boolean_option_and_execution_budget(self):
         words = [0xE2800001, 0xE12FFF1E]
