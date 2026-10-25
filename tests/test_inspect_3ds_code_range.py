@@ -237,6 +237,47 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual("indirect-branch", effect["control_flow"])
         self.assertEqual("read", effect["memory"])
 
+    def test_decodes_a32_register_offset_memory_with_shift_and_writeback(self):
+        # LDR r0,[r1,r2,LSL #2]; STRB r4,[r5],-r6,LSR #32; LDR pc,[r1,r2,RRX]
+        self.put_arm([0xE7910102, 0xE4454026, 0xE791F062])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        load, store, branch = result["instructions"]
+        self.assertEqual("LDR r0, [r1, r2, LSL #2]", load["mnemonic"])
+        self.assertEqual("r2", load["memory_access"]["offset_register"])
+        self.assertEqual("lsl", load["memory_access"]["offset_shift"])
+        self.assertEqual(2, load["memory_access"]["offset_shift_amount"])
+        self.assertEqual("add", load["memory_access"]["offset_sign"])
+        self.assertEqual("STRB r4, [r5], -r6, LSR #32", store["mnemonic"])
+        self.assertEqual("post-indexed", store["memory_access"]["addressing_mode"])
+        self.assertEqual(32, store["memory_access"]["offset_shift_amount"])
+        self.assertEqual("subtract", store["memory_access"]["offset_sign"])
+        self.assertTrue(store["memory_access"]["base_register_writeback"])
+        self.assertEqual("LDR pc, [r1, r2, RRX]", branch["mnemonic"])
+        self.assertTrue(branch["indirect_branch"])
+        self.assertIsNone(branch["branch_target_virtual_address"])
+        self.assertEqual("rrx", branch["memory_access"]["offset_shift"])
+        self.assertEqual("c", branch["memory_access"]["offset_carry_input"])
+        effects_by_instruction = result["dataflow"]["instructions"]
+        self.assertIn("r2", effects_by_instruction[0]["registers_read"])
+        self.assertIn("r6", effects_by_instruction[1]["registers_read"])
+        self.assertIn("c", effects_by_instruction[2]["flags_read"])
+        self.assertEqual("indirect-branch", effects_by_instruction[2]["control_flow"])
+
+    def test_rejects_unsupported_a32_register_offset_variants(self):
+        # Register-specified shift, PC base, PC offset register, unprivileged form,
+        # and unpredictable base/data alias with writeback remain unsupported.
+        for word in (0xE7910112, 0xE79F0002, 0xE791000F, 0xE4B10002, 0xE7B11002):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_decodes_a32_halfword_and_signed_load_immediate_forms(self):
         # LDRH r2,[r1,#0x23]; STRH r2,[r3,#-8]!; LDRSB r4,[r5],#-7; LDRSH r0,[r1,#2]
         self.put_arm([0xE1D122B3, 0xE16320B8, 0xE05540D7, 0xE1D100F2])
