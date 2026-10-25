@@ -40,9 +40,9 @@ Instruções condicionais, Thumb, operações com flags no tradutor, registrador
 
 ## Modelo isolado de flags NZCV
 
-O módulo [\`tools/arm_flags.py\`](../tools/arm_flags.py) implementa uma representação imutável das flags N, Z, C e V para aritmética de 32 bits e atualização de N/Z em operações lógicas. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação de C/V em operações lógicas quando o shifter não produz um novo carry.
+O módulo [tools/arm_flags.py](../tools/arm_flags.py) implementa uma representação imutável das flags N, Z, C e V para aritmética de 32 bits e atualização de N/Z em operações lógicas. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação de C/V em operações lógicas quando o shifter não produz um novo carry.
 
-Esse modelo está **separado do tradutor ARM A32 → C**. Ainda não muda a emissão de C, não implementa o CPSR completo e não habilita instruções com o bit S. O módulo tem testes próprios em [\`tests/test_arm_flags.py\`](../tests/test_arm_flags.py). A integração com o tradutor e o suporte a instruções como CMN permanecem pendentes até existir uma representação de estado/flags na execução recompilada.
+Esse modelo está **separado do tradutor ARM A32 → C**. Ainda não muda a emissão de C, não implementa o CPSR completo e não habilita instruções com o bit S. O módulo tem testes próprios em [tests/test_arm_flags.py](../tests/test_arm_flags.py). A integração com o tradutor e o suporte a instruções como CMN permanecem pendentes até existir uma representação de estado/flags na execução recompilada.
 
 ## Arquivos
 
