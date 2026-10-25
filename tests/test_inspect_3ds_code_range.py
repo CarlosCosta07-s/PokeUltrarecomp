@@ -211,9 +211,9 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertFalse(instruction["literal_value_read"])
 
     def test_rejects_unsupported_a32_memory_addressing_conservatively(self):
-        # Register-offset form, unprivileged-transfer form, and writeback where
-        # Rn==Rt are deliberately outside the current inspector subset.
-        for word in (0xE7910002, 0xE4B10004, 0xE5B11004):
+        # Register-specified shift, unprivileged-transfer form, and writeback
+        # where Rn==Rt remain outside the current inspector subset.
+        for word in (0xE7910112, 0xE4B10004, 0xE5B11004):
             with self.subTest(word=f"0x{word:08X}"):
                 self.put_arm([word])
                 with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
@@ -239,7 +239,7 @@ class ExplicitRangeTests(unittest.TestCase):
 
     def test_decodes_a32_register_offset_memory_with_shift_and_writeback(self):
         # LDR r0,[r1,r2,LSL #2]; STRB r4,[r5],-r6,LSR #32; LDR pc,[r1,r2,RRX]
-        self.put_arm([0xE7910102, 0xE4454026, 0xE791F062])
+        self.put_arm([0xE7910102, 0xE6454026, 0xE791F062])
         result = ranges.inspect_code_range(
             "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
             title_id="00040000001B5000",
