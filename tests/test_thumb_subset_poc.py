@@ -780,5 +780,59 @@ class ThumbLiteralLoadTests(unittest.TestCase):
                     poc.translate(words)
 
 
+
+    def test_native_register_shifts_cover_zero_32_over_32_and_sign_cases(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb register-shift proof requires cc, gcc, or clang")
+
+        def regshift(opcode, rd=0, rs=1):
+            return 0x4000 | (opcode << 6) | (rs << 3) | rd
+
+        cases = (
+            # LSL #0 preserves C; the initial C=V=1 survives MOVS and the shift.
+            ("lsl_zero", [0x2001, 0x2100, regshift(0x2), 0x4770], 0x3, 0x00000001, 0x3),
+            # LSL #1 carries bit 31 out (clear); V must be preserved.
+            ("lsl_one", [0x2081, 0x2101, regshift(0x2), 0x4770], 0x1, 0x00000102, 0x1),
+            # LSL #32 yields zero and takes C from source bit 0.
+            ("lsl_32", [0x2081, 0x2120, regshift(0x2), 0x4770], 0x1, 0x00000000, 0x7),
+            # LSL #33 yields zero with C cleared.
+            ("lsl_33", [0x2081, 0x2121, regshift(0x2), 0x4770], 0x1, 0x00000000, 0x5),
+            # LSR #1 uses source bit 0 as carry-out.
+            ("lsr_one", [0x2081, 0x2101, regshift(0x3), 0x4770], 0x1, 0x00000040, 0x3),
+            # LSR #32 and #33 both zero the result and clear carry for this source.
+            ("lsr_32", [0x2081, 0x2120, regshift(0x3), 0x4770], 0x1, 0x00000000, 0x5),
+            ("lsr_33", [0x2081, 0x2121, regshift(0x3), 0x4770], 0x1, 0x00000000, 0x5),
+            # Build 0x80000000 using LSL #24, then check arithmetic sign-fill.
+            ("asr_one", [0x2080, 0x0600, 0x2101, regshift(0x4), 0x4770], 0x1, 0xC0000000, 0x9),
+            ("asr_32", [0x2080, 0x0600, 0x2120, regshift(0x4), 0x4770], 0x1, 0xFFFFFFFF, 0xB),
+            ("asr_33", [0x2080, 0x0600, 0x2121, regshift(0x4), 0x4770], 0x1, 0xFFFFFFFF, 0xB),
+            # ROR #1 rotates the low bit into bit 31; ROR #32 preserves value but sets C=bit31.
+            ("ror_one", [0x2081, 0x2101, regshift(0x7), 0x4770], 0x1, 0x80000040, 0xB),
+            ("ror_32", [0x2081, 0x2120, regshift(0x7), 0x4770], 0x1, 0x00000081, 0x1),
+            # ROR #0 preserves the incoming C, unlike a nonzero multiple of 32.
+            ("ror_zero", [0x2081, 0x2100, regshift(0x7), 0x4770], 0x3, 0x00000081, 0x3),
+        )
+        generated = []
+        checks = []
+        for name, halfwords, initial_nzcv, expected_result, expected_flags in cases:
+            source = poc.translate(halfwords, initial_nzcv=initial_nzcv).replace(
+                "uint32_t thumb_entry(", f"uint32_t {name}("
+            )
+            generated.append(source)
+            checks.append(
+                f"    {{ uint8_t f = 0; if (!({name}(&f) == UINT32_C(0x{expected_result:08X}) "
+                f"&& f == UINT8_C(0x{expected_flags:X}))) bad++; }}"
+            )
+        harness = "\n".join(generated) + "\nint main(void) {\n    int bad = 0;\n" + "\n".join(checks) + "\n    return bad;\n}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_register_shifts.c"
+            exe = Path(directory) / ("thumb_register_shifts.exe" if os.name == "nt" else "thumb_register_shifts")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"{run.returncode} of {len(cases)} register-shift cases mismatched")
+
 if __name__ == "__main__":
     unittest.main()
