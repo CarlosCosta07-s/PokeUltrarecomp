@@ -348,7 +348,7 @@ class ExplicitRangeTests(unittest.TestCase):
 
     def test_decodes_general_a32_ldm_stm_addressing_modes_and_effects(self):
         # STMIA r4!, {r0,r1}; LDMIB r5, {r2,lr}; STMDB r6!, {r7,lr}; LDMDA r8, {r9,pc}
-        self.put_arm([0xE8A40003, 0xE9954004, 0xE9264080, 0xE8118200])
+        self.put_arm([0xE8A40003, 0xE9954004, 0xE9264080, 0xE8188200])
         result = ranges.inspect_code_range(
             "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
             title_id="00040000001B5000",
