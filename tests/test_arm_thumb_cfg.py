@@ -113,7 +113,9 @@ class CandidateControlFlowTests(unittest.TestCase):
             ins(1, 0x1002, ["return"], "BX LR"),
         ], end=0x1004)
         self.assertEqual("indirect-call-return-continuation", report["edges"][0]["kind"])
-        self.assertIsNone(report["edges"][0]["target_address"])
+        self.assertEqual("0x00001002", report["edges"][0]["target_address"])
+        self.assertEqual("resolved", report["edges"][0]["resolution"])
+        self.assertIsNone(report["unresolved_transfers"][0]["target_address"])
         self.assertEqual("BLX_REG", report["unresolved_transfers"][0]["kind"])
 
     def test_unknown_instruction_blocks_known_flow_to_following_range(self):
