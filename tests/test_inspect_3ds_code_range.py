@@ -334,7 +334,7 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(["BX r3", "MOVS r0, #1", "BX LR"], [i["mnemonic"] for i in result["instructions"]])
 
     def test_pc_forms_and_pop_without_pc_stay_unsupported(self):
-        for word in (0x4778, 0x47F8, 0x4701, 0xBC10, 0xBCFF):
+        for word in (0x4778, 0x47F8, 0x4701, 0xBC00, 0xB400, 0xB600):
             with self.subTest(word=hex(word)):
                 self.put_thumb([word, 0x4770])
                 with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction at 0x00100000"):
@@ -348,6 +348,27 @@ class ExplicitRangeTests(unittest.TestCase):
         self.put_arm([0x00004718])
         with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
             ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1)
+
+    def test_decodes_push_pop_prologue_epilogue_with_stack_deltas(self):
+        self.put_thumb([0xB5F0, 0xB401, 0xBC01, 0xB500, 0xBC30, 0xBDF0])
+        result = self.inspect_thumb(6)
+        self.assertEqual("decoded-explicit-range", result["status"])
+        got = [(i["mnemonic"], i["stack_delta_bytes"]) for i in result["instructions"]]
+        self.assertEqual([
+            ("PUSH {r4, r5, r6, r7, lr}", -20), ("PUSH {r0}", -4), ("POP {r0}", 4),
+            ("PUSH {lr}", -4), ("POP {r4, r5}", 8), ("POP {r4, r5, r6, r7, pc}", 20),
+        ], got)
+        self.assertEqual(["push", 0xF0, True], list(result["instructions"][0]["decoded_ir"]))
+        self.assertEqual(["pop", 0x30], list(result["instructions"][4]["decoded_ir"]))
+        for item in result["instructions"][:5]:
+            self.assertNotIn("indirect_branch", item)
+            self.assertNotIn("branch_target_virtual_address", item)
+        self.assertTrue(result["instructions"][5]["indirect_branch"])
+
+    def test_non_stack_instructions_have_no_stack_delta(self):
+        self.put_thumb([0x2001, 0x4770])
+        for item in self.inspect_thumb(2)["instructions"]:
+            self.assertNotIn("stack_delta_bytes", item)
 
     def test_cli_emits_json_for_synthetic_inputs(self):
         self.put_thumb([0x4770])

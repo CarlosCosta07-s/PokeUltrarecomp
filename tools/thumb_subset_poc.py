@@ -34,6 +34,7 @@ CONDITION_C = {
 
 
 INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
+STACK_OPS = ("push", "pop")
 
 
 class UnsupportedThumbInstruction(ValueError):
@@ -64,8 +65,19 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         if rm == 15:
             raise UnsupportedThumbInstruction(f"BLX PC (0x{word:04X}) is unpredictable and not decoded")
         return ("blx_reg", rm)
-    if (word & 0xFF00) == 0xBD00:  # POP {reglist, PC}; P=0 forms are not control flow
+    if (word & 0xFF00) == 0xBD00:  # POP {reglist, PC}
         return ("pop_pc", word & 0xFF)
+    # Stack transfers. An empty list without LR/PC is unpredictable and refused.
+    if (word & 0xFE00) == 0xB400:  # PUSH {reglist[, LR]}
+        mask, lr = word & 0xFF, bool(word & 0x100)
+        if mask == 0 and not lr:
+            raise UnsupportedThumbInstruction(f"PUSH with an empty register list (0x{word:04X}) is unpredictable")
+        return ("push", mask, lr)
+    if (word & 0xFF00) == 0xBC00:  # POP {reglist} (no PC)
+        mask = word & 0xFF
+        if mask == 0:
+            raise UnsupportedThumbInstruction(f"POP with an empty register list (0x{word:04X}) is unpredictable")
+        return ("pop", mask)
 
     op = word & 0xF800
     rd_or_rn = (word >> 8) & 0x7
@@ -181,6 +193,11 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     for inst in decoded:
+        if inst[0] in STACK_OPS:
+            raise UnsupportedThumbInstruction(
+                f"stack transfer ({inst[0]}) is decoded for inspection only; "
+                "the synthetic translator has no memory model"
+            )
         if inst[0] in INDIRECT_FLOW_OPS:
             raise UnsupportedThumbInstruction(
                 f"register-indirect control flow ({inst[0]}) is decoded for inspection only; "

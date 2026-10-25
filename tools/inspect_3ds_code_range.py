@@ -43,9 +43,13 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"BX r{decoded[1]}"
     if decoded[0] == "blx_reg":
         return f"BLX r{decoded[1]}"
-    if decoded[0] == "pop_pc":
-        regs = [f"r{n}" for n in range(8) if int(decoded[1]) >> n & 1] + ["pc"]
-        return "POP {" + ", ".join(regs) + "}"
+    if decoded[0] in ("pop_pc", "pop", "push"):
+        regs = [f"r{n}" for n in range(8) if int(decoded[1]) >> n & 1]
+        if decoded[0] == "pop_pc":
+            regs.append("pc")
+        elif decoded[0] == "push" and decoded[2]:
+            regs.append("lr")
+        return ("PUSH {" if decoded[0] == "push" else "POP {") + ", ".join(regs) + "}"
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -207,6 +211,11 @@ def inspect_code_range(
                     "mnemonic": mnemonic,
                     "decoded_ir": decoded,
                 }
+                if decoded[0] in ("push", "pop", "pop_pc"):
+                    count = bin(int(decoded[1])).count("1") + (
+                        1 if decoded[0] == "pop_pc" or (decoded[0] == "push" and decoded[2]) else 0
+                    )
+                    item["stack_delta_bytes"] = -4 * count if decoded[0] == "push" else 4 * count
                 if decoded[0] in thumb.INDIRECT_FLOW_OPS:
                     item["indirect_branch"] = True
                     item["branch_links"] = decoded[0] == "blx_reg"
@@ -308,6 +317,7 @@ def inspect_code_range(
             "With --include-unsupported, unknown encodings are recorded as raw bytes; they are not disassembled or semantically analyzed.",
             "Only the ARMv6K Thumb BL/BLX immediate pair is decoded among 32-bit Thumb forms; every other 32-bit Thumb pair is kept together as two raw halfwords.",
             "BX Rm, BLX Rm and POP {..., PC} are decoded syntactically (Rm != PC); their run-time targets, ARM/Thumb state switches and stack contents are not resolved, and a decoded BX/POP does not prove a function ends there.",
+            "PUSH/POP are decoded syntactically with their stack-pointer delta only; stack contents, alignment, frame layout and calling convention are not modeled, and a PUSH/POP pair does not prove a function boundary.",
             "BL/BLX decoding computes the call target only; callee identity, return address use, argument registers and ABI are not resolved, and BLX targets are ARM state, not scanned in the Thumb range.",
             "Literal pools, embedded data, relocations, calls, memory effects, ABI and control-flow context are not resolved.",
             "Reports contain instruction encodings derived from local game code; keep them local unless reviewed and redacted.",

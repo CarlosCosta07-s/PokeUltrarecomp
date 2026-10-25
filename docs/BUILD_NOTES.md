@@ -376,3 +376,10 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - **Limites:** só sintaxe. Destino real, troca ARM/Thumb por bit 0, conteúdo da pilha e se o `BX`/`POP` encerra uma função não são resolvidos; nenhum `.code` real foi lido; nenhum suporte a jogo é declarado.
 - **Validação:** workflow [run 40192805813](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40192805813), commit `b7a69703ac80c77c0dce67caae634407f7316245`: aprovado (sintaxe, matriz diferencial, suíte completa, verificador de segurança). `Ran 185 tests ... OK` e matriz 96/96 foram observados na execução local com os mesmos comandos; a contagem não foi extraída do log da CI.
 
+## Decodificação de PUSH/POP Thumb-16 com delta de pilha — 2026-10-25
+
+- **Especificação:** `PUSH {reglist[, LR]}` = `1011 010 R reglist8`; `POP {reglist}` = `1011 110 0 reglist8` (o `POP {…, PC}` anterior é `1011 110 1`). Lista vazia sem LR/PC (`0xB400`, `0xBC00`) é imprevisível e recusada; `PUSH {lr}` (`0xB500`) é válida. Os vizinhos `0xB300`, `0xB600..0xB6FF`, `0xBA00`, `0xBE00` e `0xBF00` continuam desconhecidos.
+- **Código:** IR `("push", mask, lr)` e `("pop", mask)` em `tools/thumb_subset_poc.py`; o tradutor sintético recusa ambos (sem modelo de memória). O inspetor formata `PUSH {r4, r5, lr}` / `POP {r4, r5}` e informa `stack_delta_bytes` (−4·n no PUSH, +4·n no POP, contando LR/PC) também para `POP {…, PC}`. PUSH/POP comuns não recebem `indirect_branch` nem destino.
+- **Testes:** 6 novos em `ThumbStackTransferTests` (formas, listas vazias, varredura exaustiva de `0xB400..0xB5FF` e `0xBC00..0xBCFF`, vizinhos desconhecidos, recusa pelo tradutor) e 2 no inspetor (prólogo/epílogo com deltas calculados à mão; instruções sem efeito de pilha). Testes anteriores que tratavam `0xBC10`, `0xBCFF`, `0xB400` e `0xB500` como desconhecidos foram atualizados. Mutantes (máscara ignorando LR, lista vazia aceita, sinal do delta, LR não contado) são detectados.
+- **Limites:** só sintaxe e delta de SP. Conteúdo, alinhamento, layout de frame, ABI e limites de função não são resolvidos; nenhum `.code` real foi lido; nenhum suporte a jogo é declarado.
+

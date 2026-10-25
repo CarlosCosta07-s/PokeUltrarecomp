@@ -374,7 +374,7 @@ class ThumbIndirectFlowTests(unittest.TestCase):
         self.assertEqual(("pop_pc", 0x00), poc.decode_halfword(0xBD00))
         self.assertEqual(("pop_pc", 0x10), poc.decode_halfword(0xBD10))
         self.assertEqual(("pop_pc", 0xFF), poc.decode_halfword(0xBDFF))
-        for word in (0xBC00, 0xBC10, 0xBCFF, 0xBE00, 0xB400, 0xB500):   # POP without PC, BKPT, PUSH
+        for word in (0xBE00, 0xBEFF, 0xB600, 0xB300):   # BKPT, CPS/SETEND space, unrelated misc
             with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
                 poc.decode_halfword(word)
 
@@ -394,17 +394,62 @@ class ThumbIndirectFlowTests(unittest.TestCase):
                         poc.decode_halfword(word)
                 else:
                     self.assertEqual(expected, poc.decode_halfword(word))
-        for word in range(0xBC00, 0xBE00):
-            if word & 0x100:
-                self.assertEqual(("pop_pc", word & 0xFF), poc.decode_halfword(word))
-            else:
-                with self.assertRaises(poc.UnsupportedThumbInstruction):
-                    poc.decode_halfword(word)
+        for word in range(0xBD00, 0xBE00):
+            self.assertEqual(("pop_pc", word & 0xFF), poc.decode_halfword(word))
 
     def test_synthetic_translator_refuses_indirect_flow(self):
         for words in ([0x4718, 0x4770], [0x4790, 0x4770], [0xBD10, 0x4770], [0x2001, 0xBD00]):
             with self.subTest(words=[hex(w) for w in words]):
                 with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "register-indirect"):
+                    poc.translate(words)
+
+
+class ThumbStackTransferTests(unittest.TestCase):
+    """PUSH {reglist[, LR]} / POP {reglist}; expectations are written out by hand."""
+
+    def test_push_forms(self):
+        cases = {0xB401: (0x01, False), 0xB4F0: (0xF0, False), 0xB510: (0x10, True),
+                 0xB500: (0x00, True), 0xB5FF: (0xFF, True), 0xB4FF: (0xFF, False)}
+        for word, (mask, lr) in cases.items():
+            with self.subTest(word=hex(word)):
+                self.assertEqual(("push", mask, lr), poc.decode_halfword(word))
+
+    def test_pop_forms(self):
+        for word, mask in ((0xBC01, 0x01), (0xBC10, 0x10), (0xBCFF, 0xFF)):
+            with self.subTest(word=hex(word)):
+                self.assertEqual(("pop", mask), poc.decode_halfword(word))
+        self.assertEqual(("pop_pc", 0x00), poc.decode_halfword(0xBD00))   # POP {pc} unchanged
+
+    def test_empty_register_lists_are_refused(self):
+        for word in (0xB400, 0xBC00):
+            with self.subTest(word=hex(word)), self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "empty register list"):
+                poc.decode_halfword(word)
+
+    def test_exhaustive_push_pop_space(self):
+        for word in range(0xB400, 0xB600):
+            with self.subTest(word=hex(word)):
+                if word == 0xB400:
+                    with self.assertRaises(poc.UnsupportedThumbInstruction):
+                        poc.decode_halfword(word)
+                else:
+                    self.assertEqual(("push", word & 0xFF, bool(word & 0x100)), poc.decode_halfword(word))
+        for word in range(0xBC00, 0xBD00):
+            with self.subTest(word=hex(word)):
+                if word == 0xBC00:
+                    with self.assertRaises(poc.UnsupportedThumbInstruction):
+                        poc.decode_halfword(word)
+                else:
+                    self.assertEqual(("pop", word & 0xFF), poc.decode_halfword(word))
+
+    def test_neighbouring_misc_encodings_stay_unknown(self):
+        for word in (0xB3FF, 0xB600, 0xB6FF, 0xBA00, 0xBE00, 0xBF00):
+            with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_halfword(word)
+
+    def test_synthetic_translator_refuses_stack_transfers(self):
+        for words in ([0xB510, 0x4770], [0x2001, 0xBC10, 0x4770]):
+            with self.subTest(words=[hex(w) for w in words]):
+                with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "stack transfer"):
                     poc.translate(words)
 
 
