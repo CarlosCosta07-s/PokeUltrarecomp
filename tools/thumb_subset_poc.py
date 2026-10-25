@@ -306,13 +306,19 @@ def translate(
     halfwords: tuple[int, ...] | list[int],
     initial_nzcv: int = 0,
     max_execution_steps: int | None = None,
+    runtime_state_io: bool = False,
 ) -> str:
-    """Translate a list of synthetic Thumb-16 halfwords to host C.
+    """Translate a list of Thumb-16 halfwords to host C.
 
-    Without a budget, backward/self-targeting branches are refused. A supplied
-    budget counts every visited guest instruction, including branches not taken
-    and the final BX LR.
+    The default interface keeps fixed zero-initialized registers and translation-
+    time NZCV. With ``runtime_state_io=True``, bounded C accepts r0-r7 and NZCV
+    at runtime, returning all registers, NZCV, step count and execution status.
+    This is an explicit-range candidate interface, not a native ARM ABI proof.
     """
+    if not isinstance(runtime_state_io, bool):
+        raise UnsupportedThumbInstruction("runtime_state_io must be a bool")
+    if runtime_state_io and max_execution_steps is None:
+        raise UnsupportedThumbInstruction("runtime_state_io requires an explicit execution budget")
     if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
         raise UnsupportedThumbInstruction(f"initial NZCV must be a 4-bit value (0..15): {initial_nzcv!r}")
     if max_execution_steps is not None and (
@@ -390,26 +396,56 @@ def translate(
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
 
+    if runtime_state_io:
+        used_registers = set(range(8))
     bounded = max_execution_steps is not None
     signature = (
-        "uint32_t thumb_entry_bounded(uint8_t *nzcv_out, "
-        "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
-        if bounded else "uint32_t thumb_entry(uint8_t *nzcv_out)"
+        "uint32_t thumb_entry_bounded(const uint32_t *registers_in, "
+        "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+        "uint8_t *execution_status_out, uint32_t *registers_out)"
+        if runtime_state_io else (
+            "uint32_t thumb_entry_bounded(uint8_t *nzcv_out, "
+            "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
+            if bounded else "uint32_t thumb_entry(uint8_t *nzcv_out)"
+        )
+    )
+    flag_initializers = (
+        [
+            "    uint32_t flag_n = (uint32_t)((initial_nzcv >> 3) & 1U);",
+            "    uint32_t flag_z = (uint32_t)((initial_nzcv >> 2) & 1U);",
+            "    uint32_t flag_c = (uint32_t)((initial_nzcv >> 1) & 1U);",
+            "    uint32_t flag_v = (uint32_t)(initial_nzcv & 1U);",
+        ] if runtime_state_io else [
+            f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1}U;",
+            f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1}U;",
+            f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1}U;",
+            f"    uint32_t flag_v = {initial_nzcv & 1}U;",
+        ]
     )
     lines = [
         "#include <stdint.h>",
         "",
+        "/* Generated C remains a candidate model; independent semantic validation is required. */"
+        if runtime_state_io else
         "/* Generated only from synthetic Thumb halfwords supplied by the caller. */",
         signature,
         "{",
-        f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1}U;",
-        f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1}U;",
-        f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1}U;",
-        f"    uint32_t flag_v = {initial_nzcv & 1}U;",
     ]
+    if runtime_state_io:
+        lines.extend((
+            "    if (registers_in == 0 || initial_nzcv > UINT8_C(15)) {",
+            "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
+            "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+            "        return 0U;",
+            "    }",
+    ))
+    lines.extend(flag_initializers)
     if bounded:
         lines.append("    uint32_t execution_steps = 0U;")
-    lines.extend(f"    uint32_t r{reg} = 0U;" for reg in sorted(used_registers))
+    if runtime_state_io:
+        lines.extend(f"    uint32_t r{reg} = registers_in[{reg}];" for reg in sorted(used_registers))
+    else:
+        lines.extend(f"    uint32_t r{reg} = 0U;" for reg in sorted(used_registers))
 
     branch_target_indices = set(branch_targets.values())
     for index, inst in enumerate(decoded[:-1]):
@@ -676,6 +712,12 @@ def translate(
         "    if (nzcv_out != 0) {",
         "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
         "    }",
+    ))
+    if runtime_state_io:
+        lines.append("    if (registers_out != 0) {")
+        lines.extend(f"        registers_out[{reg}] = r{reg};" for reg in range(8))
+        lines.append("    }")
+    lines.extend((
         "    return r0;",
         "}",
         "",
