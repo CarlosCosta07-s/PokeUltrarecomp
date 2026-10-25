@@ -72,12 +72,12 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de quatro instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **13 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de cinco palavras ARM A32 em C, para compilação no host. Após a iteração com `AND` imediato, **15 testes específicos da POC passaram** e o C emitido foi compilado e executado com o resultado esperado `7`. A suíte completa publicada (POC + verificador do repositório) passou em **24 testes**, sem falhas nem testes ignorados, no ambiente Linux desta sessão.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
 
-A POC cobre apenas `MOV`, `SUB` e `ADD` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A POC cobre apenas `MOV`, `SUB`, `ADD` e `AND` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
 ## Como acompanhar o progresso
 
