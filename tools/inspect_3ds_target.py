@@ -67,6 +67,24 @@ def _read_input(path: Path, label: str) -> bytes:
         raise TargetInspectionError(f"cannot read {label} file {path.name!r}: {exc}") from exc
 
 
+def code_size_hint(profile: dict[str, Any], code_size_bytes: int) -> dict[str, Any]:
+    """Return a size-only variant candidate; never authenticate a game revision."""
+    for hint in profile.get("known_code_size_hints", []):
+        if code_size_bytes == hint.get("size_bytes"):
+            return {
+                "status": "candidate-by-size-only",
+                "variant": hint["variant"],
+                "matched_size_bytes": code_size_bytes,
+                "source_url": hint["source_url"],
+                "verified_revision": False,
+            }
+    return {
+        "status": "no-known-size-match",
+        "matched_size_bytes": code_size_bytes,
+        "verified_revision": False,
+    }
+
+
 def inspect_target(
     target_id: str,
     exheader_path: Path,
@@ -188,6 +206,7 @@ def inspect_target(
     return {
         "schema_version": 1,
         "status": "pass-with-warnings" if warnings else "pass",
+        "revision_hint": code_size_hint(profile, len(code)),
         "target": {
             "target_id": profile["target_id"],
             "display_name": profile["display_name"],

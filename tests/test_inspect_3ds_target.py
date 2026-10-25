@@ -46,6 +46,12 @@ class TargetProfileTests(unittest.TestCase):
         self.assertEqual("00040000001B5000", profiles["ultra-sun"]["title_ids"]["base"])
         self.assertEqual("00040000001B5100", profiles["ultra-moon"]["title_ids"]["base"])
         self.assertEqual("Nintendo 3DS", profiles["ultra-sun"]["platform"])
+        us_hint = inspector.code_size_hint(profiles["ultra-sun"], 5914624)
+        um_update_hint = inspector.code_size_hint(profiles["ultra-moon"], 5922816)
+        self.assertEqual("base-v1.0-size-candidate", us_hint["variant"])
+        self.assertEqual("update-v1.2-size-candidate", um_update_hint["variant"])
+        self.assertFalse(us_hint["verified_revision"])
+        self.assertEqual("no-known-size-match", inspector.code_size_hint(profiles["ultra-sun"], 12345)["status"])
 
 
 class ExHeaderInspectionTests(unittest.TestCase):

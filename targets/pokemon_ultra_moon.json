@@ -19,5 +19,21 @@
     "local_only": true,
     "generated_code_must_not_be_committed": true
   },
-  "status": "target-intake-only"
+  "status": "target-intake-only",
+  "known_code_size_hints": [
+    {
+      "variant": "base-v1.0-size-candidate",
+      "size_bytes": 5914624,
+      "title_kind": "base",
+      "source_url": "https://github.com/isleep2late/Un-Nerf-Compendium/blob/main/gen7_usum/azahar-mods/README.md",
+      "caveat": "Size-only candidate from a community technical reference; not proof of version or an unmodified binary."
+    },
+    {
+      "variant": "update-v1.2-size-candidate",
+      "size_bytes": 5922816,
+      "title_kind": "update",
+      "source_url": "https://github.com/isleep2late/Un-Nerf-Compendium/blob/main/gen7_usum/azahar-mods/README.md",
+      "caveat": "Size-only candidate from a community technical reference; not proof of version or an unmodified binary."
+    }
+  ]
 }
