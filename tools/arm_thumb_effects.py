@@ -160,6 +160,23 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
             memory = "read"
         if bool(writeback):
             writes.add(base_reg)
+    elif op == "a32_multi":
+        operation, rn, register_mask, mode, writeback = op_ir[1:]
+        base_reg = _reg(int(rn))
+        register_names = {_reg(number) for number in range(16) if (int(register_mask) >> number) & 1}
+        reads.add(base_reg)
+        if operation == "stm":
+            reads |= register_names
+            memory = "write"
+        else:
+            writes |= register_names
+            memory = "read"
+            if int(register_mask) & (1 << 15):
+                flow = "indirect-branch"
+                base["status"] = "partial"
+                notes.append("LDM loads PC from memory; target and return status are not resolved")
+        if bool(writeback):
+            writes.add(base_reg)
     elif op in ("a32_mem_imm", "a32_mem_extra_imm", "a32_mem_reg"):
         operation = op_ir[1]
         if op == "a32_mem_imm":

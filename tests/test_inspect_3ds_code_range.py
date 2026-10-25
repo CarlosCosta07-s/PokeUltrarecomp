@@ -346,6 +346,44 @@ class ExplicitRangeTests(unittest.TestCase):
                         title_id="00040000001B5000",
                     )
 
+    def test_decodes_general_a32_ldm_stm_addressing_modes_and_effects(self):
+        # STMIA r4!, {r0,r1}; LDMIB r5, {r2,lr}; STMDB r6!, {r7,lr}; LDMDA r8, {r9,pc}
+        self.put_arm([0xE8A40003, 0xE9D54004, 0xE9264080, 0xE8188200])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
+            title_id="00040000001B5000",
+        )
+        ia, ib, db, da = result["instructions"]
+        self.assertEqual("STMIA r4!, {r0, r1}", ia["mnemonic"])
+        self.assertEqual("multiple-IA", ia["memory_access"]["addressing_mode"])
+        self.assertEqual(["r0", "r1"], ia["memory_access"]["registers"])
+        self.assertEqual(8, ia["memory_access"]["total_bytes"])
+        self.assertTrue(ia["memory_access"]["base_register_writeback"])
+        self.assertEqual("LDMIB r5, {r2, lr}", ib["mnemonic"])
+        self.assertEqual("multiple-IB", ib["memory_access"]["addressing_mode"])
+        self.assertFalse(ib["memory_access"]["base_register_writeback"])
+        self.assertEqual("STMDB r6!, {r7, lr}", db["mnemonic"])
+        self.assertEqual("multiple-DB", db["memory_access"]["addressing_mode"])
+        self.assertEqual("LDMDA r8, {r9, pc}", da["mnemonic"])
+        self.assertTrue(da["indirect_branch"])
+        self.assertIsNone(da["branch_target_virtual_address"])
+        self.assertEqual("multiple-DA", da["memory_access"]["addressing_mode"])
+        self.assertEqual(["r4", "r0", "r1"], result["dataflow"]["instructions"][0]["registers_read"])
+        self.assertIn("r4", result["dataflow"]["instructions"][0]["registers_written"])
+        self.assertEqual("indirect-branch", result["dataflow"]["instructions"][3]["control_flow"])
+
+    def test_rejects_invalid_general_a32_ldm_stm_lists_and_bases(self):
+        # Empty list, PC base, S/user-bank form, base in list with writeback,
+        # and STM with PC are kept out of the currently modelled subset.
+        for word in (0xE8A40000, 0xE8AF0003, 0xE8F40003, 0xE8A40010, 0xE8A48000):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_decodes_a32_stack_multiple_transfer_prologue_epilogue(self):
         self.put_arm([0xE92D40F0, 0xE8BD80F0, 0xE12FFF1E])
         result = ranges.inspect_code_range(
