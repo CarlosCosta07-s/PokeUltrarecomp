@@ -78,4 +78,4 @@ O inspetor também reconhece as formas de memória A32 já cobertas quando usam 
 
 A condição AL permanece sem sufixo. A condição 0xF não é aceita como predicação de instrução A32 comum. Esta cobertura não significa que todas as instruções de memória, todos os modos de endereçamento ou instruções com efeitos especiais estejam suportados; os encodings não reconhecidos continuam fora do subconjunto.
 
-**Validação sintética:** [workflow 40216029715](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216029715), commit fea2ae026bf76f6e877d6cb23557de68d647182e: 285 testes aprovados, matriz diferencial aritmética 96/96 e verificador de segurança aprovado. Nenhum executável real dos jogos foi usado.
+A matriz de testes cobre as 14 condições padrão EQ..LE para LDR imediato e confirma as flags de condição lidas. **Validação sintética:** [workflow 40216237581](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216237581), commit 2c79244203114ea803b51fe13ff9a518e036c5bc: 286 testes aprovados, matriz diferencial aritmética 96/96 e verificador de segurança aprovado. Nenhum executável real dos jogos foi usado.

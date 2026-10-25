@@ -529,5 +529,6 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - O sumário de efeitos registra as flags de condição lidas, registradores lidos/escritos e o tipo de efeito de memória; metadados de endereço continuam sem resolver valores dinâmicos ou ler memória.
 - A condição 0xF permanece recusada como condição comum; a expansão não autoriza modos de endereçamento ou encodings ainda não suportados.
 - A primeira execução, [run 40215965363](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40215965363), detectou regressão de formatação causada por referências de variáveis fora do escopo. A correção ficou no commit fea2ae026bf76f6e877d6cb23557de68d647182e.
-- **Validação integral aprovada:** [run 40216029715](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216029715): Ran 285 tests in 2.557s, OK; matriz diferencial 96/96 e verificador de segurança aprovados. Não foi usado código .code real.
+- A fixture adicional percorre as 14 condições padrão EQ..LE para LDR imediato e verifica a lista de flags consultadas por cada condição.
+- **Validação integral aprovada:** [run 40216237581](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40216237581): Ran 286 tests in 2.897s, OK; matriz diferencial 96/96 e verificador de segurança aprovados. Não foi usado código .code real.
 - Esta etapa amplia a inspeção estática; não gera C dessas instruções nem prova equivalência, execução ou portabilidade dos jogos.
