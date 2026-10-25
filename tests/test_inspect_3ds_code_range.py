@@ -457,5 +457,13 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual({"conditional-taken", "conditional-not-taken"}, {edge["kind"] for edge in branch_edges})
         self.assertEqual({"B1", "B2"}, {edge["to_block"] for edge in branch_edges})
 
+    def test_formats_three_operand_thumb_add_and_sub_forms(self):
+        self.put_thumb([0x1888, 0x1CC8, 0x1A88, 0x1EC8, 0x4770])
+        result = self.inspect_thumb(5)
+        self.assertEqual(
+            ["ADDS r0, r1, r2", "ADDS r0, r1, #3", "SUBS r0, r1, r2", "SUBS r0, r1, #3", "BX LR"],
+            [item["mnemonic"] for item in result["instructions"]],
+        )
+
 if __name__ == "__main__":
     unittest.main()
