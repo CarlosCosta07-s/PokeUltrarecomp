@@ -2,8 +2,8 @@
 """Dependency-free pre-commit checks for PokeUltrarecomp.
 
 This is a conservative guardrail, not a legal review, malware scanner, or proof
-that the entire Git history is clean. It checks the current index plus files
-that Git would normally show as untracked and not ignored.
+that the entire Git history is clean. It inspects both staged Git-index blobs
+and current working-tree files (including non-ignored untracked files).
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 REQUIRED_FILES = (
+    ".gitignore",
     "README.md",
     "LICENSE",
     "CONTRIBUTING.md",
@@ -75,36 +76,76 @@ def prohibited_path_reason(path_text: str) -> str | None:
     return None
 
 
-def git_candidate_paths(root: Path) -> list[str]:
-    """Return indexed/tracked paths plus non-ignored untracked paths."""
+def git_index_entries(root: Path) -> list[tuple[str, str, int]]:
+    """Return (path, object id, stage) for every Git index entry."""
     completed = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        ["git", "ls-files", "--stage", "-z"],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    return sorted({item.decode("utf-8", errors="surrogateescape")
-                   for item in completed.stdout.split(b"\0") if item})
+    entries: list[tuple[str, str, int]] = []
+    for item in completed.stdout.split(b"\0"):
+        if not item:
+            continue
+        metadata, raw_path = item.split(b"\t", 1)
+        _mode, object_id, stage_text = metadata.decode("ascii").split()
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        entries.append((path, object_id, int(stage_text)))
+    return entries
+
+
+def git_untracked_paths(root: Path) -> list[str]:
+    """Return untracked paths not excluded by .gitignore or Git excludes."""
+    completed = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return sorted({
+        item.decode("utf-8", errors="surrogateescape")
+        for item in completed.stdout.split(b"\0") if item
+    })
+
+
+def read_git_blob(root: Path, object_id: str) -> bytes:
+    """Read the exact staged/index blob, without applying checkout filters."""
+    completed = subprocess.run(
+        ["git", "cat-file", "blob", object_id],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return completed.stdout
 
 
 def strip_fenced_blocks(text: str) -> str:
     return FENCED_BLOCK_RE.sub("", text)
 
 
-def local_markdown_link_errors(root: Path, markdown_path: Path, text: str) -> list[str]:
+def local_markdown_link_errors(
+    root: Path,
+    markdown_path: Path,
+    text: str,
+    *,
+    source_label: str = "working tree",
+    available_paths: set[str] | None = None,
+) -> list[str]:
     """Validate relative Markdown targets, ignoring anchors and external URLs."""
     errors: list[str] = []
     clean_text = strip_fenced_blocks(text)
+    resolved_root = root.resolve()
+    paths = available_paths or set()
+
     for match in INLINE_LINK_RE.finditer(clean_text):
         target = match.group(1).strip()
-        # Remove an optional Markdown title after an angle-bracket target only
-        # when the whole target is already a simple <path>.
         if target.startswith("<") and ">" in target:
             target = target[1:target.index(">")]
         else:
-            # A space may introduce a Markdown link title. Keep simple targets;
-            # do not attempt to parse complex quoted titles.
             target = target.split("\t", 1)[0]
             if " " in target and not target.startswith(("http://", "https://", "mailto:")):
                 target = target.split(" ", 1)[0]
@@ -116,20 +157,31 @@ def local_markdown_link_errors(root: Path, markdown_path: Path, text: str) -> li
         raw_path = unquote(parsed.path)
         if not raw_path:
             continue
-        resolved_root = root.resolve()
+
         destination = (resolved_root / markdown_path.parent / raw_path).resolve()
         try:
-            destination.relative_to(resolved_root)
+            relative_target = destination.relative_to(resolved_root).as_posix()
         except ValueError:
-            errors.append(f"{markdown_path.as_posix()}: local link escapes repository root: {raw_path!r}")
+            errors.append(
+                f"{source_label}: {markdown_path.as_posix()}: "
+                f"local link escapes repository root: {raw_path!r}"
+            )
             continue
-        if not destination.exists():
-            errors.append(f"{markdown_path.as_posix()}: broken local link target {raw_path!r}")
+
+        exists_in_index = (
+            relative_target in paths
+            or any(path.startswith(relative_target.rstrip("/") + "/") for path in paths)
+        )
+        if not destination.exists() and not exists_in_index:
+            errors.append(
+                f"{source_label}: {markdown_path.as_posix()}: "
+                f"broken local link target {raw_path!r}"
+            )
     return errors
 
 
 def check_repository(root: Path) -> tuple[list[str], list[str]]:
-    """Return (errors, notes) for the checked working tree/index."""
+    """Return (errors, notes) for the staged index and working tree."""
     errors: list[str] = []
     notes: list[str] = []
     root = root.resolve()
@@ -138,44 +190,118 @@ def check_repository(root: Path) -> tuple[list[str], list[str]]:
         errors.append(f"not a Git working tree: {root}")
         return errors, notes
 
-    for required in REQUIRED_FILES:
-        if not (root / required).is_file():
-            errors.append(f"required project document missing: {required}")
-
     try:
-        paths = git_candidate_paths(root)
+        index_entries = git_index_entries(root)
+        untracked_paths = git_untracked_paths(root)
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        errors.append(f"could not enumerate Git files: {exc}")
+        errors.append(f"could not enumerate Git index/worktree files: {exc}")
         return errors, notes
 
-    for relative in paths:
+    index_stages: dict[str, set[int]] = {}
+    index_paths: set[str] = set()
+    stage_zero_paths: set[str] = set()
+    for relative, _object_id, stage in index_entries:
+        index_paths.add(relative)
+        index_stages.setdefault(relative, set()).add(stage)
+        if stage == 0:
+            stage_zero_paths.add(relative)
+
+    for required in REQUIRED_FILES:
+        if required not in stage_zero_paths:
+            errors.append(f"required project document missing or conflicted in Git index: {required}")
+
+    candidate_paths = sorted(index_paths | set(untracked_paths))
+    for relative in candidate_paths:
         reason = prohibited_path_reason(relative)
         if reason:
             errors.append(f"{relative}: {reason}")
 
-        candidate = root / relative
-        if candidate.is_file() and not candidate.is_symlink() and candidate.suffix.casefold() == ".md":
-            try:
-                content = candidate.read_text(encoding="utf-8")
-            except (OSError, UnicodeError):
-                notes.append(f"skipped Markdown link scan for unreadable/non-UTF-8 file: {relative}")
-                continue
-            errors.extend(local_markdown_link_errors(root, Path(relative), content))
+    # Check staged Markdown blobs as committed, not merely their current
+    # working-tree replacements. This catches staged/unstaged divergence.
+    index_markdown: dict[str, bytes] = {}
+    for relative, object_id, stage in index_entries:
+        if stage != 0:
+            errors.append(f"{relative}: unresolved merge conflict in Git index (stage {stage})")
+            continue
+        if Path(relative).suffix.casefold() != ".md":
+            continue
+        try:
+            content_bytes = read_git_blob(root, object_id)
+            index_markdown[relative] = content_bytes
+            content = content_bytes.decode("utf-8")
+        except (subprocess.CalledProcessError, UnicodeError):
+            notes.append(f"skipped staged Markdown link scan for unreadable/non-UTF-8 blob: {relative}")
+            continue
+        errors.extend(local_markdown_link_errors(
+            root,
+            Path(relative),
+            content,
+            source_label="Git index",
+            available_paths=stage_zero_paths,
+        ))
 
-    notes.append(f"checked {len(paths)} indexed/tracked or non-ignored untracked paths")
-    notes.append("ignored files that are not tracked are not scanned; a forced git add -f can bypass .gitignore")
-    notes.append("this checker does not inspect Git history, content licensing, or the legality of any input")
+    # Check working-tree replacements and non-ignored untracked files too.
+    # If a Markdown file is byte-for-byte identical to its indexed blob, skip
+    # the duplicate scan; staged versions have already been checked above.
+    for relative in candidate_paths:
+        candidate = root / relative
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        try:
+            resolved_candidate = candidate.resolve()
+            resolved_candidate.relative_to(root)
+        except ValueError:
+            errors.append(f"{relative}: working-tree path resolves outside repository root")
+            continue
+        if candidate.suffix.casefold() != ".md":
+            continue
+        try:
+            content_bytes = candidate.read_bytes()
+            if index_markdown.get(relative) == content_bytes:
+                continue
+            content = content_bytes.decode("utf-8")
+        except (OSError, UnicodeError):
+            notes.append(f"skipped working-tree Markdown link scan for unreadable/non-UTF-8 file: {relative}")
+            continue
+        errors.extend(local_markdown_link_errors(
+            root,
+            Path(relative),
+            content,
+            source_label="working tree",
+            available_paths=stage_zero_paths,
+        ))
+
+    notes.append(
+        f"checked {len(index_paths)} indexed paths and "
+        f"{len(untracked_paths)} non-ignored untracked paths"
+    )
+    notes.append(
+        "ignored files that are not tracked are not scanned; a forced git add -f can bypass .gitignore"
+    )
+    notes.append(
+        "this checker does not inspect Git history, content licensing, or the legality of any input"
+    )
     return errors, notes
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Git working-tree root (default: current directory)")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="Git working-tree root (default: current directory)",
+    )
     args = parser.parse_args(argv)
 
     try:
-        subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=args.root, check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=args.root,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         print(f"FAIL: cannot find a Git working tree or Git executable: {exc}", file=sys.stderr)
         return 2
@@ -188,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL: {error}", file=sys.stderr)
         print(f"Repository safety check failed with {len(errors)} issue(s).", file=sys.stderr)
         return 1
-    print("PASS: repository path and local Markdown-link checks completed.")
+    print("PASS: repository path and Markdown-link checks completed.")
     print("This PASS does not certify licensing, source provenance, clean history, or game compatibility.")
     return 0
 
