@@ -36,7 +36,7 @@ CONDITION_C = {
 INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
 STACK_OPS = ("push", "pop")
 LITERAL_OPS = ("ldr_literal",)
-MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg", "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm", "str_sp", "ldr_sp")
+MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg", "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm", "str_sp", "ldr_sp", "stmia", "ldmia")
 ADDRESS_OPS = ("adr", "add_sp_imm", "add_sp", "sub_sp")
 
 
@@ -156,8 +156,18 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         operation = "str_sp" if immediate_op == 0x9000 else "ldr_sp"
         return (operation, rt, imm8 * 4)
 
-    # Thumb-1 PC/SP address-generation instructions.
-    if (word & 0xF800) in (0xA000, 0xA800):
+    # Thumb-1 Load/Store Multiple: 1100 L Rn register_list.
+    if (word & 0xF000) == 0xC000:
+        load = bool(word & 0x0800)
+        rn = (word >> 8) & 0x7
+        register_list = word & 0xFF
+        if register_list == 0:
+            raise UnsupportedThumbInstruction(
+                f"empty LDM/STM register list is unpredictable (0x{word:04X})"
+            )
+        return ("ldmia" if load else "stmia", rn, register_list)
+
+    # Thumb-1 PC/SP address-generation instructions.    if (word & 0xF800) in (0xA000, 0xA800):
         rd = (word >> 8) & 0x7
         offset = (word & 0xFF) * 4
         operation = "adr" if (word & 0xF800) == 0xA000 else "add_sp_imm"

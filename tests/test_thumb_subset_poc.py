@@ -929,7 +929,7 @@ class ThumbLiteralLoadTests(unittest.TestCase):
     def test_synthetic_translator_refuses_memory_accesses_without_memory_model(self):
         examples = (
             0x5000, 0x5200, 0x5600, 0x5800, 0x6000, 0x6800,
-            0x7000, 0x7800, 0x8000, 0x8800, 0x9000, 0x9800,
+            0x7000, 0x7800, 0x8000, 0x8800, 0x9000, 0x9800, 0xC00E, 0xC80E,
         )
         for word in examples:
             with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
@@ -968,6 +968,29 @@ class ThumbLiteralLoadTests(unittest.TestCase):
                 poc.UnsupportedThumbInstruction, "address arithmetic.*does not model PC or SP"
             ):
                 poc.translate([word, 0x4770])
+
+    def test_decodes_thumb_multiple_register_transfers_and_refuses_empty_lists(self):
+        self.assertEqual(("stmia", 0, 0x0E), poc.decode_halfword(0xC00E))
+        self.assertEqual(("stmia", 7, 0x80), poc.decode_halfword(0xC780))
+        self.assertEqual(("ldmia", 0, 0x0E), poc.decode_halfword(0xC80E))
+        self.assertEqual(("ldmia", 7, 0x80), poc.decode_halfword(0xCF80))
+        for word in (0xC000, 0xC700, 0xC800, 0xCF00):
+            with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
+                poc.UnsupportedThumbInstruction, "empty LDM/STM register list"
+            ):
+                poc.decode_halfword(word)
+
+    def test_classifies_every_thumb_multiple_register_transfer_encoding(self):
+        for word in range(0xC000, 0xD000):
+            register_list = word & 0xFF
+            if register_list == 0:
+                with self.assertRaises(poc.UnsupportedThumbInstruction):
+                    poc.decode_halfword(word)
+                continue
+            decoded = poc.decode_halfword(word)
+            self.assertEqual("ldmia" if word & 0x0800 else "stmia", decoded[0], f"encoding 0x{word:04X}")
+            self.assertEqual((word >> 8) & 7, decoded[1], f"encoding 0x{word:04X}")
+            self.assertEqual(register_list, decoded[2], f"encoding 0x{word:04X}")
 
 if __name__ == "__main__":
     unittest.main()

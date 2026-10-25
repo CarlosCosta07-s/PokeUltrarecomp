@@ -546,5 +546,28 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(4, result["instructions"][2]["stack_pointer_delta_bytes"])
         self.assertEqual(-4, result["instructions"][3]["stack_pointer_delta_bytes"])
 
+    def test_formats_thumb_multiple_transfers_and_reports_register_list_metadata(self):
+        self.put_thumb([0xC00E, 0xC80E, 0xC801, 0x4770])
+        result = self.inspect_thumb(4)
+        self.assertEqual(
+            ["STMIA r0!, {r1, r2, r3}", "LDMIA r0!, {r1, r2, r3}", "LDMIA r0, {r0}", "BX LR"],
+            [item["mnemonic"] for item in result["instructions"]],
+        )
+        stored = result["instructions"][0]["memory_access"]
+        self.assertEqual("store", stored["direction"])
+        self.assertEqual("multiple-increment-after", stored["addressing_mode"])
+        self.assertEqual(["r1", "r2", "r3"], stored["registers"])
+        self.assertEqual(3, stored["transfer_count"])
+        self.assertEqual(12, stored["total_bytes"])
+        self.assertTrue(stored["base_register_writeback"])
+        self.assertTrue(stored["base_register_stored_value_unknown"]) is False
+        loaded = result["instructions"][1]["memory_access"]
+        self.assertEqual("load", loaded["direction"])
+        self.assertTrue(loaded["base_register_writeback"])
+        base_in_list = result["instructions"][2]["memory_access"]
+        self.assertTrue(base_in_list["base_register_in_list"])
+        self.assertFalse(base_in_list["base_register_writeback"])
+        self.assertFalse(base_in_list["memory_value_read_by_inspector"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,6 +77,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "str_imm": "STR", "ldr_imm": "LDR", "strb_imm": "STRB",
         "ldrb_imm": "LDRB", "strh_imm": "STRH", "ldrh_imm": "LDRH",
         "str_sp": "STR", "ldr_sp": "LDR",
+        "stmia": "STMIA", "ldmia": "LDMIA",
         "adr": "ADR", "add_sp_imm": "ADD", "add_sp": "ADD", "sub_sp": "SUB",
     }
     name = names.get(op)
@@ -97,6 +98,12 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "adcs_reg", "sbcs_reg", "orrs_reg", "muls_reg", "bics_reg", "mvns_reg", "tst_reg",
     ):
         return f"{name} r{inst[1]}, r{inst[2]}"
+    if state == "thumb" and op in ("stmia", "ldmia"):
+        base_register, register_mask = int(inst[1]), int(inst[2])
+        registers = [f"r{n}" for n in range(8) if (register_mask >> n) & 1]
+        writeback = not (op == "ldmia" and ((register_mask >> base_register) & 1))
+        suffix = "!" if writeback else ""
+        return f"{name} r{base_register}{suffix}, {{{", ".join(registers)}}}"
     if state == "thumb" and op in (
         "str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg",
         "ldrh_reg", "ldrb_reg", "ldrsh_reg",
@@ -134,6 +141,7 @@ def memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
         "str_reg": 4, "ldr_reg": 4, "str_imm": 4, "ldr_imm": 4, "str_sp": 4, "ldr_sp": 4,
         "strh_reg": 2, "ldrh_reg": 2, "strh_imm": 2, "ldrh_imm": 2, "ldrsh_reg": 2,
         "strb_reg": 1, "ldrb_reg": 1, "strb_imm": 1, "ldrb_imm": 1, "ldrsb_reg": 1,
+        "stmia": 4, "ldmia": 4,
     }
     record: dict[str, Any] = {
         "direction": "store" if op.startswith("str") else "load",
@@ -142,8 +150,26 @@ def memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
         "runtime_effective_address_resolved": False,
         "memory_value_read_by_inspector": False,
     }
-    if op.endswith("_reg"):
+    if op in ("stmia", "ldmia"):
+        base_register = int(decoded[1])
+        register_mask = int(decoded[2])
+        registers = [f"r{n}" for n in range(8) if (register_mask >> n) & 1]
+        base_in_list = bool((register_mask >> base_register) & 1)
         record.update({
+            "addressing_mode": "multiple-increment-after",
+            "base_register": f"r{base_register}",
+            "offset_register": None,
+            "offset_bytes": 0,
+            "registers": registers,
+            "transfer_count": len(registers),
+            "total_bytes": len(registers) * 4,
+            "base_register_in_list": base_in_list,
+            "base_register_writeback": not (op == "ldmia" and base_in_list),
+            "base_register_stored_value_unknown": bool(
+                op == "stmia" and base_in_list and register_mask & -register_mask != (1 << base_register)
+            ),
+        })
+    elif op.endswith("_reg"):        record.update({
             "addressing_mode": "register-offset",
             "base_register": f"r{decoded[2]}",
             "offset_register": f"r{decoded[3]}",
