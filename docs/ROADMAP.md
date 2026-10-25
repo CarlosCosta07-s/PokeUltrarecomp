@@ -61,7 +61,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5 — Definir a primeira prova de conceito
 
-**Preparação experimental:** a POC-001 traduz fixtures ARM A32 sintéticas para C. O tradutor aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos, `B` sob as 14 condições padrão, predicação das instruções de dados suportadas e desvios para trás/autoalvo somente com orçamento de 1 a 100.000 instruções. A suíte integral passou no commit `e1a29126c68324853e73da7dd2b16657566e41c2`: **92 testes aprovados, zero falhas e zero ignorados**. Sintaxe Python, matriz diferencial 96/96 e verificador de segurança também passaram; o último analisou 28 caminhos rastreados. [Registro da execução](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40155966816). A primeira tentativa encontrou um erro no teste C de `CMP` condicional; ele foi corrigido antes da execução aprovada. O clone local continua sem resolver DNS, mas o runner hospedado fez checkout completo da `main`. O teste interno não usa emulador e não prova compatibilidade com Ultra Sun/Ultra Moon. O projeto ainda não constitui um runtime de jogo.
+**Preparação experimental:** a POC-001 traduz fixtures ARM A32 sintéticas para C. O tradutor aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos, `B` sob as 14 condições padrão, predicação das instruções de dados suportadas e desvios para trás/autoalvo somente com orçamento de 1 a 100.000 instruções. O núcleo POC-001 mantém 92 testes; depois de adicionar o inspetor de alvo, a suíte integral passou em **106 testes aprovados, zero falhas e zero ignorados** no commit `85bbe6eb91cc53ee596c674b551bc74ea5df4bb3`. Sintaxe Python, matriz diferencial 96/96 e verificador de segurança também passaram; o último analisou 33 caminhos indexados. [Registro da execução](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40157669355). A primeira tentativa anterior encontrou um erro no teste C de `CMP` condicional; ele foi corrigido antes da execução aprovada. O clone local continua sem resolver DNS, mas o runner hospedado fez checkout completo da `main`. O teste interno não usa emulador e não prova compatibilidade com Ultra Sun/Ultra Moon. O projeto ainda não constitui um runtime de jogo.
 
 **Tarefas**
 - [ ] Escolher apenas uma unidade pequena, com limite de escopo e um resultado observável.
@@ -76,12 +76,13 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5A — Intake dos executáveis de Ultra Sun / Ultra Moon
 
-**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas. Os arquivos reais dos jogos não são incluídos nem processados na CI.
+**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas; 14 testes específicos e a suíte integral de 106 testes passaram no workflow hospedado. Os arquivos reais dos jogos não são incluídos nem processados na CI.
 
 **Tarefas desta etapa**
 - [x] Adicionar perfis distintos de Ultra Sun e Ultra Moon, com IDs-base/atualização conhecidos e política de entradas locais.
 - [x] Ler ExHeader SCI e validar endereços, páginas, tamanhos, sobreposição de segmentos e capacidade do `.code` descomprimido.
 - [x] Emitir JSON com SHA-256 local e metadados sem copiar bytes ou caminhos absolutos.
+- [x] Expor candidatos de variante por tamanho de `.code` a partir de referência comunitária; o resultado é explicitamente heurístico e não autentica a revisão.
 - [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.
 - [ ] Validar uma entrada local autorizada e ainda não modificada de cada jogo; registrar apenas relatório redigido.
 - [ ] Fazer inventário de funções ARM/Thumb sem reutilizar fontes cuja licença não está confirmada.
