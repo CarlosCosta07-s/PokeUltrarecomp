@@ -27,6 +27,14 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 - Em Thumb-16, `LDR Rd, [PC, #imm]` é decodificado e o relatório informa `literal_pool_virtual_address` = `Align4(endereço + 4) + imm8·4`, `literal_within_declared_text` (os 4 bytes do literal dentro do `.text`) e `literal_value_read: false`: o valor nunca é lido. `literal_overlaps_selected_range` e `literal_is_scanned_instruction_start` sinalizam quando o literal cai dentro do intervalo varrido, isto é, quando dados podem estar sendo decodificados como instruções. Literais fora de uint32 são recusados; extensão do pool, literais compartilhados e o significado do valor não são resolvidos.
 - Informa os destinos calculados de branches e se caem dentro do intervalo selecionado e do `.text` declarado. Não resolve funções chamadas, memória, literal pools, tabelas de dados, relocations ou ABI.
 
+## Grafo estrutural de fluxo
+
+Cada relatório contém `control_flow`, um grafo candidato de blocos básicos construído a partir do intervalo explicitamente selecionado. Destinos de branches só viram arestas internas quando coincidem com o início de uma instrução descodificada no mesmo estado; branches condicionais têm arestas de tomada e não tomada; branches incondicionais não recebem uma aresta de fallthrough. Chamadas diretas são listadas como transferências candidatas com continuação possível após retorno, sem afirmar identidade do callee. Transferências indiretas ficam sem destino inventado.
+
+Instruções desconhecidas encerram o bloco e não recebem sucessor presumido. Se um LDR literal aponta para dentro do intervalo selecionado, o grafo expõe a referência como possível dado e acrescenta aviso. A classificação é deliberadamente conservadora: não calcula valores de registradores, não prova alcançabilidade real, não descobre entradas de função e não resolve pools de literais.
+
+Os blocos são hipóteses estruturais do trecho escolhido, não limites garantidos de funções. Antes de traduzir um bloco real, ainda é necessário confirmar que o início e o estado ARM/Thumb foram escolhidos corretamente e estabelecer um contrato de entrada/saída.
+
 ## Limites
 
 A saída é uma anotação sintática de uma região, não código C executável nem prova de equivalência. Mesmo quando todos os encodings são reconhecidos, as POCs sintéticas têm uma ABI artificial e o estado real do jogo não foi modelado. O próximo marco precisa definir um contrato de função/entrada e comparar estado de registradores/flags com um oráculo independente antes de tentar compilar um trecho real em runtime.

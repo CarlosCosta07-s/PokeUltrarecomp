@@ -446,5 +446,16 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertIn("outside the repository", run.stderr)
 
 
+
+    def test_control_flow_graph_reports_conditional_taken_and_fallthrough_edges(self):
+        self.put_thumb([0xD100, 0x2001, 0x4770])  # BNE to BX LR; false path falls through MOVS.
+        result = self.inspect_thumb(3)
+        graph = result["control_flow"]
+        self.assertEqual("candidate-cfg", graph["status"])
+        self.assertEqual(3, graph["basic_block_count"])
+        branch_edges = [edge for edge in graph["edges"] if edge["from_block"] == "B0"]
+        self.assertEqual({"conditional-taken", "conditional-not-taken"}, {edge["kind"] for edge in branch_edges})
+        self.assertEqual({"B1", "B2"}, {edge["to_block"] for edge in branch_edges})
+
 if __name__ == "__main__":
     unittest.main()

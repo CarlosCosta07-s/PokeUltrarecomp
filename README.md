@@ -88,6 +88,9 @@ A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AN
 
 ## Preparação dos executáveis de Ultra Sun / Ultra Moon
 
+O inspetor de intervalos também produz um grafo candidato de fluxo de controle: blocos básicos, arestas de branches condicionais, transferências externas e avisos para instruções desconhecidas e sobreposição com literais. Isso ainda é uma anotação estática limitada ao intervalo escolhido, não descoberta automática de funções nem prova de execução do jogo.
+
+
 Foi iniciado um caminho específico para os dois alvos: os perfis `targets/pokemon_ultra_sun.json` e `targets/pokemon_ultra_moon.json` e a ferramenta `tools/inspect_3ds_target.py` conferem metadados do ExHeader e de `.code` descomprimido fornecido localmente. O relatório lê o Program ID de 64 bits embutido no ACI, confere-o contra os perfis dos dois jogos, inclui offsets no `.code` para `.text`, `.rodata` e `.data`, stack/BSS e hashes SHA-256 locais. Exige que o `.code` descomprimido corresponda exatamente ao layout page-padded declarado pelo ExHeader; IDs desconhecidos e revisões não confirmadas são tratados conservadoramente. Também apresenta candidatos de revisão para dois tamanhos de `.code` registrados numa referência comunitária, sempre como correspondência por tamanho — não como prova de versão ou autenticidade. Os testes usam ExHeaders e bytes totalmente sintéticos; a CI não lê nem exige ROM, dump ou arquivo extraído dos jogos.
 
 Exemplo (substitua por caminhos locais de entradas do mesmo executável):

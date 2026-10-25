@@ -392,3 +392,10 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - **Limites:** só endereço estático. Não lê o literal, não delimita pools, não decide se o conteúdo é dado ou código, não resolve relocations; nenhum `.code` real foi lido; nenhum suporte a jogo é declarado.
 - **Validação:** workflow [run 40193521160](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40193521160), commit `fd876cf98965519203a000a9d9ce2c1999147256`: aprovado (sintaxe, matriz diferencial, suíte completa, verificador de segurança). `Ran 203 tests ... OK` e matriz 96/96 foram observados na execução local com os mesmos comandos; a contagem não foi extraída do log da CI.
 
+## Continuação após LDR literal: grafo candidato de fluxo de controle — 2026-10-25
+
+- Adicionado `tools/arm_thumb_cfg.py`, integrado ao JSON de `tools/inspect_3ds_code_range.py` pela chave `control_flow`.
+- O módulo agrupa instruções em blocos básicos candidatos e registra arestas de branch condicional (tomada/não tomada), branch incondicional e fallthrough; branch para alvo fora do trecho é registrado como fronteira e um alvo que não coincide com início de instrução não é adivinhado.
+- Chamadas BL/BLX viram transferências candidatas com continuação possível; BX/POP PC e outras transferências indiretas ficam sem destino fictício. Instruções desconhecidas encerram o bloco e bloqueiam arestas conhecidas. LDR literal que sobrepõe o trecho gera aviso de possível dado embutido.
+- Adicionados testes sintéticos para fluxo linear, branches condicionais/incondicionais, loop, destino desalinhado, destino fora do range, calls, fluxo indireto, instrução desconhecida e literal-pool overlap; também foi adicionada cobertura integrada no inspetor.
+- O resultado continua limitado a intervalos escolhidos explicitamente. Não lê o valor literal, não descobre funções e não deve ser tratado como CFG real validado contra Ultra Sun/Ultra Moon até uma entrada local autorizada ser examinada.

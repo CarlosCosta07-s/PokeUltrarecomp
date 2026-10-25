@@ -119,6 +119,19 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Critério de conclusão:** anotação sintática reproduzível para intervalo selecionado, sem incluir entradas ou extrações na CI. Isso não prova equivalência semântica nem runtime de jogo.
 
+## Fase 5E — Grafo estrutural de fluxo ARM/Thumb
+
+**Estado:** análise candidata integrada ao relatório de intervalo explícito; testes usam apenas instruções e metadados sintéticos.
+
+- [x] Formar blocos básicos candidatos por entrada explícita, destinos de branches conhecidos e instruções de transferência de controle.
+- [x] Diferenciar taken/fallthrough de branches condicionais e suprimir fallthrough de branches incondicionais.
+- [x] Registrar chamadas diretas e indiretas sem inventar destino de execução ou identidade de função.
+- [x] Tratar instruções desconhecidas como barreiras e sinalizar LDR literal que se sobrepõe ao intervalo examinado.
+- [ ] Usar entrada local autorizada de Ultra Sun ou Ultra Moon com endereço/estado verificados; revisar o grafo localmente sem publicar bytes nem relatório derivado.
+- [ ] Definir o contrato de uma função candidata e um oráculo independente antes de converter código real em C.
+
+**Limite:** o grafo só descreve o trecho escolhido e não prova que ele começa numa função, não resolve funções chamadas, e não modela registradores/memória. Sem uma entrada local autorizada, não há evidência de que algum caminho real dos jogos tenha sido identificado.
+
 ## Fase 6 — Investigar runtime próprio para Windows
 
 **Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
