@@ -33,6 +33,9 @@ CONDITION_C = {
 }
 
 
+INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
+
+
 class UnsupportedThumbInstruction(ValueError):
     """Input is outside this intentionally narrow Thumb-16 demonstrator."""
 
@@ -49,6 +52,20 @@ def decode_halfword(word: int) -> tuple[object, ...]:
 
     if word == 0x4770:  # BX LR; exact encoding only
         return ("return",)
+
+    # Register-indirect control flow. Bits 2:0 are should-be-zero; PC as Rm is refused.
+    if (word & 0xFF87) == 0x4700:  # BX Rm (0x4770 = BX LR handled above)
+        rm = (word >> 3) & 0xF
+        if rm == 15:
+            raise UnsupportedThumbInstruction(f"BX PC (0x{word:04X}) is not decoded")
+        return ("bx", rm)
+    if (word & 0xFF87) == 0x4780:  # BLX Rm
+        rm = (word >> 3) & 0xF
+        if rm == 15:
+            raise UnsupportedThumbInstruction(f"BLX PC (0x{word:04X}) is unpredictable and not decoded")
+        return ("blx_reg", rm)
+    if (word & 0xFF00) == 0xBD00:  # POP {reglist, PC}; P=0 forms are not control flow
+        return ("pop_pc", word & 0xFF)
 
     op = word & 0xF800
     rd_or_rn = (word >> 8) & 0x7
@@ -163,6 +180,12 @@ def translate(
         raise UnsupportedThumbInstruction(f"sequence exceeds {MAX_INSTRUCTIONS} halfwords")
 
     decoded = [decode_halfword(word) for word in halfwords]
+    for inst in decoded:
+        if inst[0] in INDIRECT_FLOW_OPS:
+            raise UnsupportedThumbInstruction(
+                f"register-indirect control flow ({inst[0]}) is decoded for inspection only; "
+                "the synthetic translator does not model it"
+            )
     if any(inst == ("return",) for inst in decoded[:-1]):
         raise UnsupportedThumbInstruction("instructions after BX LR are unsupported")
     if decoded[-1] != ("return",):

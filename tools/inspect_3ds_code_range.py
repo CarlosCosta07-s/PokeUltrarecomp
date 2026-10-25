@@ -39,6 +39,13 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return "B" if cond == "al" else f"B{str(cond).upper()}"
     if decoded[0] == "call":
         return str(decoded[1]).upper()
+    if decoded[0] == "bx":
+        return f"BX r{decoded[1]}"
+    if decoded[0] == "blx_reg":
+        return f"BLX r{decoded[1]}"
+    if decoded[0] == "pop_pc":
+        regs = [f"r{n}" for n in range(8) if int(decoded[1]) >> n & 1] + ["pc"]
+        return "POP {" + ", ".join(regs) + "}"
     cond = None
     inst = decoded
     if decoded[0] == "predicated":
@@ -200,6 +207,15 @@ def inspect_code_range(
                     "mnemonic": mnemonic,
                     "decoded_ir": decoded,
                 }
+                if decoded[0] in thumb.INDIRECT_FLOW_OPS:
+                    item["indirect_branch"] = True
+                    item["branch_links"] = decoded[0] == "blx_reg"
+                    if decoded[0] == "blx_reg":
+                        item["link_register_value"] = f"0x{(address + instruction_size) | 1:08X}"
+                    item["branch_target_virtual_address"] = None
+                    item["branch_target_note"] = (
+                        "target comes from a register or the stack at run time; not resolved"
+                    )
                 if decoded[0] == "branch":
                     target_address = address + (2 + int(decoded[2])) * unit
                     item["branch_target_virtual_address"] = f"0x{target_address:08X}"
@@ -291,6 +307,7 @@ def inspect_code_range(
             "Only the current narrow ARM A32 and Thumb-16 subsets are decoded.",
             "With --include-unsupported, unknown encodings are recorded as raw bytes; they are not disassembled or semantically analyzed.",
             "Only the ARMv6K Thumb BL/BLX immediate pair is decoded among 32-bit Thumb forms; every other 32-bit Thumb pair is kept together as two raw halfwords.",
+            "BX Rm, BLX Rm and POP {..., PC} are decoded syntactically (Rm != PC); their run-time targets, ARM/Thumb state switches and stack contents are not resolved, and a decoded BX/POP does not prove a function ends there.",
             "BL/BLX decoding computes the call target only; callee identity, return address use, argument registers and ABI are not resolved, and BLX targets are ARM state, not scanned in the Thumb range.",
             "Literal pools, embedded data, relocations, calls, memory effects, ABI and control-flow context are not resolved.",
             "Reports contain instruction encodings derived from local game code; keep them local unless reviewed and redacted.",

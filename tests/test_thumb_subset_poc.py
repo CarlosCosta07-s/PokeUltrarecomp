@@ -351,5 +351,62 @@ class ThumbCallPairTests(unittest.TestCase):
                 poc.call_target(0x00100000, decoded)
 
 
+class ThumbIndirectFlowTests(unittest.TestCase):
+    """BX Rm / BLX Rm / POP {..., PC}; expectations are written out by hand."""
+
+    def test_bx_register_forms(self):
+        for word, rm in ((0x4700, 0), (0x4708, 1), (0x4718, 3), (0x4768, 13)):
+            with self.subTest(word=hex(word)):
+                self.assertEqual(("bx", rm), poc.decode_halfword(word))
+        self.assertEqual(("return",), poc.decode_halfword(0x4770))   # BX LR keeps its own IR
+
+    def test_blx_register_forms(self):
+        for word, rm in ((0x4780, 0), (0x4788, 1), (0x4790, 2), (0x47F0, 14)):
+            with self.subTest(word=hex(word)):
+                self.assertEqual(("blx_reg", rm), poc.decode_halfword(word))
+
+    def test_pc_as_register_and_nonzero_sbz_bits_are_refused(self):
+        for word in (0x4778, 0x47F8, 0x4701, 0x4707, 0x4771, 0x4781, 0x4787, 0x47F1):
+            with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_halfword(word)
+
+    def test_pop_with_pc_only(self):
+        self.assertEqual(("pop_pc", 0x00), poc.decode_halfword(0xBD00))
+        self.assertEqual(("pop_pc", 0x10), poc.decode_halfword(0xBD10))
+        self.assertEqual(("pop_pc", 0xFF), poc.decode_halfword(0xBDFF))
+        for word in (0xBC00, 0xBC10, 0xBCFF, 0xBE00, 0xB400, 0xB500):   # POP without PC, BKPT, PUSH
+            with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_halfword(word)
+
+    def test_exhaustive_classification_of_the_affected_space(self):
+        for word in range(0x4700, 0x4800):
+            if word == 0x4770:
+                expected = ("return",)
+            elif word & 7 == 0 and not word & 0x80 and ((word >> 3) & 0xF) != 15:
+                expected = ("bx", (word >> 3) & 0xF)
+            elif word & 7 == 0 and word & 0x80 and ((word >> 3) & 0xF) != 15:
+                expected = ("blx_reg", (word >> 3) & 0xF)
+            else:
+                expected = None
+            with self.subTest(word=hex(word)):
+                if expected is None:
+                    with self.assertRaises(poc.UnsupportedThumbInstruction):
+                        poc.decode_halfword(word)
+                else:
+                    self.assertEqual(expected, poc.decode_halfword(word))
+        for word in range(0xBC00, 0xBE00):
+            if word & 0x100:
+                self.assertEqual(("pop_pc", word & 0xFF), poc.decode_halfword(word))
+            else:
+                with self.assertRaises(poc.UnsupportedThumbInstruction):
+                    poc.decode_halfword(word)
+
+    def test_synthetic_translator_refuses_indirect_flow(self):
+        for words in ([0x4718, 0x4770], [0x4790, 0x4770], [0xBD10, 0x4770], [0x2001, 0xBD00]):
+            with self.subTest(words=[hex(w) for w in words]):
+                with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "register-indirect"):
+                    poc.translate(words)
+
+
 if __name__ == "__main__":
     unittest.main()

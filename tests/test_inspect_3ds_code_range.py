@@ -309,6 +309,46 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual("BL", first["mnemonic"])
         self.assertEqual(["call", "bl", 0], first["decoded_ir"])
 
+    def test_decodes_bx_blx_register_and_pop_pc_without_inventing_targets(self):
+        self.put_thumb([0x4718, 0x4790, 0xBD10, 0xBD03, 0xBD00, 0x4770])
+        result = self.inspect_thumb(6)
+        self.assertEqual("decoded-explicit-range", result["status"])
+        bx, blx, pop1, pop2, pop3, ret = result["instructions"]
+        self.assertEqual("BX r3", bx["mnemonic"])
+        self.assertTrue(bx["indirect_branch"])
+        self.assertFalse(bx["branch_links"])
+        self.assertIsNone(bx["branch_target_virtual_address"])
+        self.assertEqual("BLX r2", blx["mnemonic"])
+        self.assertTrue(blx["branch_links"])
+        self.assertEqual("0x00100005", blx["link_register_value"])   # (0x00100002 + 2) | 1
+        self.assertEqual("POP {r4, pc}", pop1["mnemonic"])
+        self.assertEqual("POP {r0, r1, pc}", pop2["mnemonic"])
+        self.assertEqual("POP {pc}", pop3["mnemonic"])
+        self.assertEqual(["pop_pc", 0x10], list(pop1["decoded_ir"]))
+        self.assertEqual("BX LR", ret["mnemonic"])
+        self.assertEqual(10, ret["decompressed_code_file_offset"] - result["range"]["decompressed_code_file_offset"])
+
+    def test_indirect_flow_does_not_stop_the_linear_range(self):
+        self.put_thumb([0x4718, 0x2001, 0x4770])
+        result = self.inspect_thumb(3)
+        self.assertEqual(["BX r3", "MOVS r0, #1", "BX LR"], [i["mnemonic"] for i in result["instructions"]])
+
+    def test_pc_forms_and_pop_without_pc_stay_unsupported(self):
+        for word in (0x4778, 0x47F8, 0x4701, 0xBC10, 0xBCFF):
+            with self.subTest(word=hex(word)):
+                self.put_thumb([word, 0x4770])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction at 0x00100000"):
+                    self.inspect_thumb(1)
+                first, second = self.inspect_thumb(2, include_unsupported=True)["instructions"]
+                self.assertEqual("unsupported", first["decode_status"])
+                self.assertIsNone(first["mnemonic"])
+                self.assertEqual("BX LR", second["mnemonic"])
+
+    def test_arm_state_ignores_thumb_indirect_flow_encodings(self):
+        self.put_arm([0x00004718])
+        with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+            ranges.inspect_code_range("ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1)
+
     def test_cli_emits_json_for_synthetic_inputs(self):
         self.put_thumb([0x4770])
         run = subprocess.run([
