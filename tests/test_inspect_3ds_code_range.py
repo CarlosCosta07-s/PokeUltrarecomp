@@ -370,6 +370,55 @@ class ExplicitRangeTests(unittest.TestCase):
         for item in self.inspect_thumb(2)["instructions"]:
             self.assertNotIn("stack_delta_bytes", item)
 
+    def test_reports_literal_address_without_reading_the_value(self):
+        self.put_thumb([0x4805, 0x4770, 0x4770])    # LDR r0,[pc,#20]; literal at 0x100004+0x14
+        result = self.inspect_thumb(3)
+        load = result["instructions"][0]
+        self.assertEqual("LDR r0, [pc, #20]", load["mnemonic"])
+        self.assertEqual(["ldr_literal", 0, 20], list(load["decoded_ir"]))
+        self.assertEqual("0x00100018", load["literal_pool_virtual_address"])
+        self.assertTrue(load["literal_within_declared_text"])
+        self.assertFalse(load["literal_value_read"])
+        self.assertFalse(load["literal_overlaps_selected_range"])
+        self.assertFalse(load["literal_is_scanned_instruction_start"])
+        for key in ("indirect_branch", "branch_target_virtual_address", "stack_delta_bytes"):
+            self.assertNotIn(key, load)
+
+    def test_literal_overlapping_the_scan_is_flagged_as_possible_data_decoded_as_code(self):
+        self.put_thumb([0x4800, 0x4770, 0x4770])    # literal 0x00100004 is the third instruction
+        load = self.inspect_thumb(3)["instructions"][0]
+        self.assertEqual("0x00100004", load["literal_pool_virtual_address"])
+        self.assertTrue(load["literal_overlaps_selected_range"])
+        self.assertTrue(load["literal_is_scanned_instruction_start"])
+
+    def test_literal_alignment_from_a_halfword_aligned_load(self):
+        self.put_thumb([0x4770, 0x4A01])             # at 0x00100002: PC 0x100006 -> 0x100004, +4
+        load = self.inspect_thumb(2)["instructions"][1]
+        self.assertEqual("LDR r2, [pc, #4]", load["mnemonic"])
+        self.assertEqual("0x00100008", load["literal_pool_virtual_address"])
+
+    def test_literal_outside_or_straddling_declared_text_is_reported_not_rejected(self):
+        self.put_thumb([0x4FFF])                      # literal 0x00100400, .text ends at 0x00100100
+        far = self.inspect_thumb(1)["instructions"][0]
+        self.assertEqual("0x00100400", far["literal_pool_virtual_address"])
+        self.assertFalse(far["literal_within_declared_text"])
+        self.assertFalse(far["literal_overlaps_selected_range"])
+        self.exheader.write_bytes(build_exheader(text_size=6))   # literal 0x100004 needs bytes up to 0x100008
+        self.put_thumb([0x4800, 0x4770, 0x4770])
+        edge = self.inspect_thumb(3)["instructions"][0]
+        self.assertFalse(edge["literal_within_declared_text"])
+        self.exheader.write_bytes(build_exheader(text_size=8))
+        self.assertTrue(self.inspect_thumb(3)["instructions"][0]["literal_within_declared_text"])
+
+    def test_arm_state_does_not_interpret_thumb_literal_loads(self):
+        self.put_arm([0x00004800])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+            title_id="00040000001B5000", include_unsupported=True,
+        )
+        item = result["instructions"][0]
+        self.assertNotIn("literal_pool_virtual_address", item)
+
     def test_cli_emits_json_for_synthetic_inputs(self):
         self.put_thumb([0x4770])
         run = subprocess.run([

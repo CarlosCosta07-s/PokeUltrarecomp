@@ -35,6 +35,7 @@ CONDITION_C = {
 
 INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
 STACK_OPS = ("push", "pop")
+LITERAL_OPS = ("ldr_literal",)
 
 
 class UnsupportedThumbInstruction(ValueError):
@@ -67,6 +68,8 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         return ("blx_reg", rm)
     if (word & 0xFF00) == 0xBD00:  # POP {reglist, PC}
         return ("pop_pc", word & 0xFF)
+    if (word & 0xF800) == 0x4800:  # LDR Rd, [PC, #imm8*4]
+        return ("ldr_literal", (word >> 8) & 0x7, (word & 0xFF) * 4)
     # Stack transfers. An empty list without LR/PC is unpredictable and refused.
     if (word & 0xFE00) == 0xB400:  # PUSH {reglist[, LR]}
         mask, lr = word & 0xFF, bool(word & 0x100)
@@ -165,6 +168,30 @@ def call_target(address: int, decoded: tuple[object, ...]) -> tuple[int, str]:
     return raw & ~3, "arm"
 
 
+def literal_address(address: int, decoded: tuple[object, ...]) -> int:
+    """Return the address of the 32-bit literal named by a decoded Thumb LDR (literal).
+
+    Align(address + 4, 4) + offset. The value is never read; a literal whose
+    four bytes do not fit the 32-bit address space is refused, not wrapped.
+    """
+    if isinstance(address, bool) or not isinstance(address, int) or not 0 <= address < (1 << 32):
+        raise UnsupportedThumbInstruction(f"literal-load address must fit uint32: {address!r}")
+    if address & 1:
+        raise UnsupportedThumbInstruction(f"Thumb address must be halfword aligned: 0x{address:08X}")
+    if (
+        len(decoded) != 3 or decoded[0] != "ldr_literal"
+        or not isinstance(decoded[2], int) or isinstance(decoded[2], bool)
+        or not 0 <= decoded[2] <= 1020 or decoded[2] % 4
+    ):
+        raise UnsupportedThumbInstruction(f"not a decoded Thumb literal load: {decoded!r}")
+    literal = ((address + 4) & ~3) + decoded[2]
+    if literal + 4 > (1 << 32):
+        raise UnsupportedThumbInstruction(
+            f"literal load at 0x{address:08X} names a literal at 0x{literal:X} outside the 32-bit address space"
+        )
+    return literal
+
+
 def translate(
     halfwords: tuple[int, ...] | list[int],
     initial_nzcv: int = 0,
@@ -193,6 +220,11 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     for inst in decoded:
+        if inst[0] in LITERAL_OPS:
+            raise UnsupportedThumbInstruction(
+                "PC-relative literal load is decoded for inspection only; "
+                "the synthetic translator has no memory model"
+            )
         if inst[0] in STACK_OPS:
             raise UnsupportedThumbInstruction(
                 f"stack transfer ({inst[0]}) is decoded for inspection only; "

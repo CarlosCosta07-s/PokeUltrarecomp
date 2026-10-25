@@ -453,5 +453,54 @@ class ThumbStackTransferTests(unittest.TestCase):
                     poc.translate(words)
 
 
+class ThumbLiteralLoadTests(unittest.TestCase):
+    """LDR Rd, [PC, #imm8*4]; expectations are written out by hand."""
+
+    def test_decode_forms(self):
+        cases = {0x4800: (0, 0), 0x4905: (1, 20), 0x4A01: (2, 4), 0x4FFF: (7, 1020), 0x4C80: (4, 512)}
+        for word, (rd, offset) in cases.items():
+            with self.subTest(word=hex(word)):
+                self.assertEqual(("ldr_literal", rd, offset), poc.decode_halfword(word))
+
+    def test_exhaustive_decode_space_and_neighbours(self):
+        for word in range(0x4800, 0x5000):
+            self.assertEqual(("ldr_literal", (word >> 8) & 7, (word & 0xFF) * 4), poc.decode_halfword(word))
+        for word in (0x47FF, 0x5000, 0x5800, 0x4000, 0x4400):   # BLX-range edge, register-offset loads, ALU/hi-reg space
+            with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.decode_halfword(word)
+
+    def test_literal_address_alignment_and_limits(self):
+        zero, max_offset = ("ldr_literal", 0, 0), ("ldr_literal", 7, 1020)
+        self.assertEqual(0x00100004, poc.literal_address(0x00100000, zero))
+        self.assertEqual(0x00100004, poc.literal_address(0x00100002, zero))     # PC 0x100006 aligns down
+        self.assertEqual(0x00100008, poc.literal_address(0x00100002, ("ldr_literal", 1, 4)))
+        self.assertEqual(0x00100400, poc.literal_address(0x00100000, max_offset))
+        self.assertEqual(0xFFFFFFFC, poc.literal_address(0xFFFFFFF8, zero))     # last whole word
+        self.assertEqual(0xFFFFFFFC, poc.literal_address(0xFFFFFFFA, zero))
+
+    def test_literal_address_refuses_what_does_not_fit_or_is_malformed(self):
+        for address, decoded in (
+            (0xFFFFFFFC, ("ldr_literal", 0, 0)),        # PC alone is 2**32
+            (0xFFFFFFF8, ("ldr_literal", 0, 4)),        # literal at 2**32
+            (0xFFFFFFF0, ("ldr_literal", 0, 1020)),
+        ):
+            with self.subTest(address=hex(address), decoded=decoded):
+                with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "outside the 32-bit"):
+                    poc.literal_address(address, decoded)
+        for address in (True, -2, 1 << 32, 0x00100001, "0x100000"):
+            with self.subTest(address=address), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.literal_address(address, ("ldr_literal", 0, 0))
+        for decoded in (("return",), ("ldr_literal", 0), ("ldr_literal", 0, 1024), ("ldr_literal", 0, 2),
+                        ("ldr_literal", 0, -4), ("ldr_literal", 0, True), ("call", "bl", 0)):
+            with self.subTest(decoded=decoded), self.assertRaises(poc.UnsupportedThumbInstruction):
+                poc.literal_address(0x00100000, decoded)
+
+    def test_synthetic_translator_refuses_literal_loads(self):
+        for words in ([0x4800, 0x4770], [0x2001, 0x4FFF, 0x4770]):
+            with self.subTest(words=[hex(w) for w in words]):
+                with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "literal load"):
+                    poc.translate(words)
+
+
 if __name__ == "__main__":
     unittest.main()

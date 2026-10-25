@@ -39,6 +39,8 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return "B" if cond == "al" else f"B{str(cond).upper()}"
     if decoded[0] == "call":
         return str(decoded[1]).upper()
+    if decoded[0] == "ldr_literal":
+        return f"LDR r{decoded[1]}, [pc, #{decoded[2]}]"
     if decoded[0] == "bx":
         return f"BX r{decoded[1]}"
     if decoded[0] == "blx_reg":
@@ -198,6 +200,10 @@ def inspect_code_range(
             try:
                 decoded = arm.decode_word(word) if state == "arm" else thumb.decode_halfword(word)
                 mnemonic = mnemonic_for(state, decoded)
+                literal = (
+                    thumb.literal_address(address, decoded)
+                    if state == "thumb" and decoded[0] == "ldr_literal" else None
+                )
             except (arm.UnsupportedInstruction, thumb.UnsupportedThumbInstruction, TargetRangeError) as exc:
                 unknown_reason = str(exc)
             else:
@@ -211,6 +217,12 @@ def inspect_code_range(
                     "mnemonic": mnemonic,
                     "decoded_ir": decoded,
                 }
+                if literal is not None:
+                    item["literal_pool_virtual_address"] = f"0x{literal:08X}"
+                    item["literal_within_declared_text"] = (
+                        text_start <= literal and literal + 4 <= text_start + text_size
+                    )
+                    item["literal_value_read"] = False
                 if decoded[0] in ("push", "pop", "pop_pc"):
                     count = bin(int(decoded[1])).count("1") + (
                         1 if decoded[0] == "pop_pc" or (decoded[0] == "push" and decoded[2]) else 0
@@ -280,6 +292,13 @@ def inspect_code_range(
                 item.get("branch_target_state", state) == state and branch_address in scanned_starts
             )
 
+    for item in instructions:
+        literal_text = item.get("literal_pool_virtual_address")
+        if literal_text is not None:
+            literal_address = int(literal_text, 16)
+            item["literal_overlaps_selected_range"] = start_address <= literal_address < selected_end
+            item["literal_is_scanned_instruction_start"] = literal_address in scanned_starts
+
     has_unknown = any(item["decode_status"] != "decoded" for item in instructions)
     return {
         "schema_version": 1,
@@ -317,6 +336,7 @@ def inspect_code_range(
             "With --include-unsupported, unknown encodings are recorded as raw bytes; they are not disassembled or semantically analyzed.",
             "Only the ARMv6K Thumb BL/BLX immediate pair is decoded among 32-bit Thumb forms; every other 32-bit Thumb pair is kept together as two raw halfwords.",
             "BX Rm, BLX Rm and POP {..., PC} are decoded syntactically (Rm != PC); their run-time targets, ARM/Thumb state switches and stack contents are not resolved, and a decoded BX/POP does not prove a function ends there.",
+            "LDR Rd, [PC, #imm] reports only the computed literal address; the literal value is never read, and a literal overlapping the scanned range means data may be decoded as code. Pool extents, shared literals and what the value means are not resolved.",
             "PUSH/POP are decoded syntactically with their stack-pointer delta only; stack contents, alignment, frame layout and calling convention are not modeled, and a PUSH/POP pair does not prove a function boundary.",
             "BL/BLX decoding computes the call target only; callee identity, return address use, argument registers and ABI are not resolved, and BLX targets are ARM state, not scanned in the Thumb range.",
             "Literal pools, embedded data, relocations, calls, memory effects, ABI and control-flow context are not resolved.",
