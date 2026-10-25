@@ -208,6 +208,23 @@ class TranslationTests(unittest.TestCase):
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+    def test_generated_c_beq_not_taken_falls_through_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
+        # CMP r0,#0 with r0=1 clears Z; BEQ is not taken, so MOV #2 runs and B skips MOV #3.
+        words = [0xE3A00001, 0xE3500000, 0x0A000001, 0xE3A00002, 0xEA000000, 0xE3A00003, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(2) && flags == UINT8_C(2) ? 0 : 1; }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "beq_nt.c"
+            exe = Path(directory) / ("beq_nt.exe" if os.name == "nt" else "beq_nt")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
     def test_generated_c_bne_taken_and_not_taken_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
