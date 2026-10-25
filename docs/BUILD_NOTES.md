@@ -422,3 +422,10 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - O inspetor de intervalo mostra os mnemônicos/operandos e os testes nativos verificam C/V preservados em operações lógicas, ausência de escrita para TST/CMP/CMN e NZCV correto em RSBS.
 - **Validação integral:** [run 40195815460](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195815460), commit `f28715c296641378c4b3884539379d6a61052674`: `Ran 230 tests in 2.114s`, `OK`; Python 3.14.4, GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS em 41 caminhos rastreados e zero arquivos não ignorados não rastreados.
 - A primeira execução encontrou uma falha na fórmula de overflow de RSBS para `0 - 0x80000000`. A fórmula foi corrigida; o teste nativo passou na execução integral acima. Nenhum `.code` real foi lido; isto não demonstra gameplay nem runtime.
+
+## Thumb-1 ADCS/SBCS com carry-in e borrow — 2026-10-25
+
+- Adicionados `ADCS Rdn,Rm` e `SBCS Rdn,Rm` no grupo Thumb-1 data-processing register (opcodes 0101 e 0110). ADCS usa C de entrada como carry-in; SBCS usa `!C` como borrow-in. A saída C segue carry/no-borrow, e as flags N/Z/V são calculadas no resultado de 32 bits.
+- O tradutor continua recusando os outros opcodes não implementados dentro do mesmo espaço. O inspetor nomeia ADCS/SBCS e deixa a árvore de fluxo tratar essas instruções como ALU sem desvio.
+- Testes nativos cobrem ADCS com carry-in que altera o resultado e carry-out, SBCS com C=0/C=1 e underflow; teste do inspetor confirma mnemônicos. Todos os resultados usam halfwords sintéticos.
+- **Validação da árvore anterior a esta mudança:** [run 40196025438](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40196025438), commit `f54c5c5abcf6e394319a8f957bd250b281cad45d`: 231 testes aprovados, 96/96 na matriz diferencial e verificador de segurança PASS. A verificação desta extensão ADCS/SBCS fica pendente até a nova execução integral terminar.
