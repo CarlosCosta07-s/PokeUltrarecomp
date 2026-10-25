@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Clean-room proof of concept: translate a tiny synthetic ARM A32 subset to C.
 
-This deliberately tiny demonstrator is not a general-purpose recompiler, does not
-load game files, and supports a bounded immediate subset: MOV/ADD/SUB/AND/ORR/EOR/BIC/MVN,
-flag-setting ADDS/SUBS, CMN/CMP, and BX LR. Logical S-bit forms remain unsupported.
+This demonstrator is not a general-purpose recompiler and does not load game files.
+It supports a bounded immediate data-processing subset, NZCV for ADDS/SUBS/CMN/CMP,
+and B with standard condition codes. Logical S-bit forms, memory and game runtime
+services remain outside the scope of this proof of concept.
 """
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ from pathlib import Path
 DEFAULT_WORDS = (0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008, 0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E)
 MAX_INSTRUCTIONS = 256
 
-# ARM condition field (bits 31:28) -> mnemonic suffix, for B only. 0xF is not a
-# condition in A32 (it selects the unconditional/BLX-immediate space) and is rejected.
+# ARM condition field (bits 31:28) -> supported predicate name for B and data ops.
+# 0xF selects the unconditional/BLX-immediate space and is rejected by this POC.
 BRANCH_CONDITION_NAMES = {
     0x0: "eq", 0x1: "ne", 0x2: "cs", 0x3: "cc", 0x4: "mi", 0x5: "pl", 0x6: "vs",
     0x7: "vc", 0x8: "hi", 0x9: "ls", 0xA: "ge", 0xB: "lt", 0xC: "gt", 0xD: "le",
@@ -103,8 +104,8 @@ def decode_word(word: int) -> tuple[object, ...]:
     immediate = ror32(imm8, rotate)
 
     # This integration stage deliberately enables only flag-setting ADD/SUB and
-    # canonical CMN. Logical S-bit forms require shifter-carry semantics and stay
-    # unsupported until that behavior is modeled end-to-end.
+    # canonical CMN/CMP. Logical S-bit forms require shifter-carry semantics and
+    # stay unsupported until that behavior is modeled end-to-end.
     if set_flags and opcode not in (0b0100, 0b0010, 0b1011, 0b1010):
         raise UnsupportedInstruction(f"flag-setting form is unsupported: 0x{word:08X}")
 
