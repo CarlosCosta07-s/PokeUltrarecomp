@@ -525,5 +525,57 @@ int main(void) {
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+
+    def test_bounded_loop_returns_or_reports_budget_exhaustion_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; bounded-loop proof requires cc, gcc, or clang")
+        # MOV r0,#3; SUBS r0,r0,#1; BNE back to SUBS; BX LR.
+        words = [0xE3A00003, 0xE2500001, 0x1AFFFFFD, 0xE12FFF1E]
+        successful = poc.translate(words, max_execution_steps=8).replace(
+            "uint32_t synthetic_entry_bounded(", "uint32_t loop_success("
+        )
+        exhausted = poc.translate(words, max_execution_steps=2).replace(
+            "uint32_t synthetic_entry_bounded(", "uint32_t loop_exhausted("
+        )
+        harness = "\n".join((successful, exhausted)) + """
+int main(void) {
+    uint8_t flags = 0, status = 255;
+    uint32_t steps = 0;
+    if (!(loop_success(&flags, &steps, &status) == UINT32_C(0)
+        && flags == UINT8_C(6) && status == UINT8_C(0)
+        && steps == UINT32_C(8))) return 1;
+    flags = 0; status = 255; steps = 0;
+    if (!(loop_exhausted(&flags, &steps, &status) == UINT32_C(2)
+        && flags == UINT8_C(2) && status == UINT8_C(1)
+        && steps == UINT32_C(2))) return 2;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "bounded_loop.c"
+            exe = Path(directory) / ("bounded_loop.exe" if os.name == "nt" else "bounded_loop")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_rejects_invalid_execution_budgets(self):
+        for bad in (0, -1, True, "4", 100001):
+            with self.subTest(bad=bad), self.assertRaisesRegex(poc.UnsupportedInstruction, "execution budget"):
+                poc.translate([0xE12FFF1E], max_execution_steps=bad)
+
+    def test_cli_execution_budget_option(self):
+        script = str(ROOT / "tools" / "arm_subset_poc.py")
+        words = ["E3A00003", "E2500001", "1AFFFFFD", "E12FFF1E"]
+        ok = subprocess.run([sys.executable, script, "--max-execution-steps", "8", *words], capture_output=True, text=True, check=False)
+        self.assertEqual(0, ok.returncode, msg=ok.stderr)
+        self.assertIn("synthetic_entry_bounded", ok.stdout)
+        self.assertIn("UINT32_C(8)", ok.stdout)
+        bad = subprocess.run([sys.executable, script, "--max-execution-steps", "0", *words], capture_output=True, text=True, check=False)
+        self.assertNotEqual(0, bad.returncode)
+        self.assertIn("execution budget", bad.stderr)
+
 if __name__ == "__main__":
     unittest.main()
