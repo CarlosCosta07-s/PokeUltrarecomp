@@ -451,7 +451,10 @@ def inspect_code_range(
                     item["indirect_branch"] = True
                     item["branch_links"] = decoded[0] == "blx_reg"
                     if decoded[0] == "blx_reg":
-                        item["link_register_value"] = f"0x{(address + instruction_size) | 1:08X}"
+                        link_address = address + instruction_size
+                        if state == "thumb":
+                            link_address |= 1
+                        item["link_register_value"] = f"0x{link_address:08X}"
                     item["branch_target_virtual_address"] = None
                     item["branch_target_note"] = (
                         "target comes from a register or the stack at run time; not resolved"
