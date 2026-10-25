@@ -139,7 +139,11 @@ def decode_word(word: int) -> tuple[object, ...]:
 
 
 def translate(words: tuple[int, ...] | list[int]) -> str:
-    """Translate a bounded instruction sequence to a standalone C function."""
+    """Translate a bounded instruction sequence to a standalone C function.
+
+    Note: N/Z/C/V start at 0 in the generated C. A BEQ/BNE with no earlier
+    flag-setting instruction therefore sees Z=0, not caller-provided flags.
+    """
     if not words:
         raise UnsupportedInstruction("empty instruction sequence")
     if len(words) > MAX_INSTRUCTIONS:

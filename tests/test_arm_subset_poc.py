@@ -155,6 +155,16 @@ class TranslationTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "backward or self-targeting branch"):
             poc.translate([0xEAFFFFFE, 0xE12FFF1E])
 
+    def test_rejects_branch_target_one_past_end_and_negative_target(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "out-of-range instruction 2"):
+            poc.translate([0xEA000000, 0xE12FFF1E])  # target == len(words)
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "out-of-range instruction -2"):
+            poc.translate([0xEAFFFFFC, 0xE12FFF1E])  # target < 0
+
+    def test_rejects_true_backward_branch(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "backward or self-targeting branch"):
+            poc.translate([0xE3A00001, 0xE3A00002, 0xEAFFFFFD, 0xE12FFF1E])  # B at index 2 -> index 1
+
     def test_branch_codegen_and_sign_extension_without_compiler(self):
         self.assertEqual(("branch", "al", 0x7FFFFF), poc.decode_word(0xEA7FFFFF))
         self.assertEqual(("branch", "al", -0x800000), poc.decode_word(0xEA800000))
