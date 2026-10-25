@@ -61,6 +61,7 @@ def build_cases() -> tuple[DifferentialCase, ...]:
         ("adds", arm_flags.add_with_flags, 0xE2900000, True),
         ("subs", arm_flags.sub_with_flags, 0xE2500000, True),
         ("cmn", arm_flags.add_with_flags, 0xE3700000, False),
+        ("cmp", arm_flags.sub_with_flags, 0xE3500000, False),
     )
     for lhs_name, lhs, prefix in _initial_register_prefixes():
         for immediate_name, rhs, encoded_immediate in _IMMEDIATES:
@@ -176,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    print(f"PASS: {count} synthetic ADDS/SUBS/CMN native results and NZCV values matched tools/arm_flags.py.")
+    print(f"PASS: {count} synthetic ADDS/SUBS/CMN/CMP native results and NZCV values matched tools/arm_flags.py.")
     print(f"Compiler: {compiler}; C11; -Wall -Wextra -Werror.")
     print("Scope: generated C vs the project's separate NZCV model; not an external emulator or game test.")
     return 0
