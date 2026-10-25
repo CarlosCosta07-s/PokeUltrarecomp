@@ -287,3 +287,14 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - O teste usa C11 com `-Wall -Wextra -Werror`, seguindo o padrão dos testes nativos existentes.
 - Blob atual de `tools/arm_subset_poc.py`: `8ca13e7d9fd3e174ce0abedf55b541132a15b90a`. Blob atual de `tests/test_arm_subset_poc.py`: `ada971f479a4d8371d0ae86a4fd6c72e61340335`.
 - Validação pendente: o teste foi adicionado ao repositório, mas não foi executado nesta sessão. A suíte agora tem 88 testes esperados (57 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial). Não declarar sucesso antes de executar num checkout atualizado.
+
+## Verificação nativa isolada complementar — 2026-10-24
+
+A tentativa de clonar o repositório inteiro continua bloqueada por falha de resolução DNS. Para não confundir esse bloqueio com ausência total de validação, extraí a fonte atual de `tools/arm_subset_poc.py` por meio da integração GitHub e confirmei seu Git blob SHA-1 (`8ca13e7d9fd3e174ce0abedf55b541132a15b90a`) antes da execução num diretório temporário isolado, com Python 3.13.5 e `cc` (GCC).
+
+- **Fixture padrão:** o C gerado compilou com C11, `-Wall -Wextra -Werror`; o executável retornou código zero ao verificar resultado 12 e NZCV 0.
+- **Matriz independente de condições:** 448 verificações (14 condições × 16 estados NZCV × desvio/predicação) compilaram e executaram sem divergências contra uma tabela booleana independente.
+- **Predicação de comparação e aritmética:** os harnesses nativos de `CMP` condicional e `ADDS` condicional passaram; flags preservadas quando a condição falha e atualizadas quando a condição passa.
+- **Proteção de fluxo:** o tradutor continuou recusando desvio para trás/autoalvo.
+
+Esta verificação isolada **não é a suíte integral do repositório** e não substitui `python -m unittest discover -s tests -v`: os 88 testes esperados (57 do tradutor, 18 do modelo NZCV, 9 do verificador de segurança e 4 da matriz diferencial) continuam pendentes de execução num checkout completo e sincronizado. Também não valida o runtime do jogo, uma ROM, nem compatibilidade com Ultra Sun/Ultra Moon.
