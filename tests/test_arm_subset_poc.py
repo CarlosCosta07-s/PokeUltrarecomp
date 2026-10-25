@@ -577,5 +577,35 @@ int main(void) {
         self.assertNotEqual(0, bad.returncode)
         self.assertIn("execution budget", bad.stderr)
 
+
+    def test_bounded_budget_counts_predicated_instruction_when_condition_is_false(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; bounded-predication proof requires cc, gcc, or clang")
+        # MOVNE r0,#5 is skipped when Z=1, but fetching it still consumes one step.
+        source = poc.translate(
+            [0x13A00005, 0xE3A00007, 0xE12FFF1E],
+            initial_nzcv=0x4,
+            max_execution_steps=1,
+        ).replace("uint32_t synthetic_entry_bounded(", "uint32_t predicated_budget(")
+        harness = source + """
+int main(void) {
+    uint8_t flags = 0, status = 255;
+    uint32_t steps = 0;
+    return predicated_budget(&flags, &steps, &status) == UINT32_C(0)
+        && flags == UINT8_C(4)
+        && status == UINT8_C(1)
+        && steps == UINT32_C(1) ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "bounded_predication.c"
+            exe = Path(directory) / ("bounded_predication.exe" if os.name == "nt" else "bounded_predication")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
 if __name__ == "__main__":
     unittest.main()
