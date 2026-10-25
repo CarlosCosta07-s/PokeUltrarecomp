@@ -160,6 +160,25 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
             memory = "read"
         if bool(writeback):
             writes.add(base_reg)
+    elif op == "a32_dp_reg":
+        operation, set_flags, rd, rn, rm, shift_name, shift_amount = op_ir[1:]
+        operation = str(operation)
+        reads.add(_reg(int(rm)))
+        if operation not in ("mov", "mvn"):
+            reads.add(_reg(int(rn)))
+        if operation not in ("tst", "teq", "cmp", "cmn"):
+            writes.add(_reg(int(rd)))
+        if str(shift_name) == "rrx":
+            flags_read.add("c")
+            notes.append("RRX consumes carry-in; the shifted operand value is not evaluated")
+        if bool(set_flags):
+            if operation in ("and", "eor", "tst", "teq", "orr", "mov", "bic", "mvn"):
+                flags_written |= {"n", "z", "c"}
+                notes.append("logical shifter carry is written to C; V is preserved")
+            else:
+                flags_written |= CONDITION_FLAGS
+        if operation in ("tst", "teq", "cmp", "cmn"):
+            notes.append("test/compare form writes flags without a general-purpose destination")
     elif op == "a32_multi":
         operation, rn, register_mask, mode, writeback = op_ir[1:]
         base_reg = _reg(int(rn))

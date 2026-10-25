@@ -372,6 +372,53 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertIn("r4", result["dataflow"]["instructions"][0]["registers_written"])
         self.assertEqual("indirect-branch", result["dataflow"]["instructions"][3]["control_flow"])
 
+    def test_decodes_a32_data_processing_register_immediate_shifts(self):
+        # ADD r0,r1,r2,LSL #2; MOV r3,r4,RRX; SUBS r5,r6,r7,LSR #32
+        self.put_arm([0xE0810102, 0xE1B03064, 0xE0565027])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 3,
+            title_id="00040000001B5000",
+        )
+        add, mov, sub = result["instructions"]
+        self.assertEqual("ADD r0, r1, r2, LSL #2", add["mnemonic"])
+        self.assertEqual(["a32_dp_reg", "add", False, 0, 1, 2, "lsl", 2], add["decoded_ir"])
+        self.assertEqual("MOV r3, r4, RRX", mov["mnemonic"])
+        self.assertEqual("rrx", mov["decoded_ir"][6])
+        self.assertEqual("SUBS r5, r6, r7, LSR #32", sub["mnemonic"])
+        self.assertEqual(32, sub["decoded_ir"][7])
+        add_effect, mov_effect, sub_effect = result["dataflow"]["instructions"]
+        self.assertEqual(["r1", "r2"], add_effect["registers_read"])
+        self.assertEqual(["r0"], add_effect["registers_written"])
+        self.assertEqual(["c"], mov_effect["flags_read"])
+        self.assertEqual(["r3"], mov_effect["registers_written"])
+        self.assertEqual(["n", "z", "c", "v"], sub_effect["flags_written"])
+
+    def test_decodes_a32_register_compare_and_logical_test_forms(self):
+        self.put_arm([0xE1510002, 0xE1110002, 0xE1310002, 0xE1910002])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
+            title_id="00040000001B5000",
+        )
+        self.assertEqual(["CMP r1, r2", "TST r1, r2", "TEQ r1, r2", "ORRS r0, r1, r2"],
+                         [item["mnemonic"] for item in result["instructions"]])
+        cmp_effect, tst_effect, teq_effect, orr_effect = result["dataflow"]["instructions"]
+        self.assertEqual([], cmp_effect["registers_written"])
+        self.assertEqual(["n", "z", "c", "v"], cmp_effect["flags_written"])
+        self.assertEqual(["n", "z", "c"], tst_effect["flags_written"])
+        self.assertEqual(["n", "z", "c"], teq_effect["flags_written"])
+        self.assertEqual(["r0"], orr_effect["registers_written"])
+
+    def test_rejects_out_of_scope_a32_register_data_processing_forms(self):
+        # Conditional forms, register-controlled shifts, PC operands, and noncanonical test encodings.
+        for word in (0x10810002, 0xE0810212, 0xE081F002, 0xE1511002, 0xE0110002):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_rejects_invalid_general_a32_ldm_stm_lists_and_bases(self):
         # Empty list, PC base, S/user-bank form, base in list with writeback,
         # and STM with PC are kept out of the currently modelled subset.

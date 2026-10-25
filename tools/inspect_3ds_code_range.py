@@ -330,8 +330,55 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                     writeback_effective,
                 )
 
-    return arm.decode_word(word)
+    # A32 data-processing register operand with an immediate shift.
+    # Register-controlled shifts, PC operands and conditionally executed forms
+    # remain outside this syntax-only subset.
+    if condition == 0xE and ((word >> 26) & 0b11) == 0 and ((word >> 25) & 1) == 0 and ((word >> 4) & 1) == 0:
+        opcode = (word >> 21) & 0xF
+        set_flags = ((word >> 20) & 1) == 1
+        rn = (word >> 16) & 0xF
+        rd = (word >> 12) & 0xF
+        shift_amount = (word >> 7) & 0x1F
+        shift_type = (word >> 5) & 0b11
+        rm = word & 0xF
+        operations = {
+            0b0000: "and", 0b0001: "eor", 0b0010: "sub", 0b0011: "rsb",
+            0b0100: "add", 0b1000: "tst", 0b1001: "teq", 0b1010: "cmp",
+            0b1011: "cmn", 0b1100: "orr", 0b1101: "mov", 0b1110: "bic",
+            0b1111: "mvn",
+        }
+        operation = operations.get(opcode)
+        if operation is not None:
+            test_operation = operation in ("tst", "teq", "cmp", "cmn")
+            if test_operation and not set_flags:
+                raise arm.UnsupportedInstruction(
+                    f"A32 {operation.upper()} register form requires the S bit"
+                )
+            if test_operation and rd != 0:
+                raise arm.UnsupportedInstruction(
+                    f"A32 {operation.upper()} register form requires canonical Rd=0"
+                )
+            if operation in ("mov", "mvn") and rn != 0:
+                raise arm.UnsupportedInstruction(
+                    f"A32 {operation.upper()} register form requires canonical Rn=0"
+                )
+            if rd == 15 or rn == 15 or rm == 15:
+                raise arm.UnsupportedInstruction(
+                    "A32 data-processing register form with PC operand/destination is outside this inspector subset"
+                )
+            shift_names = ("lsl", "lsr", "asr", "ror")
+            shift_name = shift_names[shift_type]
+            if shift_amount == 0:
+                if shift_name in ("lsr", "asr"):
+                    shift_amount = 32
+                elif shift_name == "ror":
+                    shift_name = "rrx"
+            return (
+                "a32_dp_reg", operation, set_flags, rd, rn, rm,
+                shift_name, shift_amount,
+            )
 
+    return arm.decode_word(word)
 
 def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
     if decoded == ("return",):
@@ -360,6 +407,26 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
         operation = "STMDB" if decoded[0] == "arm_push" else "LDMIA"
         return f"{operation} sp!, {{{', '.join(registers)}}}"
+    if state == "arm" and decoded[0] == "a32_dp_reg":
+        operation, set_flags, rd, rn, rm, shift_name, shift_amount = decoded[1:]
+        names = {13: "sp", 14: "lr", 15: "pc"}
+        rd_name = names.get(int(rd), f"r{rd}")
+        rn_name = names.get(int(rn), f"r{rn}")
+        rm_name = names.get(int(rm), f"r{rm}")
+        mnemonic = str(operation).upper()
+        if bool(set_flags) and str(operation) not in ("tst", "teq", "cmp", "cmn"):
+            mnemonic += "S"
+        if str(operation) in ("cmp", "cmn", "tst", "teq"):
+            operands = f"{rn_name}, {rm_name}"
+        elif str(operation) in ("mov", "mvn"):
+            operands = f"{rd_name}, {rm_name}"
+        else:
+            operands = f"{rd_name}, {rn_name}, {rm_name}"
+        if str(shift_name) == "rrx":
+            operands += ", RRX"
+        elif not (str(shift_name) == "lsl" and int(shift_amount) == 0):
+            operands += f", {str(shift_name).upper()} #{int(shift_amount)}"
+        return f"{mnemonic} {operands}"
     if state == "arm" and decoded[0] == "a32_multi":
         operation, rn, register_mask, mode, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
