@@ -179,16 +179,20 @@ def translate(
     words: tuple[int, ...] | list[int],
     initial_nzcv: int = 0,
     max_execution_steps: int | None = None,
+    runtime_state_io: bool = False,
 ) -> str:
     """Translate a synthetic A32 sequence to standalone C.
 
-    ``initial_nzcv`` is the entry flag nibble N:bit3, Z:bit2, C:bit1, V:bit0.
-    If ``max_execution_steps`` is supplied, code is emitted with an explicit
-    execution counter and status output; this is required to accept backward
-    or self-targeting branches. The counter includes every guest instruction,
-    including a conditional instruction whose predicate is false and BX LR.
-    ``execution_status_out`` is 0 on BX LR and 1 when the budget is exhausted.
+    By default, registers and NZCV are fixed at translation time, preserving the
+    original synthetic POC API. With ``runtime_state_io=True``, bounded C accepts
+    entry r0-r3 and NZCV at runtime and returns all four registers plus NZCV,
+    step count and execution status. This is a candidate-range test interface,
+    not the original ARM ABI or proof of equivalence.
     """
+    if not isinstance(runtime_state_io, bool):
+        raise UnsupportedInstruction("runtime_state_io must be a bool")
+    if runtime_state_io and max_execution_steps is None:
+        raise UnsupportedInstruction("runtime_state_io requires an explicit execution budget")
     if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
         raise UnsupportedInstruction(f"initial NZCV must be a 4-bit value (0..15): {initial_nzcv!r}")
     if max_execution_steps is not None and (
@@ -236,26 +240,56 @@ def translate(
         elif instruction[0] in ("cmn", "cmp"):
             used_registers.add(instruction[1])
 
+    if runtime_state_io:
+        used_registers = set(range(4))
     bounded = max_execution_steps is not None
     function_signature = (
-        "uint32_t synthetic_entry_bounded(uint8_t *nzcv_out, "
-        "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
-        if bounded else "uint32_t synthetic_entry(uint8_t *nzcv_out)"
+        "uint32_t synthetic_entry_bounded(const uint32_t *registers_in, "
+        "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+        "uint8_t *execution_status_out, uint32_t *registers_out)"
+        if runtime_state_io else (
+            "uint32_t synthetic_entry_bounded(uint8_t *nzcv_out, "
+            "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
+            if bounded else "uint32_t synthetic_entry(uint8_t *nzcv_out)"
+        )
+    )
+    flag_initializers = (
+        [
+            "    uint32_t flag_n = (uint32_t)((initial_nzcv >> 3) & 1U);",
+            "    uint32_t flag_z = (uint32_t)((initial_nzcv >> 2) & 1U);",
+            "    uint32_t flag_c = (uint32_t)((initial_nzcv >> 1) & 1U);",
+            "    uint32_t flag_v = (uint32_t)(initial_nzcv & 1U);",
+        ] if runtime_state_io else [
+            f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1};",
+            f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1};",
+            f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1};",
+            f"    uint32_t flag_v = {initial_nzcv & 1};",
+        ]
     )
     lines = [
         "#include <stdint.h>",
         "",
+        "/* Generated C remains a candidate model; independent semantic validation is required. */"
+        if runtime_state_io else
         "/* Generated only from the synthetic instruction sequence supplied. */",
         function_signature,
         "{",
-        f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1};",
-        f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1};",
-        f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1};",
-        f"    uint32_t flag_v = {initial_nzcv & 1};",
     ]
+    if runtime_state_io:
+        lines.extend((
+            "    if (registers_in == 0 || initial_nzcv > UINT8_C(15)) {",
+            "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
+            "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+            "        return 0U;",
+            "    }",
+        ))
+    lines.extend(flag_initializers)
     if bounded:
         lines.append("    uint32_t execution_steps = 0U;")
-    lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
+    if runtime_state_io:
+        lines.extend(f"    uint32_t r{register} = registers_in[{register}];" for register in sorted(used_registers))
+    else:
+        lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
     branch_target_indices = set(branch_targets.values())
     for instruction_index, instruction in enumerate(decoded[:-1]):
         if instruction_index in branch_target_indices:
@@ -354,6 +388,12 @@ def translate(
         "    if (nzcv_out != 0) {",
         "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
         "    }",
+    ))
+    if runtime_state_io:
+        lines.append("    if (registers_out != 0) {")
+        lines.extend(f"        registers_out[{register}] = r{register};" for register in range(4))
+        lines.append("    }")
+    lines.extend((
         "    return r0;",
         "}",
         "",
