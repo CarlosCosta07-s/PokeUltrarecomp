@@ -91,6 +91,26 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         rd = word & 0x7
         return (shift_names[shift_opcode], rd, rm, amount)
 
+    # Thumb-1 data-processing register group (low registers only).
+    # Unimplemented ALU opcodes remain explicit failures.
+    if (word & 0xFC00) == 0x4000:
+        opcode = (word >> 6) & 0xF
+        rm = (word >> 3) & 0x7
+        rd = word & 0x7
+        supported_ops = {
+            0x0: "ands_reg",
+            0x1: "eors_reg",
+            0x8: "tst_reg",
+            0xC: "orrs_reg",
+            0xE: "bics_reg",
+            0xF: "mvns_reg",
+        }
+        if opcode not in supported_ops:
+            raise UnsupportedThumbInstruction(
+                f"unsupported Thumb data-processing register opcode {opcode:04b} in 0x{word:04X}"
+            )
+        return (supported_ops[opcode], rd, rm)
+
     # Thumb-1 three-operand ADD/SUB: register Rm or imm3.
     if (word & 0xF800) == 0x1800:
         immediate_form = (word >> 10) & 1
@@ -286,6 +306,8 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
+        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
+            used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
 
@@ -324,6 +346,30 @@ def translate(
             lines.append(f"    r{rd} = UINT32_C({immediate});")
             lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif op in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
+            _, rd, rm = inst
+            suffix = str(index)
+            lhs = f"thumb_dp_lhs_{suffix}"
+            rhs = f"thumb_dp_rhs_{suffix}"
+            result = f"thumb_dp_result_{suffix}"
+            lines.append(f"    uint32_t {rhs} = r{rm};")
+            if op == "mvns_reg":
+                lines.append(f"    uint32_t {result} = (uint32_t)~{rhs};")
+            else:
+                lines.append(f"    uint32_t {lhs} = r{rd};")
+                expression = {
+                    "ands_reg": f"({lhs} & {rhs})",
+                    "eors_reg": f"({lhs} ^ {rhs})",
+                    "orrs_reg": f"({lhs} | {rhs})",
+                    "bics_reg": f"({lhs} & ~{rhs})",
+                    "tst_reg": f"({lhs} & {rhs})",
+                }[op]
+                lines.append(f"    uint32_t {result} = (uint32_t){expression};")
+            if op != "tst_reg":
+                lines.append(f"    r{rd} = {result};")
+            # Unshifted logical ALU forms update N/Z and preserve C/V.
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         elif op in ("lsl_imm", "lsr_imm", "asr_imm"):
             _, rd, rm, amount = inst
             suffix = str(index)
