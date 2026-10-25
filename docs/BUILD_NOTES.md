@@ -463,3 +463,9 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Instruções desconhecidas são marcadas como desconhecidas; chamadas diretas/indiretas são parciais porque os efeitos da função chamada e os clobbers da ABI não são inferidos. O agregado não afirma que um registrador escrito no intervalo é o valor de retorno, nem que registradores ausentes são preservados.
 - Testes novos usam IR e encodings sintéticos para predicação A32, NZCV, ALU Thumb, loads/stores, stack, múltiplas transferências, chamadas e entradas desconhecidas.
 - Nenhum executável real dos jogos foi lido. Validação da suíte completa desta revisão: pendente até a conclusão do GitHub Actions.
+
+
+## Efeitos sintáticos — correção após primeira CI — 2026-10-25
+
+- A primeira execução integral do commit `92e4f54af222ab023bad31a30045332e21124a99` encontrou 4 falhas nos testes novos. O log foi inspecionado: expectativa de ordenação de flags, conjunto de flags lidos por condição, leitura do registrador-base em LDMIA e diferença entre formas ARM/Thumb de ADDS.
+- Corrigida a regra para ler apenas os flags necessários a cada condição, diferenciar a forma A32 de três operandos da forma Thumb imediata e corrigir as expectativas de teste sobre ordenação e base de LDMIA. A nova execução integral ainda precisa confirmar a correção.

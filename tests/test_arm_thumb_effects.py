@@ -23,8 +23,16 @@ class InstructionEffectTests(unittest.TestCase):
         report = effects.instruction_effects(ins(0x1000, ("adds", 2, 1), "ADDS r2, #1"), "thumb")
         self.assertEqual(["r2"], report["registers_read"])
         self.assertEqual(["r2"], report["registers_written"])
-        self.assertEqual(["n", "z", "c", "v"], report["flags_written"])
+        self.assertEqual(["c", "n", "v", "z"], report["flags_written"])
         self.assertEqual("known", report["status"])
+
+    def test_arm_adds_reads_rn_not_the_old_destination(self):
+        report = effects.instruction_effects(
+            ins(0x1000, ("adds", 0, 1, 4), "ADDS r0, r1, #4"), "arm"
+        )
+        self.assertEqual(["r1"], report["registers_read"])
+        self.assertEqual(["r0"], report["registers_written"])
+        self.assertEqual(["c", "n", "v", "z"], report["flags_written"])
 
     def test_thumb_movs_immediate_only_writes_destination(self):
         report = effects.instruction_effects(ins(0x1000, ("movs", 3, 7), "MOVS r3, #7"), "thumb")
@@ -80,7 +88,7 @@ class InstructionEffectTests(unittest.TestCase):
         self.assertEqual(["sp"], push["registers_written"])
         self.assertEqual(["r0", "r2", "sp"], pop["registers_written"])
         self.assertEqual(["r0", "r1"], ldm["registers_written"])
-        self.assertNotIn("r0", ldm["registers_read"])
+        self.assertIn("r0", ldm["registers_read"])
         self.assertEqual("read", ldm["memory"])
 
     def test_calls_are_marked_partial_not_complete(self):

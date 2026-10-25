@@ -8,6 +8,13 @@ from __future__ import annotations
 from typing import Any
 
 CONDITION_FLAGS = {"n", "z", "c", "v"}
+CONDITION_FLAG_READS = {
+    "eq": {"z"}, "ne": {"z"}, "cs": {"c"}, "cc": {"c"},
+    "mi": {"n"}, "pl": {"n"}, "vs": {"v"}, "vc": {"v"},
+    "hi": {"c", "z"}, "ls": {"c", "z"}, "ge": {"n", "v"},
+    "lt": {"n", "v"}, "gt": {"n", "v", "z"}, "le": {"n", "v", "z"},
+    "al": set(),
+}
 
 
 def _reg(number: int) -> str:
@@ -44,7 +51,7 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
         inner_item = dict(item, decoded_ir=inner)
         effect = instruction_effects(inner_item, state)
         effect["conditional"] = True
-        effect["flags_read"] = sorted(set(effect["flags_read"]) | CONDITION_FLAGS)
+        effect["flags_read"] = sorted(set(effect["flags_read"]) | CONDITION_FLAG_READS.get(str(condition), CONDITION_FLAGS))
         effect["notes"].append(f"execution is predicated on condition {condition}")
         return effect
 
@@ -61,7 +68,7 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
     if op == "branch":
         condition = str(op_ir[1])
         if condition != "al":
-            flags_read |= CONDITION_FLAGS
+            flags_read |= CONDITION_FLAG_READS.get(condition, CONDITION_FLAGS)
             conditional = True
         writes.add("pc")
         flow = "conditional-branch" if conditional else "branch"
@@ -87,8 +94,12 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
         if op == "movs":
             flags_written |= {"n", "z"}
     elif op in ("adds", "subs"):
-        reads.add(_reg(int(op_ir[1])))
-        writes.add(_reg(int(op_ir[1])))
+        destination = _reg(int(op_ir[1]))
+        writes.add(destination)
+        if state == "arm" and len(op_ir) >= 4:
+            reads.add(_reg(int(op_ir[2])))
+        else:
+            reads.add(destination)
         flags_written |= CONDITION_FLAGS
     elif op in ("add", "sub", "and", "orr", "eor", "bic"):
         writes.add(_reg(int(op_ir[1])))
