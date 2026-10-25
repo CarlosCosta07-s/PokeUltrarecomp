@@ -77,6 +77,7 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "str_imm": "STR", "ldr_imm": "LDR", "strb_imm": "STRB",
         "ldrb_imm": "LDRB", "strh_imm": "STRH", "ldrh_imm": "LDRH",
         "str_sp": "STR", "ldr_sp": "LDR",
+        "adr": "ADR", "add_sp_imm": "ADD", "add_sp": "ADD", "sub_sp": "SUB",
     }
     name = names.get(op)
     if name is None:
@@ -107,6 +108,12 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"{name} r{inst[1]}, [r{inst[2]}, #{inst[3]}]"
     if state == "thumb" and op in ("str_sp", "ldr_sp"):
         return f"{name} r{inst[1]}, [sp, #{inst[2]}]"
+    if state == "thumb" and op == "adr":
+        return f"ADR r{inst[1]}, [pc, #{inst[2]}]"
+    if state == "thumb" and op == "add_sp_imm":
+        return f"ADD r{inst[1]}, sp, #{inst[2]}"
+    if state == "thumb" and op in ("add_sp", "sub_sp"):
+        return f"{name} sp, #{inst[1]}"
     if state == "thumb" and op in ("cmp_reg", "cmn_reg"):
         return f"{name} r{inst[1]}, r{inst[2]}"
     if state == "thumb" and op == "rsbs_zero":
@@ -311,6 +318,21 @@ def inspect_code_range(
                     item["stack_delta_bytes"] = -4 * count if decoded[0] == "push" else 4 * count
                 if state == "thumb" and decoded[0] in thumb.MEMORY_OPS:
                     item["memory_access"] = memory_access_metadata(decoded)
+                if state == "thumb" and decoded[0] == "adr":
+                    pc_base = (address + 4) & ~3
+                    item["pc_relative_address"] = {
+                        "aligned_pc_base": f"0x{pc_base:08X}",
+                        "offset_bytes": int(decoded[2]),
+                        "target_virtual_address": f"0x{pc_base + int(decoded[2]):08X}",
+                    }
+                if state == "thumb" and decoded[0] == "add_sp_imm":
+                    item["address_calculation"] = {
+                        "base_register": "sp",
+                        "offset_bytes": int(decoded[2]),
+                        "result_value_resolved": False,
+                    }
+                if state == "thumb" and decoded[0] in ("add_sp", "sub_sp"):
+                    item["stack_pointer_delta_bytes"] = int(decoded[1]) * (1 if decoded[0] == "add_sp" else -1)
                 if decoded[0] in thumb.INDIRECT_FLOW_OPS:
                     item["indirect_branch"] = True
                     item["branch_links"] = decoded[0] == "blx_reg"

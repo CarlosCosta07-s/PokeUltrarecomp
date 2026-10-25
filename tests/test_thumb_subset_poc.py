@@ -937,5 +937,37 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             ):
                 poc.translate([word, 0x4770])
 
+    def test_decodes_thumb_pc_sp_address_generation_and_stack_adjustments(self):
+        self.assertEqual(("adr", 0, 0), poc.decode_halfword(0xA000))
+        self.assertEqual(("adr", 7, 1020), poc.decode_halfword(0xA7FF))
+        self.assertEqual(("add_sp_imm", 0, 0), poc.decode_halfword(0xA800))
+        self.assertEqual(("add_sp_imm", 7, 1020), poc.decode_halfword(0xAFFF))
+        self.assertEqual(("add_sp", 0), poc.decode_halfword(0xB000))
+        self.assertEqual(("add_sp", 508), poc.decode_halfword(0xB07F))
+        self.assertEqual(("sub_sp", 0), poc.decode_halfword(0xB080))
+        self.assertEqual(("sub_sp", 508), poc.decode_halfword(0xB0FF))
+
+    def test_classifies_all_thumb_adr_and_add_sp_imm_encodings(self):
+        for word in range(0xA000, 0xB000):
+            decoded = poc.decode_halfword(word)
+            expected = "adr" if (word & 0xF800) == 0xA000 else "add_sp_imm"
+            self.assertEqual(expected, decoded[0], f"encoding 0x{word:04X}")
+            self.assertEqual((word >> 8) & 7, decoded[1], f"encoding 0x{word:04X}")
+            self.assertEqual((word & 0xFF) * 4, decoded[2], f"encoding 0x{word:04X}")
+
+    def test_classifies_all_thumb_add_sub_sp_immediate_encodings(self):
+        for word in range(0xB000, 0xB100):
+            decoded = poc.decode_halfword(word)
+            expected = "sub_sp" if (word & 0x80) else "add_sp"
+            self.assertEqual(expected, decoded[0], f"encoding 0x{word:04X}")
+            self.assertEqual((word & 0x7F) * 4, decoded[1], f"encoding 0x{word:04X}")
+
+    def test_synthetic_translator_refuses_pc_sp_address_arithmetic(self):
+        for word in (0xA000, 0xA901, 0xB001, 0xB081):
+            with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
+                poc.UnsupportedThumbInstruction, "address arithmetic.*does not model PC or SP"
+            ):
+                poc.translate([word, 0x4770])
+
 if __name__ == "__main__":
     unittest.main()

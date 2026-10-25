@@ -532,5 +532,19 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual("sp-relative", stack_load["addressing_mode"])
         self.assertEqual(1020, stack_load["offset_bytes"])
         self.assertFalse(stack_load["memory_value_read_by_inspector"])
+    def test_formats_thumb_adr_and_sp_adjustments_with_metadata(self):
+        self.put_thumb([0xA001, 0xA901, 0xB001, 0xB081, 0x4770])
+        result = self.inspect_thumb(5)
+        self.assertEqual(
+            ["ADR r0, [pc, #4]", "ADD r1, sp, #4", "ADD sp, #4", "SUB sp, #4", "BX LR"],
+            [item["mnemonic"] for item in result["instructions"]],
+        )
+        adr = result["instructions"][0]["pc_relative_address"]
+        self.assertEqual("0x00100004", adr["aligned_pc_base"])
+        self.assertEqual("0x00100008", adr["target_virtual_address"])
+        self.assertFalse(result["instructions"][1]["address_calculation"]["result_value_resolved"])
+        self.assertEqual(4, result["instructions"][2]["stack_pointer_delta_bytes"])
+        self.assertEqual(-4, result["instructions"][3]["stack_pointer_delta_bytes"])
+
 if __name__ == "__main__":
     unittest.main()
