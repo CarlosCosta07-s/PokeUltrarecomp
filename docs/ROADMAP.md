@@ -40,6 +40,8 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [ ] Manter entradas locais e diretórios temporários fora do repositório.
 - [ ] Executar um diagnóstico de compilador e um teste trivial independente de dados proprietários.
 
+A direção do projeto é uma execução nativa no Windows. Emuladores não são dependências planejadas. Se surgir uma necessidade concreta de comparação com o comportamento do jogo original, usar Azahar apenas como referência externa opcional, fora do runtime e sem incorporá-lo ao produto.
+
 **Dependências:** fases 1 e 2.
 
 **Critério de conclusão:** um ambiente limpo reproduz o diagnóstico e o teste trivial; versões e resultados estão registrados em BUILD_NOTES.md; nenhum conteúdo proprietário é necessário.
