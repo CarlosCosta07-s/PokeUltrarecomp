@@ -157,7 +157,7 @@ class TranslationTests(unittest.TestCase):
             self.skipTest("no C compiler found; native branch proof requires cc, gcc, or clang")
         words = [0xE3A00001, 0xEA000000, 0xE3A00002, 0xE12FFF1E]
         source = poc.translate(words)
-        harness = source + "\\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(1) && flags == UINT8_C(0) ? 0 : 1; }\\n"
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(1) && flags == UINT8_C(0) ? 0 : 1; }\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "branch.c"
             exe = Path(directory) / ("branch.exe" if os.name == "nt" else "branch")
@@ -174,7 +174,7 @@ class TranslationTests(unittest.TestCase):
         # CMP sets Z; BEQ branches to MOV #2 and bypasses MOV #1.
         words = [0xE3A00000, 0xE3500000, 0x0A000001, 0xE3A00001, 0xEA000000, 0xE3A00002, 0xE12FFF1E]
         source = poc.translate(words)
-        harness = source + "\\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(2) && flags == UINT8_C(6) ? 0 : 1; }\\n"
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(2) && flags == UINT8_C(6) ? 0 : 1; }\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "beq.c"
             exe = Path(directory) / ("beq.exe" if os.name == "nt" else "beq")
@@ -197,7 +197,7 @@ class TranslationTests(unittest.TestCase):
                 src = Path(directory) / "bne.c"
                 exe = Path(directory) / ("bne.exe" if os.name == "nt" else "bne")
                 source = poc.translate(words)
-                harness = source + f"\\nint main(void) {{ uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C({expected_result}) && flags == UINT8_C({expected_flags}) ? 0 : 1; }}\\n"
+                harness = source + f"\nint main(void) {{ uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C({expected_result}) && flags == UINT8_C({expected_flags}) ? 0 : 1; }}\n"
                 src.write_text(harness, encoding="utf-8")
                 result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
                 self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
