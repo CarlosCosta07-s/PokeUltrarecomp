@@ -14,8 +14,9 @@ A sequência sintética padrão é:
 
 | Palavra ARM A32 | Interpretação limitada |
 | --- | --- |
-| `0xE3A00003` | `MOV r0, #3` |
-| `0xE2800004` | `ADD r0, r0, #4` |
+| `0xE3A0000C` | `MOV r0, #12` |
+| `0xE2400008` | `SUB r0, r0, #8` |
+| `0xE2800003` | `ADD r0, r0, #3` |
 | `0xE12FFF1E` | `BX LR` — terminador/retorno |
 
 A função C gerada deve retornar `7`. Não são lidos arquivos externos, ROMs, dumps, firmware, chaves ou recursos extraídos. Não há código de jogo nem código de terceiro no demonstrador.
@@ -23,7 +24,7 @@ A função C gerada deve retornar `7`. Não são lidos arquivos externos, ROMs, 
 ## Subconjunto implementado
 
 - ARM A32, condição AL (incondicional) apenas.
-- `MOV` imediato e `ADD` imediato sem atualização de flags.
+- `MOV`, `SUB` e `ADD` imediatos sem atualização de flags.
 - Imediatos com rotação ARM de 32 bits.
 - Registradores limitados a `r0-r3`.
 - `BX LR` como terminador único no final da sequência.
@@ -60,20 +61,20 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 
 ## Critérios de aceitação
 
-- Decodificação de cada uma das três palavras exatas para a operação esperada.
+- Decodificação de cada uma das quatro palavras exatas para a operação esperada.
 - Decodificação correta de um imediato rotacionado sintético.
-- Rejeição de condição não suportada, atualização de flags, registrador fora do limite, sequência sem `BX LR`, instruções após o retorno e sequência longa demais.
+- Rejeição de condição não suportada, atualização de flags, registrador de origem/destino fora do limite, sequência sem `BX LR`, instruções após o retorno e sequência longa demais.
 - C emitido passa por compilador C11 com avisos ativados e `-Werror` no ambiente que suportar essas opções.
 - Executável gerado termina com código zero apenas quando `synthetic_entry()` retorna 7.
 
 ## Evidência atual e limites
 
 - Python: verificação sintática aprovada.
-- Suíte da POC: 11 testes aprovados no ambiente temporário desta sessão.
+- Suíte da POC: 13 testes aprovados no ambiente temporário desta sessão, incluindo decodificação de `SUB` e rejeição de seu registrador de origem fora do subconjunto.
 - Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 7 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
-- Essa POC valida o encadeamento *decodificação sintética → emissão C → compilador host → resultado* para três instruções. Não demonstra cobertura útil para um jogo real nem substitui o teste de referência 001.
+- Essa POC valida o encadeamento *decodificação sintética → emissão C → compilador host → resultado* para quatro instruções. Não demonstra cobertura útil para um jogo real nem substitui o teste de referência 001.
 - A POC foi escrita de forma independente. O issue de procedência/escopo do `LICENSE` preexistente continua aberto; a publicação desta demonstração não resolve essa decisão de licenciamento.
 
 ## Próximos passos
