@@ -40,6 +40,9 @@ class DecoderTests(unittest.TestCase):
     def test_decodes_cmn_immediate(self):
         self.assertEqual(("cmn", 0, 0x80000000), poc.decode_word(0xE3700102))
 
+    def test_decodes_cmp_immediate(self):
+        self.assertEqual(("cmp", 0, 1), poc.decode_word(0xE3500001))
+
     def test_rejects_unsupported_flag_setting_instruction(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
             poc.decode_word(0xE3B00001)  # MOVS remains unsupported
@@ -47,6 +50,18 @@ class DecoderTests(unittest.TestCase):
     def test_rejects_cmn_without_s_bit(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN requires"):
             poc.decode_word(0xE3600001)
+
+    def test_rejects_cmp_without_s_bit(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMP requires"):
+            poc.decode_word(0xE3400001)
+
+    def test_rejects_noncanonical_cmp_destination(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMP encoding with Rd=0"):
+            poc.decode_word(0xE3501001)
+
+    def test_rejects_cmp_with_source_outside_supported_registers(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
+            poc.decode_word(0xE3540001)
 
     def test_rejects_noncanonical_cmn_destination(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
@@ -188,6 +203,22 @@ class TranslationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "subs.c"
             exe = Path(directory) / ("subs.exe" if os.name == "nt" else "subs")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_generated_c_reports_cmp_flags_without_writing_destination_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
+        words = [0xE3A00102, 0xE3500001, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(0x80000000) && flags == UINT8_C(3) ? 0 : 1; }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "cmp.c"
+            exe = Path(directory) / ("cmp.exe" if os.name == "nt" else "cmp")
             src.write_text(harness, encoding="utf-8")
             result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
