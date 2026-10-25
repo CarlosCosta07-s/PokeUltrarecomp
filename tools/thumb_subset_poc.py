@@ -319,6 +319,11 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     for inst in decoded:
+        if inst[0] in LITERAL_OPS:
+            raise UnsupportedThumbInstruction(
+                "PC-relative literal load is decoded for inspection only; "
+                "the synthetic translator has no memory model"
+            )
         if inst[0] in MEMORY_OPS:
             raise UnsupportedThumbInstruction(
                 f"memory access ({inst[0]}) is decoded for inspection only; "
@@ -328,16 +333,6 @@ def translate(
             raise UnsupportedThumbInstruction(
                 f"PC/SP address arithmetic ({inst[0]}) is decoded for inspection only; "
                 "the synthetic translator does not model PC or SP"
-            )
-        if inst[0] in LITERAL_OPS:
-            raise UnsupportedThumbInstruction(
-                f"memory access ({inst[0]}) is decoded for inspection only; "
-                "the synthetic translator has no memory model"
-            )
-        if inst[0] in LITERAL_OPS:
-            raise UnsupportedThumbInstruction(
-                "PC-relative literal load is decoded for inspection only; "
-                "the synthetic translator has no memory model"
             )
         if inst[0] in STACK_OPS:
             raise UnsupportedThumbInstruction(
