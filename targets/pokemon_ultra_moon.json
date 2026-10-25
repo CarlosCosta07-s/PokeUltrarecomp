@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "target_id": "ultra-moon",
+  "display_name": "Pokémon Ultra Moon",
+  "platform": "Nintendo 3DS",
+  "executable_container": "NCCH/CXI",
+  "executable_section": "ExeFS/.code",
+  "processor_family": "ARM11",
+  "instruction_states": [
+    "ARM",
+    "Thumb"
+  ],
+  "title_ids": {
+    "base": "00040000001B5100",
+    "update": "0004000E001B5100"
+  },
+  "policy": {
+    "input_must_be_decompressed": true,
+    "local_only": true,
+    "generated_code_must_not_be_committed": true
+  },
+  "status": "target-intake-only"
+}

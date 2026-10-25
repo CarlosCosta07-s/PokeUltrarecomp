@@ -86,6 +86,16 @@ A última suíte integral documentada antes da predicação aprovou 85 testes. A
 
 A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`. O subconjunto ainda não inclui `BL`, saltos para trás sem orçamento, memória, funções reais, o CPSR completo, Thumb, formas lógicas com bit S ou shifter-carry. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
+## Preparação dos executáveis de Ultra Sun / Ultra Moon
+
+Foi iniciado um caminho específico para os dois alvos: os perfis `targets/pokemon_ultra_sun.json` e `targets/pokemon_ultra_moon.json` e a ferramenta `tools/inspect_3ds_target.py` conferem metadados do ExHeader e de `.code` descomprimido fornecido localmente. O relatório inclui endereços/páginas de `.text`, `.rodata` e `.data`, stack/BSS e hashes SHA-256 locais, com avisos para inconsistências e IDs de título desconhecidos. Os testes usam ExHeaders e bytes totalmente sintéticos; a CI não lê nem exige ROM, dump ou arquivo extraído dos jogos.
+
+Exemplo (substitua por caminhos locais de entradas do mesmo executável):
+
+    python tools/inspect_3ds_target.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --title-id 00040000001B5000
+
+Esta é uma preparação real de entrada para os alvos, **não** um desassemblador, recompilador ou runtime. Veja [Preparação de executáveis de Ultra Sun / Ultra Moon](docs/GAME_TARGET_INTAKE.md) para pré-requisitos, formato e limites.
+
 ## Direção do runtime e uso de emuladores
 
 O objetivo é executar o código recompilado em um runtime próprio para Windows, sem depender de um emulador de Nintendo 3DS. Testes do tradutor começam com fixtures sintéticas e resultados esperados a partir da especificação ARM; usar um emulador não é requisito dessa etapa. Se for realmente necessário comparar o comportamento do jogo original no futuro, o Azahar será a referência externa preferida, usada de forma opcional e sem ser incorporada ao runtime ou ao produto final.

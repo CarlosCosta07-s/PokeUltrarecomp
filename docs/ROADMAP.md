@@ -74,6 +74,20 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Critério de conclusão:** existe uma especificação curta aprovada com comando reproduzível, teste de sucesso, teste negativo e evidência que distingue a prova de conceito de um jogo funcional.
 
+## Fase 5A — Intake dos executáveis de Ultra Sun / Ultra Moon
+
+**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas. Os arquivos reais dos jogos não são incluídos nem processados na CI.
+
+**Tarefas desta etapa**
+- [x] Adicionar perfis distintos de Ultra Sun e Ultra Moon, com IDs-base/atualização conhecidos e política de entradas locais.
+- [x] Ler ExHeader SCI e validar endereços, páginas, tamanhos, sobreposição de segmentos e capacidade do `.code` descomprimido.
+- [x] Emitir JSON com SHA-256 local e metadados sem copiar bytes ou caminhos absolutos.
+- [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.
+- [ ] Validar uma entrada local autorizada e ainda não modificada de cada jogo; registrar apenas relatório redigido.
+- [ ] Fazer inventário de funções ARM/Thumb sem reutilizar fontes cuja licença não está confirmada.
+
+**Critério de conclusão:** preflight reproduzível em entradas locais dos dois jogos, revisão exata identificada e nenhuma entrada/extração/saída derivada publicada. A etapa atual ainda não é desassemblagem nem recompilação.
+
 ## Fase 6 — Investigar runtime próprio para Windows
 
 **Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
