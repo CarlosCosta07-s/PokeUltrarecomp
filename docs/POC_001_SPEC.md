@@ -30,7 +30,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 ## Subconjunto implementado
 
 - ARM A32: as instruções de processamento de dados suportadas aceitam condições AL e EQ..LE; a condição `0xF` é recusada. `B` aceita AL e as 14 condições padrão EQ..LE.
-- `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags.
+- `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags; as formas sem AL são executadas somente quando sua condição EQ..LE é verdadeira.
 - `B` incondicional e com as 14 condições padrão (EQ, NE, CS, CC, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE), com destinos à frente dentro da própria fixture; os saltos preservam NZCV.
 - Formas aritméticas imediatas com flags: `ADDS`, `SUBS`, `CMN` e `CMP`, com flags NZCV expostas em parâmetro de saída.
 - Imediatos com rotação ARM de 32 bits.
@@ -42,7 +42,7 @@ BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixtur
 
 ## Modelo NZCV e integração restrita do tradutor
 
-O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas. No tradutor, `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV, e os desvios condicionais consomem N, Z, C e V conforme a tabela de condições ARM; instruções de dados condicionais continuam recusadas.
+O módulo [tools/arm_flags.py](../tools/arm_flags.py) mantém uma referência imutável/testável das flags N, Z, C e V para aritmética uint32 e resultados lógicos. Inclui soma com carry-in, subtração com borrow-in, carry/no-borrow, overflow assinado e preservação/substituição do carry em operações lógicas. No tradutor, `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV; desvios e instruções de dados condicionais consomem N, Z, C e V de acordo com a tabela de condições ARM. Uma instrução predicada que não satisfaz sua condição não modifica registradores nem flags.
 
 **Integração mínima concluída:** o C gerado usa `uint32_t synthetic_entry(uint8_t *nzcv_out)` e retorna NZCV como nibble `N:bit3, Z:bit2, C:bit1, V:bit0`. O decodificador aceita `ADDS`, `SUBS`, `CMN` e `CMP` imediatos em condições restritas. `CMN` calcula flags de soma e `CMP` calcula flags de subtração, sem escrever o resultado no registrador de destino. Testes nativos cobrem os dois casos de comparação. O módulo `arm_flags.py` permanece um modelo de referência separado; ainda não há CPSR completo. Formas lógicas com bit S e shifter-carry continuam recusadas. Tanto `B` quanto as instruções de dados suportadas respeitam as 14 condições padrão de ARM. O teste nativo compila 448 funções (224 de desvio e 224 de predicação de dados; 14 condições × 16 estados de entrada de NZCV por tipo) e compara os caminhos executados com uma tabela de condições escrita de forma independente no teste; a revisão anterior também detectou uma mutação deliberada de `GT` (4 divergências em 224).
 
