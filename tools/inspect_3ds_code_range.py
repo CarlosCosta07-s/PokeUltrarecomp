@@ -96,6 +96,68 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                 raise arm.UnsupportedInstruction("BLX register with Rm=PC is not decoded by this inspector")
             return ("blx_reg", rm)
 
+        # A32 extra load/store register-offset form (no shifted register offset).
+        if ((word >> 25) & 0b111) == 0b000 and (word & 0x90) == 0x90 and not ((word >> 22) & 1):
+            preindexed = ((word >> 24) & 1) == 1
+            add_offset = ((word >> 23) & 1) == 1
+            writeback = ((word >> 21) & 1) == 1
+            load = ((word >> 20) & 1) == 1
+            rn = (word >> 16) & 0xF
+            rd = (word >> 12) & 0xF
+            imm4h_or_reserved = (word >> 8) & 0xF
+            rm = word & 0xF
+            sign = ((word >> 6) & 1) == 1
+            half = ((word >> 5) & 1) == 1
+            if imm4h_or_reserved != 0:
+                raise arm.UnsupportedInstruction(
+                    "A32 extra register-offset encoding requires bits[11:8]=0"
+                )
+            if rn == 15 or rm == 15:
+                raise arm.UnsupportedInstruction(
+                    "A32 extra register-offset load/store with PC as base/offset is not decoded"
+                )
+            if rd in (13, 15):
+                raise arm.UnsupportedInstruction(
+                    "A32 extra register-offset load/store with Rt=SP/PC is outside this inspector subset"
+                )
+            if not preindexed and writeback:
+                raise arm.UnsupportedInstruction(
+                    "A32 unprivileged extra register-offset transfer (P=0, W=1) is not decoded"
+                )
+            if not sign and half:
+                operation = "ldrh" if load else "strh"
+                width = 2
+                sign_extend = False
+            elif sign and not half and load:
+                operation = "ldrsb"
+                width = 1
+                sign_extend = True
+            elif sign and half and load:
+                operation = "ldrsh"
+                width = 2
+                sign_extend = True
+            else:
+                raise arm.UnsupportedInstruction(
+                    "reserved A32 extra register-offset operation (L/S/H combination)"
+                )
+            writeback_effective = (not preindexed) or writeback
+            if writeback_effective and rn == rd:
+                raise arm.UnsupportedInstruction(
+                    "A32 extra register-offset writeback with Rn=Rt is architecturally unpredictable"
+                )
+            return (
+                "a32_mem_extra_reg",
+                operation,
+                width,
+                rd,
+                rn,
+                rm,
+                add_offset,
+                preindexed,
+                writeback_effective,
+                sign_extend,
+            )
+
         # A32 extra load/store immediate: LDRH/STRH/LDRSB/LDRSH.
         # The fixed halfword markers are bits[7] and [4]; I=1 selects imm4H:imm4L.
         if ((word >> 25) & 0b111) == 0b000 and (word & 0x90) == 0x90 and ((word >> 22) & 1):
@@ -303,6 +365,18 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
             suffix = "!" if bool(writeback) else ""
             return f"{mnemonic} {rt_name}, [{rn_name}, {offset_text}]{suffix}"
         return f"{mnemonic} {rt_name}, [{rn_name}], {offset_text}"
+    if state == "arm" and decoded[0] == "a32_mem_extra_reg":
+        operation, _width, rt, rn, rm, add_offset, preindexed, writeback, _sign_extend = decoded[1:]
+        names = {13: "sp", 14: "lr", 15: "pc"}
+        rt_name = names.get(int(rt), f"r{rt}")
+        rn_name = names.get(int(rn), f"r{rn}")
+        rm_name = names.get(int(rm), f"r{rm}")
+        offset = ("" if bool(add_offset) else "-") + rm_name
+        mnemonic = str(operation).upper()
+        if bool(preindexed):
+            suffix = "!" if bool(writeback) else ""
+            return f"{mnemonic} {rt_name}, [{rn_name}, {offset}]{suffix}"
+        return f"{mnemonic} {rt_name}, [{rn_name}], {offset}"
     if state == "arm" and decoded[0] == "a32_mem_reg":
         operation, width, rt, rn, rm, shift_name, shift_amount, add_offset, preindexed, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
@@ -447,6 +521,28 @@ def a32_register_memory_access_metadata(decoded: tuple[object, ...]) -> dict[str
         "runtime_effective_address_resolved": False,
         "memory_value_read_by_inspector": False,
         "offset_carry_input": "c" if str(shift_name) == "rrx" else None,
+    }
+
+
+def a32_extra_register_memory_access_metadata(decoded: tuple[object, ...]) -> dict[str, Any]:
+    """Describe an A32 extra-transfer register offset without reading memory."""
+    if not decoded or decoded[0] != "a32_mem_extra_reg":
+        raise TargetRangeError(f"not a decoded A32 extra register-offset access: {decoded!r}")
+    _op, operation, width, rt, rn, rm, add_offset, preindexed, writeback, sign_extend = decoded
+    names = {13: "sp", 14: "lr", 15: "pc"}
+    return {
+        "direction": "store" if str(operation).startswith("str") else "load",
+        "width_bytes": int(width),
+        "sign_extend": bool(sign_extend),
+        "addressing_mode": "pre-indexed" if bool(preindexed) else "post-indexed",
+        "base_register": names.get(int(rn), f"r{rn}"),
+        "data_register": names.get(int(rt), f"r{rt}"),
+        "offset_register": names.get(int(rm), f"r{rm}"),
+        "offset_sign": "add" if bool(add_offset) else "subtract",
+        "offset_shift": None,
+        "base_register_writeback": bool(writeback),
+        "runtime_effective_address_resolved": False,
+        "memory_value_read_by_inspector": False,
     }
 
 
@@ -708,6 +804,8 @@ def inspect_code_range(
                         item["branch_target_note"] = (
                             "PC is loaded from memory at run time; effective address and target are unresolved"
                         )
+                if state == "arm" and decoded[0] == "a32_mem_extra_reg":
+                    item["memory_access"] = a32_extra_register_memory_access_metadata(decoded)
                 if state == "thumb" and decoded[0] == "adr":
                     pc_base = (address + 4) & ~3
                     item["pc_relative_address"] = {

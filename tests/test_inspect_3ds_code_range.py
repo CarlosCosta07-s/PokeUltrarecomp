@@ -278,6 +278,39 @@ class ExplicitRangeTests(unittest.TestCase):
                         title_id="00040000001B5000",
                     )
 
+    def test_decodes_a32_extra_register_offset_halfword_and_signed_loads(self):
+        # LDRH r2,[r1,r3]; STRH r4,[r5],-r6; LDRSB r0,[r1,-r2]!; LDRSH r3,[r4],r5
+        self.put_arm([0xE19120B3, 0xE00540B6, 0xE13100D2, 0xE09430F5])
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 4,
+            title_id="00040000001B5000",
+        )
+        ldrh, strh, ldrsb, ldrsh = result["instructions"]
+        self.assertEqual("LDRH r2, [r1, r3]", ldrh["mnemonic"])
+        self.assertEqual("r3", ldrh["memory_access"]["offset_register"])
+        self.assertEqual(2, ldrh["memory_access"]["width_bytes"])
+        self.assertEqual("STRH r4, [r5], -r6", strh["mnemonic"])
+        self.assertEqual("subtract", strh["memory_access"]["offset_sign"])
+        self.assertTrue(strh["memory_access"]["base_register_writeback"])
+        self.assertEqual("LDRSB r0, [r1, -r2]!", ldrsb["mnemonic"])
+        self.assertTrue(ldrsb["memory_access"]["sign_extend"])
+        self.assertEqual("LDRSH r3, [r4], r5", ldrsh["mnemonic"])
+        self.assertTrue(ldrsh["memory_access"]["sign_extend"])
+        self.assertEqual(["read", "write", "read", "read"],
+                         [x["memory"] for x in result["dataflow"]["instructions"]])
+
+    def test_rejects_unsupported_a32_extra_register_offset_variants(self):
+        # PC base/index, invalid imm4H on the register form, unprivileged form,
+        # writeback alias and reserved signed-store form remain unsupported.
+        for word in (0xE19F20B3, 0xE19121B3, 0xE0B120B3, 0xE1B110B3, 0xE18120D3):
+            with self.subTest(word=f"0x{word:08X}"):
+                self.put_arm([word])
+                with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):
+                    ranges.inspect_code_range(
+                        "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                        title_id="00040000001B5000",
+                    )
+
     def test_decodes_a32_halfword_and_signed_load_immediate_forms(self):
         # LDRH r2,[r1,#0x23]; STRH r2,[r3,#-8]!; LDRSB r4,[r5],#-7; LDRSH r0,[r1,#2]
         self.put_arm([0xE1D122B3, 0xE16320B8, 0xE05540D7, 0xE1D100F2])

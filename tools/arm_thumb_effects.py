@@ -146,6 +146,20 @@ def instruction_effects(item: dict[str, Any], state: str) -> dict[str, Any]:
         reads.add("pc")
         writes.add(_reg(int(op_ir[1])))
         memory = "read"
+    elif op == "a32_mem_extra_reg":
+        operation, width, rt, rn, rm, add_offset, preindexed, writeback, sign_extend = op_ir[1:]
+        base_reg = _reg(int(rn))
+        data_reg = _reg(int(rt))
+        offset_reg = _reg(int(rm))
+        reads |= {base_reg, offset_reg}
+        if str(operation).startswith("str"):
+            reads.add(data_reg)
+            memory = "write"
+        else:
+            writes.add(data_reg)
+            memory = "read"
+        if bool(writeback):
+            writes.add(base_reg)
     elif op in ("a32_mem_imm", "a32_mem_extra_imm", "a32_mem_reg"):
         operation = op_ir[1]
         if op == "a32_mem_imm":
