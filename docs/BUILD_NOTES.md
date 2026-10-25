@@ -110,3 +110,10 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Limites: não prova equivalência com instruções de jogo, não suporta Thumb, memória, desvios internos, flags, VFP/NEON, ABI do jogo nem serviços de 3DS; não foi executada no Windows. Não é uma porta nem um runtime de jogo.
 - O teste de referência 001 e a execução do verificador contra a árvore completa da `main` continuam pendentes. O issue de procedência/escopo do `LICENSE` também continua aberto.
 
+## Verificação remota de caminhos da árvore Git — 2026-10-24
+
+- Fonte: árvore recursiva da branch `main` consultada pela API Git de leitura do GitHub; a resposta não estava truncada.
+- Escopo: 22 arquivos rastreados; nenhum caminho correspondeu às extensões/nome de chave/diretórios proibidos listados pelo verificador local. A verificação é por nome e extensão, não por conteúdo.
+- Links Markdown: 26 ocorrências de links internos foram conferidas em cinco documentos atualizados (README, POC-001, BUILD_NOTES, ROADMAP e CONTRIBUTING); nenhum destino interno quebrado foi encontrado.
+- Limites: isto não executa o script Python no clone completo nem inspeciona o conteúdo binário/arbitrário, o histórico, os arquivos ignorados não rastreados ou a situação jurídica de arquivos. Não marca a revisão integral de segurança como concluída.
+
