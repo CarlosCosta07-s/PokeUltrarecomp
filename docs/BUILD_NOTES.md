@@ -194,3 +194,17 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Resultado observado: **30 testes aprovados, zero falhas e zero ignorados** — 21 da POC e 9 do verificador de segurança. O C emitido foi compilado com C11 e `-Wall -Wextra -Werror`; o executável rodou e confirmou retorno 12.
 - Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
 - Limites: o teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI do verificador ainda não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
+
+
+## POC-001 — iteração 7: MVN imediato e pesquisa de fontes — 2026-10-24
+
+- Alteração: adicionado suporte restrito a `MVN` imediato, com `S=0`, condição AL, registradores `r0-r3), encoding canônico `Rn=0), e sem atualização de flags.
+- Fixture sintética atual: `E3A0000C E2400008 E2800003 E2000007 E3800008 E2200001 E3C00002 E3E01000 E201000C E12FFF1E`. Depois das operações anteriores, `MVN r1,#0` produz `0xFFFFFFFF`, e `AND r0,r1,#12` assegura que a execução nativa retorna 12.
+- Testes novos: decodificação de `MVN`, rejeição de encoding não canônico, emissão C do complemento e teste compilado/executado que falharia se o valor de `MVN` estivesse incorreto.
+- Pesquisa: criado [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md) com nove bases de código de ARM, emulação e recompilação, as funções técnicas e observações iniciais sobre licenças. A pesquisa é documental; nenhum código de terceiros foi copiado ou adicionado como dependência.
+- Os hashes de objeto Git dos quatro arquivos usados na execução coincidem com os blobs publicados na `main`: `tools/arm_subset_poc.py` = `cd1f8bbc3bcace3142f933a327904def2de48c6e`; `tests/test_arm_subset_poc.py` = `41333a50933b8a6b18a5cdf2896295aad8c7714d`; `tools/check_repository_safety.py` = `a372a3880723f5a17ae87cd81d4a41bd45d70edc`; `tests/test_repository_safety.py` = `3bd44115751390dc6c613e758c94ef90f988eae2`.
+- Ambiente: Linux 6.18.55 x86_64; Python 3.13.5; GCC 14.2.0; Git 2.47.3.
+- Comandos: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
+- Resultado observado: **32 testes aprovados, zero falhas e zero ignorados** — 23 da POC e 9 do verificador de segurança. O C gerado foi compilado com C11 e `-Wall -Wextra -Werror`; o executável rodou e confirmou retorno 12.
+- Classificação: **PASS para as suítes sintéticas Python e prova nativa host no ambiente Linux descrito**.
+- Limites: CMN permanece pendente porque sua semântica atualiza NZCV e o POC ainda não modela esses flags. O teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI de segurança não foi executado sobre uma cópia completa da `main`; nenhuma equivalência com jogo, runtime ou gameplay foi demonstrada. Nenhuma ROM, dump, firmware, chave ou recurso de jogo foi usado.
