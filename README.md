@@ -12,7 +12,7 @@ A estratégia inicial é estudar projetos de reconstrução, descompilação, re
 
 - O trabalho deste repositório está limitado à organização, documentação, pesquisa inicial e ferramentas locais de proteção/verificação; o runtime do jogo ainda não foi implementado.
 - Este conjunto de documentos registra uma auditoria documental dos quatro projetos de referência listados abaixo. Os testes reportados por esses projetos foram lidos em suas documentações, mas **não foram executados independentemente por este repositório**.
-- Ainda não há runtime próprio implementado aqui, prova de conceito compilada, teste de jogo reproduzível ou porta nativa funcional reivindicada.
+- Ainda não há runtime próprio implementado aqui, teste de jogo reproduzível ou porta nativa funcional reivindicada. A POC-001 é um experimento sintético limitado e não constitui runtime nem porta.
 - O arquivo **LICENSE** já existia no repositório inicial e contém o texto padrão da GNU GPL versão 3. Sua procedência, autoria e abrangência não estão documentadas. Por isso, não se deve interpretar esse arquivo como confirmação de que todo conteúdo presente ou futuro pode ser licenciado pelo mantenedor. Veja [Legal e propriedade intelectual](docs/LEGAL_AND_IP.md).
 - Nenhuma ROM, dump, firmware, chave, executável ou recurso proprietário deve entrar no Git, em issues, releases ou CI.
 
@@ -72,12 +72,12 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de três instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **11 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de quatro instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **13 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
 
-A POC cobre apenas `MOV` imediato, `ADD` imediato e `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A POC cobre apenas `MOV`, `SUB` e `ADD` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
 ## Como acompanhar o progresso
 
