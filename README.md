@@ -1,6 +1,6 @@
 # PokeUltrarecomp
 
-**Estado: fase inicial de pesquisa, documentação, auditoria e ferramentas de verificação do repositório.** Este repositório ainda não contém uma porta funcional de Pokémon Ultra Sun ou Pokémon Ultra Moon, um runtime próprio para Windows, nem resultados de compilação da porta ou testes de jogo executados por este projeto.
+**Estado: pesquisa, POCs sintéticas e ferramentas de inspeção estática ARM/Thumb.** Este repositório ainda não contém uma porta funcional de Pokémon Ultra Sun ou Pokémon Ultra Moon, um runtime próprio para Windows, nem resultados de execução dos jogos.
 
 ## Objetivo
 
@@ -10,9 +10,9 @@ A estratégia inicial é estudar projetos de reconstrução, descompilação, re
 
 ## Estado atual verificável
 
-- O trabalho deste repositório está limitado à organização, documentação, pesquisa inicial e ferramentas locais de proteção/verificação; o runtime do jogo ainda não foi implementado.
+- Existem ferramentas locais para conferir metadados do ExHeader e inspecionar intervalos ARM/Thumb explicitamente selecionados, incluindo fluxo de controle candidato e efeitos sintáticos conservadores de registradores/flags. Elas não fazem descoberta automática de funções nem leem valores de memória durante a inspeção.
 - Este conjunto de documentos registra uma auditoria documental dos quatro projetos de referência listados abaixo. Os testes reportados por esses projetos foram lidos em suas documentações, mas **não foram executados independentemente por este repositório**.
-- Ainda não há runtime próprio implementado aqui, teste de jogo reproduzível ou porta nativa funcional reivindicada. A POC-001 é um experimento sintético limitado e não constitui runtime nem porta.
+- A POC-001 e a POC-002 exercitam subconjuntos sintéticos limitados. A suíte mais recente passou em 282 testes, a matriz diferencial aritmética passou em 96/96 e o verificador de segurança aprovou 43 caminhos no [workflow 40202960127](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40202960127). Esses resultados não são testes de jogo e não demonstram equivalência com os executáveis originais.
 - O arquivo **LICENSE** já existia no repositório inicial e contém o texto padrão da GNU GPL versão 3. Sua procedência, autoria e abrangência não estão documentadas. Por isso, não se deve interpretar esse arquivo como confirmação de que todo conteúdo presente ou futuro pode ser licenciado pelo mantenedor. Veja [Legal e propriedade intelectual](docs/LEGAL_AND_IP.md).
 - Nenhuma ROM, dump, firmware, chave, executável ou recurso proprietário deve entrar no Git, em issues, releases ou CI.
 
@@ -20,8 +20,8 @@ A estratégia inicial é estudar projetos de reconstrução, descompilação, re
 
 | Jogo | Objetivo | Estado neste projeto |
 | --- | --- | --- |
-| Pokémon Ultra Sun | Investigar uma porta nativa para Windows | Pesquisa; nenhuma porta implementada |
-| Pokémon Ultra Moon | Adaptar resultados comprovados e validar diferenças | Pesquisa futura; nenhuma porta implementada |
+| Pokémon Ultra Sun | Investigar uma porta nativa para Windows | Perfil de alvo e inspeção estática; nenhuma porta implementada |
+| Pokémon Ultra Moon | Adaptar resultados comprovados e validar diferenças | Perfil de alvo e inspeção estática; nenhuma porta implementada |
 
 ## Projetos de referência
 
