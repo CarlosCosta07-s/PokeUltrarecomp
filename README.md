@@ -70,6 +70,15 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
 
 É necessário Python 3.10 ou mais recente e Git. O verificador analisa os blobs preparados no índice Git, as versões atuais dos arquivos na pasta de trabalho e arquivos não ignorados ainda não rastreados. Isso permite detectar diferenças entre o que será commitado e o que está no disco. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de arquivos binários ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
 
+## Prova de conceito sintética ARM A32 → C
+
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de três instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **9 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
+
+    python tools/arm_subset_poc.py
+    python -m unittest discover -s tests -v
+
+A POC cobre apenas `MOV` imediato, `ADD` imediato e `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+
 ## Como acompanhar o progresso
 
 Use GitHub Issues para pesquisas ou problemas com escopo claro. Registre sempre o commit e as versões exatas das ferramentas, comandos executados, resultados observados, logs redigidos e critérios de aceitação. Diferencie resultados reproduzidos de resultados apenas relatados em documentação externa.
