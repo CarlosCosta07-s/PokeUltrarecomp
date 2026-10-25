@@ -282,10 +282,10 @@ int main(void) {
         # CMPEQ r0,#0 is skipped for entry NZCV=0x8 (Z=0), preserving N.
         # CMPNE r0,#0 executes for the same entry state, yielding Z=1 and C=1.
         skipped = poc.translate([0x03500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
-            "uint32_t synthetic_entry(", "conditional_cmp_skipped("
+            "uint32_t synthetic_entry(", "uint32_t conditional_cmp_skipped("
         )
         executed = poc.translate([0x13500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
-            "uint32_t synthetic_entry(", "conditional_cmp_executed("
+            "uint32_t synthetic_entry(", "uint32_t conditional_cmp_executed("
         )
         harness = "\n".join((skipped, executed)) + """
 int main(void) {
