@@ -233,3 +233,11 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 - Comandos executados: `python3 -m py_compile tools/*.py tests/*.py`; `python3 -m unittest discover -s tests -v`.
 - Resultado observado: **58 testes aprovados, zero falhas e zero ignorados** — 31 do tradutor, 18 do módulo de referência NZCV e 9 do verificador de segurança. Os testes nativos foram compilados com C11, `-Wall -Wextra -Werror`, e executados em diretórios temporários.
 - Limites: o teste de referência 001 continua `NOT RUN / NOT VERIFIED`; Windows não testado; o CLI do verificador não foi executado contra uma cópia completa da árvore de trabalho da `main`; não existe validação diferencial com um emulador independente nem equivalência com jogo/runtime. Nenhum conteúdo de jogo foi usado.
+
+## Matriz diferencial sintética ARM — 2026-10-24
+
+- Ferramenta nova: [tools/arm_differential_poc.py](../tools/arm_differential_poc.py), com testes em [tests/test_arm_differential_poc.py](../tests/test_arm_differential_poc.py). O verificador de segurança também exige os dois arquivos.
+- Matriz: **72 fixtures** — 8 valores iniciais que cobrem zero, valores pequenos, limites de inteiro assinado e valores próximos de 2^32−1; 3 imediatos (1, 2 e 0x80000000); 3 operações (ADDS, SUBS, CMN). Cada operação é traduzida para C, compilada, executada e compara-se o retorno e o nibble NZCV com o módulo separado tools/arm_flags.py.
+- Reproduzir: python tools/arm_differential_poc.py; testes específicos: python -m unittest discover -s tests -p "test_arm_differential_poc.py" -v. A execução completa da suíte é python -m unittest discover -s tests -v.
+- Evidência desta etapa: execução da matriz local com /usr/bin/cc, C11, -Wall -Wextra -Werror: **72/72 resultados e NZCV coincidiram**; os 3 testes específicos passaram, incluindo compilação/execução nativa.
+- Limite importante: esta é uma comparação entre o C emitido e o modelo de flags separado **dentro deste projeto**, não uma comparação com um emulador independente. Não valida ROM, runtime ou gameplay. A suíte integral combinada deve ser repetida num checkout limpo da main; Windows e o teste de referência 001 continuam pendentes.
