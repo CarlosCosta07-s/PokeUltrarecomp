@@ -128,6 +128,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Adicionar inspeção condicional EQ..LE para LDR/STR word/byte e formas halfword/signed-load já reconhecidas; registrar condição lida e efeitos de memória sem ler valores.
 - [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
 - [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.
+- [x] Definir o formato de contrato de função candidata e um validador estático contra os efeitos observados (`tools/check_function_contract.py`, [guia](FUNCTION_CONTRACT.md)); falha fechada e sem declarar validação. O oráculo independente e a validação em entrada local autorizada continuam pendentes.
 
 **Critério de conclusão:** anotação sintática reproduzível para intervalo selecionado, sem incluir entradas ou extrações na CI. Isso não prova equivalência semântica nem runtime de jogo.
 
