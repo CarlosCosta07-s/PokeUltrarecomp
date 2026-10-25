@@ -81,11 +81,12 @@ O script busca apenas o commit fixado num diretório temporário, usa cache/buil
 
 - Arquivos: `tools/check_repository_safety.py` e `tests/test_repository_safety.py`.
 - Dependências externas: nenhuma; usa a biblioteca padrão do Python e o Git.
-- Testes unitários executados em ambiente temporário com fixtures sintéticas: **7 aprovados**.
+- Testes unitários executados em ambiente temporário com fixtures sintéticas: **9 aprovados**. A suíte cobre caminhos proibidos, links locais e divergências entre o índice Git e a pasta de trabalho.
 - Verificação sintática executada com `python -m py_compile`: aprovada.
+- Foram exercitados dois cenários de integração sintéticos: índice sem links quebrados com pasta de trabalho modificada para conter um link quebrado; e índice com link quebrado enquanto a pasta de trabalho está corrigida. Ambos foram detectados na fonte correta.
 - Teste de fumaça do comando CLI: aprovado num repositório Git temporário de exemplo, com documentos mínimos; uma fixture não rastreada com extensão `.3ds` também foi corretamente bloqueada.
 - A verificação contra a árvore de trabalho completa da `main` ainda está pendente; os resultados acima não são um teste da porta do jogo.
-- Escopo: detecta nomes/extensões/dir paths conhecidos de dados de jogo ou credenciais e links Markdown locais quebrados ou fora da raiz.
-- Limitações: não examina histórico Git, arquivos ignorados que ainda não estão rastreados, conteúdo arbitrário, licenças, direitos sobre dados ou compatibilidade do jogo. Um arquivo adicionado à força pode contornar regras de ignore; toda alteração ainda requer revisão de diff.
+- Escopo: detecta nomes/extensões/diretórios conhecidos de dados de jogo ou credenciais e links Markdown locais quebrados ou fora da raiz, tanto nos blobs do índice quanto nas versões atuais da pasta de trabalho e arquivos não ignorados não rastreados.
+- Limitações: os nove testes e os cenários de integração foram executados numa área temporária, não contra toda a árvore da `main`. O verificador não examina histórico Git, arquivos ignorados que ainda não estão rastreados, conteúdo semântico arbitrário, licenças, direitos sobre dados ou compatibilidade do jogo. Um arquivo adicionado à força pode contornar regras de ignore; toda alteração ainda requer revisão de diff.
 - Estado do runtime e teste de referência 001: continuam **NOT RUN / NOT VERIFIED**.
 
