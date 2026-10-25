@@ -408,9 +408,25 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(["c", "n", "z"], teq_effect["flags_written"])
         self.assertEqual(["r0"], orr_effect["registers_written"])
 
+    def test_conditional_a32_register_data_processing_reports_condition_flags(self):
+        self.put_arm([0x10810002, 0x11510002])  # ADDNE r0,r1,r2; CMPNE r1,r2
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 2,
+            title_id="00040000001B5000",
+        )
+        add, cmp = result["instructions"]
+        self.assertEqual(["ADDNE r0, r1, r2", "CMPNE r1, r2"],
+                         [item["mnemonic"] for item in result["instructions"]])
+        add_effect, cmp_effect = result["dataflow"]["instructions"]
+        self.assertTrue(add_effect["conditional"])
+        self.assertEqual(["z"], add_effect["flags_read"])
+        self.assertTrue(cmp_effect["conditional"])
+        self.assertEqual(["z"], cmp_effect["flags_read"])
+        self.assertEqual(["c", "n", "v", "z"], cmp_effect["flags_written"])
+
     def test_rejects_out_of_scope_a32_register_data_processing_forms(self):
         # Conditional forms, register-controlled shifts, PC operands, and noncanonical test encodings.
-        for word in (0x10810002, 0xE0810212, 0xE081F002, 0xE1511002, 0xE1010002):
+        for word in (0xF0810002, 0xE0810212, 0xE081F002, 0xE1511002, 0xE1010002):
             with self.subTest(word=f"0x{word:08X}"):
                 self.put_arm([word])
                 with self.assertRaisesRegex(ranges.TargetRangeError, "unsupported instruction"):

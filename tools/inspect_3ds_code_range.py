@@ -333,7 +333,7 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
     # A32 data-processing register operand with an immediate shift.
     # Register-controlled shifts, PC operands and conditionally executed forms
     # remain outside this syntax-only subset.
-    if condition == 0xE and ((word >> 26) & 0b11) == 0 and ((word >> 25) & 1) == 0 and ((word >> 4) & 1) == 0:
+    if condition != 0xF and ((word >> 26) & 0b11) == 0 and ((word >> 25) & 1) == 0 and ((word >> 4) & 1) == 0:
         opcode = (word >> 21) & 0xF
         set_flags = ((word >> 20) & 1) == 1
         rn = (word >> 16) & 0xF
@@ -373,10 +373,18 @@ def decode_arm_for_inspection(word: int) -> tuple[object, ...]:
                     shift_amount = 32
                 elif shift_name == "ror":
                     shift_name = "rrx"
-            return (
+            decoded = (
                 "a32_dp_reg", operation, set_flags, rd, rn, rm,
                 shift_name, shift_amount,
             )
+            if condition == 0xE:
+                return decoded
+            condition_name = arm.BRANCH_CONDITION_NAMES.get(condition)
+            if condition_name is None:
+                raise arm.UnsupportedInstruction(
+                    f"unsupported A32 data-processing condition 0x{condition:X}"
+                )
+            return ("predicated", condition_name, decoded)
 
     return arm.decode_word(word)
 
@@ -407,26 +415,33 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         registers = [names.get(number, f"r{number}") for number in range(16) if register_mask & (1 << number)]
         operation = "STMDB" if decoded[0] == "arm_push" else "LDMIA"
         return f"{operation} sp!, {{{', '.join(registers)}}}"
-    if state == "arm" and decoded[0] == "a32_dp_reg":
-        operation, set_flags, rd, rn, rm, shift_name, shift_amount = decoded[1:]
-        names = {13: "sp", 14: "lr", 15: "pc"}
-        rd_name = names.get(int(rd), f"r{rd}")
-        rn_name = names.get(int(rn), f"r{rn}")
-        rm_name = names.get(int(rm), f"r{rm}")
-        mnemonic = str(operation).upper()
-        if bool(set_flags) and str(operation) not in ("tst", "teq", "cmp", "cmn"):
-            mnemonic += "S"
-        if str(operation) in ("cmp", "cmn", "tst", "teq"):
-            operands = f"{rn_name}, {rm_name}"
-        elif str(operation) in ("mov", "mvn"):
-            operands = f"{rd_name}, {rm_name}"
-        else:
-            operands = f"{rd_name}, {rn_name}, {rm_name}"
-        if str(shift_name) == "rrx":
-            operands += ", RRX"
-        elif not (str(shift_name) == "lsl" and int(shift_amount) == 0):
-            operands += f", {str(shift_name).upper()} #{int(shift_amount)}"
-        return f"{mnemonic} {operands}"
+    if state == "arm":
+        instruction = decoded
+        condition_suffix = ""
+        if decoded[0] == "predicated":
+            condition_suffix = str(decoded[1]).upper()
+            instruction = tuple(decoded[2])
+        if instruction and instruction[0] == "a32_dp_reg":
+            operation, set_flags, rd, rn, rm, shift_name, shift_amount = instruction[1:]
+            names = {13: "sp", 14: "lr", 15: "pc"}
+            rd_name = names.get(int(rd), f"r{rd}")
+            rn_name = names.get(int(rn), f"r{rn}")
+            rm_name = names.get(int(rm), f"r{rm}")
+            mnemonic = str(operation).upper()
+            if bool(set_flags) and str(operation) not in ("tst", "teq", "cmp", "cmn"):
+                mnemonic += "S"
+            mnemonic += condition_suffix
+            if str(operation) in ("cmp", "cmn", "tst", "teq"):
+                operands = f"{rn_name}, {rm_name}"
+            elif str(operation) in ("mov", "mvn"):
+                operands = f"{rd_name}, {rm_name}"
+            else:
+                operands = f"{rd_name}, {rn_name}, {rm_name}"
+            if str(shift_name) == "rrx":
+                operands += ", RRX"
+            elif not (str(shift_name) == "lsl" and int(shift_amount) == 0):
+                operands += f", {str(shift_name).upper()} #{int(shift_amount)}"
+            return f"{mnemonic} {operands}"
     if state == "arm" and decoded[0] == "a32_multi":
         operation, rn, register_mask, mode, writeback = decoded[1:]
         names = {13: "sp", 14: "lr", 15: "pc"}
