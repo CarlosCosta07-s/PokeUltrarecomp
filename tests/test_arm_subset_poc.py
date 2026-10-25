@@ -287,7 +287,7 @@ int main(void) {
         executed = poc.translate([0x13500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
             "uint32_t synthetic_entry(", "conditional_cmp_executed("
         )
-        harness = "\\n".join((skipped, executed)) + """
+        harness = "\n".join((skipped, executed)) + """
 int main(void) {
     uint8_t skipped_flags = 0;
     uint8_t executed_flags = 0;
