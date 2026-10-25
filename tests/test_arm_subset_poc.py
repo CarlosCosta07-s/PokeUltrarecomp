@@ -151,6 +151,10 @@ class TranslationTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "out-of-range instruction"):
             poc.translate([0xEA000001, 0xE12FFF1E])
 
+    def test_rejects_backward_or_self_targeting_branches_to_prevent_unbounded_loops(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "backward or self-targeting branch"):
+            poc.translate([0xEAFFFFFE, 0xE12FFF1E])
+
     def test_generated_c_unconditional_branch_skips_instruction_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
