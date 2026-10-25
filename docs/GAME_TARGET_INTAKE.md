@@ -43,3 +43,7 @@ Por padrão, o programa imprime JSON no terminal. Para salvar um relatório, use
 **Passar neste preflight não prova que o arquivo é autêntico, que os bytes são código em todas as regiões, que os limites ARM/Thumb foram encontrados corretamente ou que o jogo pode ser recompilado.** Não há desassemblagem, descoberta de funções, relocations, CRO, interpretação, runtime Windows, gráficos ou gameplay nesta ferramenta.
 
 O próximo marco é fazer um inventário de segmentos e instruções com análise específica ARM/Thumb e fixtures conhecidas, depois selecionar uma unidade pequena cuja semântica possa ser comparada de modo reproduzível. CROs e recursos de RomFS devem ser catalogados separadamente; não presumir que a análise do executável principal cobre módulos dinâmicos. Dados reais do jogo permanecem no computador do mantenedor e nunca são anexados aos testes ou commits.
+
+## Inspeção sintática de um intervalo selecionado
+
+Depois de conferir o ExHeader e o `.code` com `tools/inspect_3ds_target.py`, é possível pedir a anotação sintática de uma faixa explicitamente escolhida com `tools/inspect_3ds_code_range.py`. O endereço virtual, o estado ARM/Thumb e a quantidade são obrigatórios; a ferramenta não tenta descobrir limites de função nem adivinhar o estado de instrução. Consulte [CODE_RANGE_INSPECTION.md](CODE_RANGE_INSPECTION.md).

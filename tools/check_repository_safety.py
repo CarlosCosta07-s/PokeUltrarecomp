@@ -36,6 +36,7 @@ REQUIRED_FILES = (
     "tools/thumb_subset_poc.py",
     "tools/inspect_3ds_code_range.py",
     "tests/test_inspect_3ds_code_range.py",
+    "docs/CODE_RANGE_INSPECTION.md",
     "tests/test_thumb_subset_poc.py",
     "docs/THUMB_POC_002.md",
     "targets/pokemon_ultra_sun.json",
