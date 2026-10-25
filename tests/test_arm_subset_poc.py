@@ -13,10 +13,10 @@ import arm_subset_poc as poc  # noqa: E402
 
 
 class DecoderTests(unittest.TestCase):
-    def test_default_fixture_decodes_to_mov_sub_add_and_orr_return(self):
+    def test_default_fixture_decodes_to_mov_sub_add_and_orr_eor_return(self):
         decoded = [poc.decode_word(word) for word in poc.DEFAULT_WORDS]
         self.assertEqual(
-            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("and", 0, 0, 7), ("orr", 0, 0, 8), ("return",)],
+            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("and", 0, 0, 7), ("orr", 0, 0, 8), ("eor", 0, 0, 1), ("return",)],
             decoded,
         )
 
@@ -52,6 +52,13 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
             poc.decode_word(0xE3840001)  # ORR r0, r4, #1
 
+    def test_decodes_eor_immediate(self):
+        self.assertEqual(("eor", 0, 0, 1), poc.decode_word(0xE2200001))
+
+    def test_rejects_eor_with_source_outside_supported_registers(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
+            poc.decode_word(0xE2240001)  # EOR r0, r4, #1
+
     def test_rejects_sub_with_source_outside_supported_registers(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
             poc.decode_word(0xE2440001)  # SUB r0, r4, #1
@@ -65,6 +72,7 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r0 = (uint32_t)(r0 + UINT32_C(3));", source)
         self.assertIn("r0 = (uint32_t)(r0 & UINT32_C(7));", source)
         self.assertIn("r0 = (uint32_t)(r0 | UINT32_C(8));", source)
+        self.assertIn("r0 = (uint32_t)(r0 ^ UINT32_C(1));", source)
         self.assertIn("return r0;", source)
 
     def test_requires_bx_lr_as_final_instruction(self):
@@ -89,6 +97,7 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("UINT32_C(3)", result.stdout)
         self.assertIn("r0 & UINT32_C(7)", result.stdout)
         self.assertIn("r0 | UINT32_C(8)", result.stdout)
+        self.assertIn("r0 ^ UINT32_C(1)", result.stdout)
         self.assertIn("return r0;", result.stdout)
 
     def test_cli_returns_nonzero_for_incomplete_sequence(self):
@@ -99,12 +108,12 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("sequence must end with BX LR", result.stderr)
 
-    def test_generated_c_compiles_and_returns_fifteen_when_compiler_exists(self):
+    def test_generated_c_compiles_and_returns_fourteen_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
             self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
         source = poc.translate(list(poc.DEFAULT_WORDS))
-        harness = source + "\nint main(void) { return synthetic_entry() == UINT32_C(15) ? 0 : 1; }\n"
+        harness = source + "\nint main(void) { return synthetic_entry() == UINT32_C(14) ? 0 : 1; }\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "poc.c"
             exe = Path(directory) / ("poc.exe" if os.name == "nt" else "poc")
