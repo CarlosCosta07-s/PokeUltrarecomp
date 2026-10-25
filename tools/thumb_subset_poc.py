@@ -357,7 +357,7 @@ def translate(
             lines.append(f"    uint32_t {operand} = r{rm};")
             lines.append(f"    uint32_t {result} = (uint32_t)(UINT32_C(0) - {operand});")
             lines.append(f"    flag_c = (uint32_t)(UINT32_C(0) >= {operand});")
-            lines.append(f"    flag_v = (uint32_t)((({operand} ^ UINT32_C(0)) & ({operand} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            lines.append(f"    flag_v = (uint32_t)(({operand} & {result} & UINT32_C(0x80000000)) != 0U);")
             lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
