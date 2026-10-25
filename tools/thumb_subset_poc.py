@@ -82,6 +82,18 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             raise UnsupportedThumbInstruction(f"POP with an empty register list (0x{word:04X}) is unpredictable")
         return ("pop", mask)
 
+    # Thumb-1 three-operand ADD/SUB: register Rm or imm3.
+    if (word & 0xF800) == 0x1800:
+        immediate_form = (word >> 10) & 1
+        subtract = (word >> 9) & 1
+        operand = (word >> 6) & 0x7
+        rn = (word >> 3) & 0x7
+        rd = word & 0x7
+        operation = "subs" if subtract else "adds"
+        if immediate_form:
+            return (f"{operation}_imm3", rd, rn, operand)
+        return (f"{operation}_reg", rd, rn, operand)
+
     op = word & 0xF800
     rd_or_rn = (word >> 8) & 0x7
     immediate = word & 0xFF
@@ -259,6 +271,10 @@ def translate(
     for inst in decoded[:-1]:
         if inst[0] in ("movs", "adds", "subs"):
             used_registers.add(inst[1])
+        elif inst[0] in ("adds_imm3", "subs_imm3"):
+            used_registers.update((inst[1], inst[2]))
+        elif inst[0] in ("adds_reg", "subs_reg"):
+            used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
 
@@ -297,20 +313,33 @@ def translate(
             lines.append(f"    r{rd} = UINT32_C({immediate});")
             lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
-        elif op in ("adds", "subs", "cmp"):
+        elif op in ("adds", "subs", "cmp", "adds_imm3", "subs_imm3", "adds_reg", "subs_reg"):
             if op == "cmp":
                 _, rn, immediate = inst
                 rd = None
-            else:
+                rhs_register = None
+            elif op in ("adds", "subs"):
                 _, rd, immediate = inst
                 rn = rd
+                rhs_register = None
+            elif op in ("adds_imm3", "subs_imm3"):
+                _, rd, rn, immediate = inst
+                rhs_register = None
+            else:
+                _, rd, rn, rm = inst
+                immediate = None
+                rhs_register = rm
             suffix = str(index)
             lhs = f"thumb_lhs_{suffix}"
             rhs = f"thumb_rhs_{suffix}"
             result = f"thumb_result_{suffix}"
+            operation = "adds" if op.startswith("adds") else "subs"
             lines.append(f"    uint32_t {lhs} = r{rn};")
-            lines.append(f"    uint32_t {rhs} = UINT32_C({immediate});")
-            if op == "adds":
+            if rhs_register is not None:
+                lines.append(f"    uint32_t {rhs} = r{rhs_register};")
+            else:
+                lines.append(f"    uint32_t {rhs} = UINT32_C({immediate});")
+            if operation == "adds":
                 wide = f"thumb_wide_{suffix}"
                 lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs};")
                 lines.append(f"    uint32_t {result} = (uint32_t){wide};")
