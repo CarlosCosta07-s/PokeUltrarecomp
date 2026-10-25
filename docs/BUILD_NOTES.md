@@ -469,3 +469,7 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 
 - A primeira execução integral do commit `92e4f54af222ab023bad31a30045332e21124a99` encontrou 4 falhas nos testes novos. O log foi inspecionado: expectativa de ordenação de flags, conjunto de flags lidos por condição, leitura do registrador-base em LDMIA e diferença entre formas ARM/Thumb de ADDS.
 - Corrigida a regra para ler apenas os flags necessários a cada condição, diferenciar a forma A32 de três operandos da forma Thumb imediata e corrigir as expectativas de teste sobre ordenação e base de LDMIA. A nova execução integral ainda precisa confirmar a correção.
+
+
+- **Validação integral aprovada após correções:** [run 40199260690](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40199260690), commit `0bdedf90cc90ad2d8e78f4e51f716060f64c393a`: `Ran 260 tests in 2.371s`, `OK`; Python 3.14.4/GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS após conferir 43 caminhos indexados e zero caminhos não ignorados não rastreados. A tentativa anterior falhou em quatro testes novos; as falhas foram corrigidas antes desta execução aprovada.
+- **Limite:** esta validação usa IR/bytes sintéticos e não leu executáveis de Ultra Sun/Ultra Moon, nem demonstra ABI, execução do jogo ou runtime Windows.

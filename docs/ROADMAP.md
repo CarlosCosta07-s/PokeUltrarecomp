@@ -105,7 +105,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5D — Inspeção de intervalo de código escolhido pelo mantenedor
 
-**Estado:** a inspeção de intervalos ARM/Thumb tem suporte sintático para o grupo de ALU Thumb-1, load/store simples e múltiplos, ADR/ADD/SUB SP, calls e transferências indiretas, com testes sintéticos no checkout completo. A suíte integral passou em **248 testes**, matriz diferencial 96/96 e verificador de segurança PASS no [run 40198129769](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40198129769). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
+**Estado:** a inspeção de intervalos ARM/Thumb tem suporte sintático para o subconjunto descrito, com sumários conservadores de efeitos de registradores/flags. A suíte integral passou em **260 testes**, matriz diferencial 96/96 e verificador de segurança PASS em 43 caminhos indexados no [run 40199260690](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40199260690). Nenhum `.code` real foi lido. A próxima dependência real é o mantenedor escolher localmente uma região autorizada e confirmar endereço inicial/estado ARM-Thumb; não se deve varrer `.text` indiscriminadamente.
 
 **Tarefas**
 - [x] Mapear endereço virtual para offset de `.code` descomprimido a partir do layout do ExHeader validado.
@@ -117,7 +117,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [x] Decodificar LDMIA/STMIA, rejeitar lista vazia, formatar listas de registradores e reportar transfer_count/total_bytes/writeback sem ler memória.
 - [x] Decodificar ADR e ADD/SUB SP com alvo PC alinhado e delta de pilha, mantendo o cálculo de valores dinâmicos não resolvido.
 - [ ] Integrar o resultado a uma seleção de intervalo candidato que exija confirmação do mantenedor do endereço inicial e do estado ARM/Thumb.
-- [x] Executar testes sintéticos na suíte completa; 151 testes passaram no commit 78bad708b8e561d58f934f133fef68d9e1d1f2cb.
+- [x] Executar testes sintéticos na suíte completa; validação mais recente: 260 testes no commit 0bdedf90cc90ad2d8e78f4e51f716060f64c393a (inclui os 248 anteriores e a nova camada de efeitos).
 - [ ] Usar um intervalo local autorizado escolhido pelo mantenedor após confirmar o estado ARM/Thumb, sem compartilhar bytes ou relatório derivado.
 - [ ] Definir e validar contrato de entrada, registradores e flags antes de propor emissão C ou execução.
 
@@ -144,7 +144,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5F — Efeitos observados de registradores e flags
 
-**Estado:** sumário sintático conservador implementado para instruções decodificadas no intervalo explicitamente escolhido. Não é análise de vivacidade, execução simbólica ou inferência de ABI.
+**Estado:** sumário sintático conservador implementado e validado em 260 testes no [run 40199260690](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40199260690). A primeira execução detectou quatro falhas nos testes novos; as regras/expectativas foram corrigidas e a execução seguinte passou. Não é análise de vivacidade, execução simbólica ou inferência de ABI.
 
 - [x] Relatar leituras/escritas observadas de registradores para o subconjunto conhecido de ARM A32/Thumb.
 - [x] Relatar leitura/escrita de NZCV para condições, aritmética, comparações e operações Thumb suportadas.
