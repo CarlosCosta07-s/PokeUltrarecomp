@@ -13,10 +13,10 @@ import arm_subset_poc as poc  # noqa: E402
 
 
 class DecoderTests(unittest.TestCase):
-    def test_default_fixture_decodes_to_mov_sub_add_return(self):
+    def test_default_fixture_decodes_to_mov_sub_add_and_return(self):
         decoded = [poc.decode_word(word) for word in poc.DEFAULT_WORDS]
         self.assertEqual(
-            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("return",)],
+            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("and", 0, 0, 7), ("return",)],
             decoded,
         )
 
@@ -38,6 +38,13 @@ class DecoderTests(unittest.TestCase):
     def test_decodes_sub_immediate(self):
         self.assertEqual(("sub", 0, 0, 3), poc.decode_word(0xE2400003))
 
+    def test_decodes_and_immediate(self):
+        self.assertEqual(("and", 0, 0, 7), poc.decode_word(0xE2000007))
+
+    def test_rejects_and_with_source_outside_supported_registers(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
+            poc.decode_word(0xE2040001)  # AND r0, r4, #1
+
     def test_rejects_sub_with_source_outside_supported_registers(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
             poc.decode_word(0xE2440001)  # SUB r0, r4, #1
@@ -49,6 +56,7 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r0 = UINT32_C(12);", source)
         self.assertIn("r0 = (uint32_t)(r0 - UINT32_C(8));", source)
         self.assertIn("r0 = (uint32_t)(r0 + UINT32_C(3));", source)
+        self.assertIn("r0 = (uint32_t)(r0 & UINT32_C(7));", source)
         self.assertIn("return r0;", source)
 
     def test_requires_bx_lr_as_final_instruction(self):
@@ -71,6 +79,7 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("UINT32_C(12)", result.stdout)
         self.assertIn("UINT32_C(8)", result.stdout)
         self.assertIn("UINT32_C(3)", result.stdout)
+        self.assertIn("r0 & UINT32_C(7)", result.stdout)
         self.assertIn("return r0;", result.stdout)
 
     def test_cli_returns_nonzero_for_incomplete_sequence(self):
