@@ -412,7 +412,7 @@ def translate(
                 lines.append(f"        if ({amount} < 32U) {{")
                 lines.append(f"            {result} = {source} >> {amount};")
                 lines.append(f"            flag_c = ({source} >> ({amount} - 1U)) & 1U;")
-                lines.append(f"        } else if ({amount} == 32U) {{")
+                lines.append(f"        }} else if ({amount} == 32U) {{")
                 lines.append(f"            {result} = UINT32_C(0);")
                 lines.append(f"            flag_c = ({source} >> 31) & 1U;")
                 lines.append("        } else {")
