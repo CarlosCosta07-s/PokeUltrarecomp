@@ -71,7 +71,7 @@
 
 A [Arm Instruction Set Reference Guide](https://documentation-service.arm.com/static/6245c734b059dc5ff9a8bdab) confirma a família de instruções de processamento de dados e o papel dos flags. A documentação de ARM distingue instruções que escrevem um resultado em registrador de instruções de comparação/teste que atualizam flags sem gravar o resultado.
 
-**Implicação para o POC-001:** `CMN` não deve ser implementado como uma soma comum. Ele atualiza N, Z, C e V e descarta o resultado; POC-001 ainda não modela CPSR/NZCV, então CMN deve esperar até que estado de flags e testes correspondentes estejam especificados. A extensão mais segura nesta etapa é `MVN` imediato sem atualização de flags, mantendo o escopo restrito.
+**Implicação para o POC-001:** `CMN` não deve ser implementado como uma soma comum. Ele atualiza N, Z, C e V e descarta o resultado. Desde esta revisão, existe `tools/arm_flags.py`, um modelo isolado de NZCV com testes sintéticos de aritmética e flags lógicas; ele ainda não está integrado ao tradutor C. Portanto `CMN` segue pendente até a integração ser especificada e testada, incluindo o estado de flags gerado e a validação diferencial.
 
 ## Conclusões práticas
 
