@@ -408,6 +408,38 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(["c", "n", "z"], teq_effect["flags_written"])
         self.assertEqual(["r0"], orr_effect["registers_written"])
 
+    def test_conditional_a32_memory_conditions_cover_all_fourteen_standard_codes(self):
+        # The same LDR immediate under EQ..LE must preserve each condition suffix and flag dependency.
+        condition_names = [
+            "eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc",
+            "hi", "ls", "ge", "lt", "gt", "le",
+        ]
+        words = [(condition << 28) | 0x05910004 for condition in range(14)]
+        self.put_arm(words)
+        result = ranges.inspect_code_range(
+            "ultra-sun", self.exheader, self.code, "arm", 0x00100000, len(words),
+            title_id="00040000001B5000",
+        )
+        self.assertEqual(
+            [f"LDR{name.upper()} r0, [r1, #+4]" for name in condition_names],
+            [item["mnemonic"] for item in result["instructions"]],
+        )
+        expected_flags = {
+            "eq": ["z"], "ne": ["z"], "cs": ["c"], "cc": ["c"],
+            "mi": ["n"], "pl": ["n"], "vs": ["v"], "vc": ["v"],
+            "hi": ["c", "z"], "ls": ["c", "z"], "ge": ["n", "v"],
+            "lt": ["n", "v"], "gt": ["n", "v", "z"], "le": ["n", "v", "z"],
+        }
+        for name, instruction, effect in zip(
+            condition_names, result["instructions"], result["dataflow"]["instructions"]
+        ):
+            with self.subTest(condition=name):
+                self.assertTrue(effect["conditional"])
+                self.assertEqual(expected_flags[name], effect["flags_read"])
+                self.assertEqual("read", effect["memory"])
+                self.assertEqual("0x00100000" if instruction["index"] == 0 else instruction["virtual_address"],
+                                 instruction["virtual_address"])
+
     def test_conditional_a32_memory_access_reports_condition_and_effects(self):
         # LDRNE r0,[r1,#4]; STRNE r2,[r3,#8]
         self.put_arm([0x15910004, 0x15832008])
