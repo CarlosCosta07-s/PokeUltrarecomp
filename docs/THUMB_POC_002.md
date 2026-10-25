@@ -13,6 +13,17 @@ Complementar a POC-001 ARM A32 com uma segunda demonstração independente e igu
 | `SUBS Rd, #imm8` | Subtrai uint32; atualiza NZCV |
 | `CMP Rn, #imm8` | Subtrai para flags sem alterar o registrador |
 | `ANDS Rdn, Rm` | AND entre registradores; atualiza N/Z e preserva C/V |
+| `EORS Rdn, Rm` | XOR; atualiza N/Z e preserva C/V |
+| `ADCS Rdn, Rm` | Soma com carry de entrada; atualiza NZCV |
+| `SBCS Rdn, Rm` | Subtração com borrow derivado de C; atualiza NZCV |
+| `TST Rn, Rm` | AND somente para flags; não altera Rn |
+| `RSBS Rdn, Rm, #0` | Negação; inclui teste de overflow de 0x80000000 |
+| `CMP Rdn, Rm` | Subtrai para NZCV sem alterar Rdn |
+| `CMN Rdn, Rm` | Soma para NZCV sem alterar Rdn |
+| `ORRS Rdn, Rm` | OR; atualiza N/Z e preserva C/V |
+| `BICS Rdn, Rm` | AND com complemento; atualiza N/Z e preserva C/V |
+| `MVNS Rd, Rm` | Complemento bit a bit; atualiza N/Z e preserva C/V |
+| `ANDS Rdn, Rm` | AND entre registradores; atualiza N/Z e preserva C/V |
 | `EORS Rdn, Rm` | XOR entre registradores; atualiza N/Z e preserva C/V |
 | `ORRS Rdn, Rm` | OR entre registradores; atualiza N/Z e preserva C/V |
 | `BICS Rdn, Rm` | AND com complemento; atualiza N/Z e preserva C/V |
@@ -54,6 +65,8 @@ A matriz nativa compara as 14 condições × 16 estados de entrada NZCV com uma 
 
 A cobertura inclui também deslocamentos imediatos Thumb-1 (LSL/LSR/ASR), operações lógicas/teste entre registradores (ANDS/EORS/ORRS/BICS/MVNS/TST), CMP/CMN entre registradores e RSBS Rdn,Rm,#0. Operações lógicas/teste preservam C/V, CMP/CMN não alteram o registrador comparado, e RSBS valida o overflow de negação do valor mínimo. Encodings de outros opcodes no mesmo espaço de data-processing continuam rejeitados.
 
+O grupo Thumb-1 de operações entre registradores agora inclui ANDS/EORS/ORRS/BICS/MVNS/TST, CMP/CMN, RSBS (negação) e ADCS/SBCS. C/V são preservados nas operações lógicas/teste e consumidos explicitamente nas operações com carry.
+
 A cobertura inclui também os deslocamentos imediatos Thumb-1 LSL, LSR e ASR. Os testes classificam todos os encodings de 0x0000 a 0x17FF e executam testes C nativos para carry, preservação de C/V e os casos em que imm5=0 tem significado especial.
 
 A cobertura inclui agora a família Thumb-1 de três operandos ADD/SUB (registrador ou imediato de 3 bits). Todos os encodings no intervalo 0x1800..0x1FFF são classificados nos testes; a execução nativa verifica carry/no-borrow, overflow e resultados. Isso não adiciona acesso à memória nem chamadas.
@@ -66,4 +79,4 @@ Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado e
 
 ## Evidência de validação — POC-002
 
-A validação integral mais recente, no commit `f28715c296641378c4b3884539379d6a61052674`, passou em **230 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195815460).
+A validação integral mais recente, no commit `f54c5c5abcf6e394319a8f957bd250b281cad45d`, passou em **231 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40196025438).
