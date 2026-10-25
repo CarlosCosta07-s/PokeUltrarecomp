@@ -465,5 +465,13 @@ class ExplicitRangeTests(unittest.TestCase):
             [item["mnemonic"] for item in result["instructions"]],
         )
 
+    def test_formats_thumb_immediate_shift_forms(self):
+        self.put_thumb([0x07C8, 0x0913, 0x1025, 0x4770])
+        result = self.inspect_thumb(4)
+        self.assertEqual(
+            ["LSL r0, r1, #31", "LSR r3, r2, #4", "ASR r5, r4, #0", "BX LR"],
+            [item["mnemonic"] for item in result["instructions"]],
+        )
+
 if __name__ == "__main__":
     unittest.main()

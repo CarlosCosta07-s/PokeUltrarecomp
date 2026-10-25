@@ -37,6 +37,22 @@ class ThumbDecodeTests(unittest.TestCase):
     def test_decodes_subs_immediate(self):
         self.assertEqual(("subs", 4, 0x11), poc.decode_halfword(0x3C11))
 
+    def test_decodes_immediate_shift_forms(self):
+        self.assertEqual(("lsl_imm", 0, 1, 31), poc.decode_halfword(0x07C8))
+        self.assertEqual(("lsr_imm", 3, 2, 4), poc.decode_halfword(0x0913))
+        self.assertEqual(("asr_imm", 5, 4, 0), poc.decode_halfword(0x1025))
+
+    def test_classifies_every_encoding_in_thumb_immediate_shift_spaces(self):
+        expected = {0x0000: "lsl_imm", 0x0800: "lsr_imm", 0x1000: "asr_imm"}
+        for word in range(0x0000, 0x1800):
+            with self.subTest(word=f"0x{word:04X}"):
+                decoded = poc.decode_halfword(word)
+                opcode = word & 0xF800
+                self.assertEqual(expected[opcode], decoded[0])
+                self.assertEqual((word >> 6) & 0x1F, decoded[3])
+                self.assertEqual((word >> 3) & 0x7, decoded[2])
+                self.assertEqual(word & 0x7, decoded[1])
+
     def test_decodes_three_operand_add_sub_and_imm3_forms(self):
         self.assertEqual(("adds_reg", 0, 1, 2), poc.decode_halfword(0x1888))
         self.assertEqual(("subs_reg", 0, 1, 2), poc.decode_halfword(0x1A88))
@@ -180,6 +196,54 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "thumb_add_sub.c"
             exe = Path(directory) / ("thumb_add_sub.exe" if os.name == "nt" else "thumb_add_sub")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_native_immediate_shifts_cover_zero_special_cases_and_carry(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb shift proof requires cc, gcc, or clang")
+        lsl_overflow = poc.translate([0x2101, 0x07C9, 0x0048, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t lsl_overflow("
+        )
+        lsr_32 = poc.translate([0x2101, 0x07C9, 0x0808, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t lsr_32("
+        )
+        asr_32 = poc.translate([0x2101, 0x07C9, 0x1008, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t asr_32("
+        )
+        lsr_one = poc.translate([0x2101, 0x07C9, 0x0848, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t lsr_one("
+        )
+        lsl_zero = poc.translate([0x2101, 0x0008, 0x4770], initial_nzcv=0x3).replace(
+            "uint32_t thumb_entry(", "uint32_t lsl_zero("
+        )
+        asr_sign = poc.translate([0x2180, 0x0609, 0x1048, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t asr_sign("
+        )
+        harness = "\n".join((lsl_overflow, lsr_32, asr_32, lsr_one, lsl_zero, asr_sign)) + """
+int main(void) {
+    uint8_t flags = 0;
+    if (!(lsl_overflow(&flags) == UINT32_C(0) && flags == UINT8_C(6))) return 1;
+    flags = 0;
+    if (!(lsr_32(&flags) == UINT32_C(0) && flags == UINT8_C(6))) return 2;
+    flags = 0;
+    if (!(asr_32(&flags) == UINT32_MAX && flags == UINT8_C(10))) return 3;
+    flags = 0;
+    if (!(lsr_one(&flags) == UINT32_C(0x40000000) && flags == UINT8_C(0))) return 4;
+    flags = 0;
+    if (!(lsl_zero(&flags) == UINT32_C(1) && flags == UINT8_C(3))) return 5;
+    flags = 0;
+    if (!(asr_sign(&flags) == UINT32_C(0xC0000000) && flags == UINT8_C(8))) return 6;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_shift.c"
+            exe = Path(directory) / ("thumb_shift.exe" if os.name == "nt" else "thumb_shift")
             src.write_text(harness, encoding="utf-8")
             result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)

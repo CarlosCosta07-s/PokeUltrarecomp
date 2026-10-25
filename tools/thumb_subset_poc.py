@@ -82,6 +82,15 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             raise UnsupportedThumbInstruction(f"POP with an empty register list (0x{word:04X}) is unpredictable")
         return ("pop", mask)
 
+    # Thumb-1 immediate shifts: LSL, LSR and ASR (imm5=0 has per-op semantics).
+    shift_opcode = word & 0xF800
+    if shift_opcode in (0x0000, 0x0800, 0x1000):
+        shift_names = {0x0000: "lsl_imm", 0x0800: "lsr_imm", 0x1000: "asr_imm"}
+        amount = (word >> 6) & 0x1F
+        rm = (word >> 3) & 0x7
+        rd = word & 0x7
+        return (shift_names[shift_opcode], rd, rm, amount)
+
     # Thumb-1 three-operand ADD/SUB: register Rm or imm3.
     if (word & 0xF800) == 0x1800:
         immediate_form = (word >> 10) & 1
@@ -275,6 +284,8 @@ def translate(
             used_registers.update((inst[1], inst[2]))
         elif inst[0] in ("adds_reg", "subs_reg"):
             used_registers.update((inst[1], inst[2], inst[3]))
+        elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
+            used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
 
@@ -313,6 +324,38 @@ def translate(
             lines.append(f"    r{rd} = UINT32_C({immediate});")
             lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif op in ("lsl_imm", "lsr_imm", "asr_imm"):
+            _, rd, rm, amount = inst
+            suffix = str(index)
+            source = f"thumb_shift_source_{suffix}"
+            result = f"thumb_shift_result_{suffix}"
+            lines.append(f"    uint32_t {source} = r{rm};")
+            if op == "lsl_imm":
+                if amount == 0:
+                    lines.append(f"    uint32_t {result} = {source};")
+                else:
+                    lines.append(f"    uint32_t {result} = (uint32_t)({source} << {amount});")
+                    lines.append(f"    flag_c = ({source} >> {32 - amount}) & 1U;")
+            elif op == "lsr_imm":
+                if amount == 0:
+                    lines.append(f"    uint32_t {result} = UINT32_C(0);")
+                    lines.append(f"    flag_c = ({source} >> 31) & 1U;")
+                else:
+                    lines.append(f"    uint32_t {result} = {source} >> {amount};")
+                    lines.append(f"    flag_c = ({source} >> {amount - 1}) & 1U;")
+            else:  # ASR immediate; avoid implementation-defined signed right shift in C.
+                if amount == 0:
+                    lines.append(f"    uint32_t {result} = ({source} & UINT32_C(0x80000000)) ? UINT32_MAX : UINT32_C(0);")
+                    lines.append(f"    flag_c = ({source} >> 31) & 1U;")
+                else:
+                    lines.append(
+                        f"    uint32_t {result} = ({source} >> {amount}) | "
+                        f"(({source} & UINT32_C(0x80000000)) ? (UINT32_MAX << {32 - amount}) : UINT32_C(0));"
+                    )
+                    lines.append(f"    flag_c = ({source} >> {amount - 1}) & 1U;")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         elif op in ("adds", "subs", "cmp", "adds_imm3", "subs_imm3", "adds_reg", "subs_reg"):
             if op == "cmp":
                 _, rn, immediate = inst
