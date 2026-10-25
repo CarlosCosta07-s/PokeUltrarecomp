@@ -101,6 +101,7 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             0x0: "ands_reg",
             0x1: "eors_reg",
             0x8: "tst_reg",
+            0x9: "rsbs_zero",
             0xA: "cmp_reg",
             0xB: "cmn_reg",
             0xC: "orrs_reg",
@@ -308,7 +309,7 @@ def translate(
             used_registers.update((inst[1], inst[2], inst[3]))
         elif inst[0] in ("lsl_imm", "lsr_imm", "asr_imm"):
             used_registers.update((inst[1], inst[2]))
-        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg"):
+        elif inst[0] in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg", "cmp_reg", "cmn_reg", "rsbs_zero"):
             used_registers.update((inst[1], inst[2]))
         elif inst[0] == "cmp":
             used_registers.add(inst[1])
@@ -348,6 +349,18 @@ def translate(
             lines.append(f"    r{rd} = UINT32_C({immediate});")
             lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif op == "rsbs_zero":
+            _, rd, rm = inst
+            suffix = str(index)
+            operand = f"thumb_rsb_operand_{suffix}"
+            result = f"thumb_rsb_result_{suffix}"
+            lines.append(f"    uint32_t {operand} = r{rm};")
+            lines.append(f"    uint32_t {result} = (uint32_t)(UINT32_C(0) - {operand});")
+            lines.append(f"    flag_c = (uint32_t)(UINT32_C(0) >= {operand});")
+            lines.append(f"    flag_v = (uint32_t)((({operand} ^ UINT32_C(0)) & ({operand} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         elif op in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
             _, rd, rm = inst
             suffix = str(index)
