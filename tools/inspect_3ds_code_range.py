@@ -65,6 +65,8 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         "movs": "MOVS", "adds_reg": "ADDS", "subs_reg": "SUBS",
         "adds_imm3": "ADDS", "subs_imm3": "SUBS",
         "lsl_imm": "LSL", "lsr_imm": "LSR", "asr_imm": "ASR",
+        "ands_reg": "ANDS", "eors_reg": "EORS", "orrs_reg": "ORRS",
+        "bics_reg": "BICS", "mvns_reg": "MVNS", "tst_reg": "TST",
     }
     name = names.get(op)
     if name is None:
@@ -79,6 +81,8 @@ def mnemonic_for(state: str, decoded: tuple[object, ...]) -> str:
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
     if state == "thumb" and op in ("lsl_imm", "lsr_imm", "asr_imm"):
         return f"{name} r{inst[1]}, r{inst[2]}, #{inst[3]}"
+    if state == "thumb" and op in ("ands_reg", "eors_reg", "orrs_reg", "bics_reg", "mvns_reg", "tst_reg"):
+        return f"{name} r{inst[1]}, r{inst[2]}"
     if state == "thumb" and op in ("adds_reg", "subs_reg"):
         return f"{name} r{inst[1]}, r{inst[2]}, r{inst[3]}"
     if op in ("add", "sub", "and", "orr", "eor", "bic", "adds", "subs"):
