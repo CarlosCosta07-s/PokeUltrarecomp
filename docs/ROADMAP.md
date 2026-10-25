@@ -76,11 +76,11 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5A — Intake dos executáveis de Ultra Sun / Ultra Moon
 
-**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas; 14 testes específicos e a suíte integral de 106 testes passaram no workflow hospedado. Os arquivos reais dos jogos não são incluídos nem processados na CI.
+**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas. Lê o Program ID no ACI do ExHeader, confere o alvo e calcula os offsets no `.code` com o layout page-padded declarado. Os arquivos reais dos jogos não são incluídos nem processados na CI.
 
 **Tarefas desta etapa**
 - [x] Adicionar perfis distintos de Ultra Sun e Ultra Moon, com IDs-base/atualização conhecidos e política de entradas locais.
-- [x] Ler ExHeader SCI e validar endereços, páginas, tamanhos, sobreposição de segmentos e capacidade do `.code` descomprimido.
+- [x] Ler SCI e Program ID do ACI, validar o alvo embutido, endereços, páginas, tamanhos, sobreposição e comprimento exato do `.code` page-padded; reportar offsets dos segmentos.
 - [x] Emitir JSON com SHA-256 local e metadados sem copiar bytes ou caminhos absolutos.
 - [x] Expor candidatos de variante por tamanho de `.code` a partir de referência comunitária; o resultado é explicitamente heurístico e não autentica a revisão.
 - [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.

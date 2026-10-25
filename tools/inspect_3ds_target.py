@@ -17,7 +17,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 TARGET_DIR = ROOT / "targets"
 PAGE_SIZE = 0x1000
-SCI_MIN_SIZE = 0x200
+MIN_EXHEADER_DATA_SIZE = 0x208  # SCI plus the 8-byte ACI Program ID
+ACI_PROGRAM_ID_OFFSET = 0x200
 U32_LIMIT = 1 << 32
 
 
@@ -58,6 +59,10 @@ def _u32(data: bytes, offset: int) -> int:
 
 def _u16(data: bytes, offset: int) -> int:
     return int.from_bytes(data[offset:offset + 2], "little", signed=False)
+
+
+def _u64(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset:offset + 8], "little", signed=False)
 
 
 def _read_input(path: Path, label: str) -> bytes:
@@ -101,20 +106,41 @@ def inspect_target(
     exheader = _read_input(exheader_path, "ExHeader")
     code = _read_input(code_path, "decompressed .code")
 
-    if len(exheader) < SCI_MIN_SIZE:
+    if len(exheader) < MIN_EXHEADER_DATA_SIZE:
         raise TargetInspectionError(
-            f"ExHeader is too short ({len(exheader)} bytes); at least 0x{SCI_MIN_SIZE:X} bytes are required"
+            f"ExHeader is too short ({len(exheader)} bytes); at least 0x{MIN_EXHEADER_DATA_SIZE:X} bytes are required "
+            "to include the SCI and ACI Program ID"
         )
     if not code:
         raise TargetInspectionError("decompressed .code input is empty")
 
+    program_id = f"{_u64(exheader, ACI_PROGRAM_ID_OFFSET):016X}"
+    program_owner: tuple[str, str] | None = None
+    for candidate_id, candidate in profiles.items():
+        ids = candidate.get("title_ids", {})
+        for kind in ("base", "update"):
+            if program_id == ids.get(kind, "").upper():
+                if candidate_id != target_id:
+                    raise TargetInspectionError(
+                        f"ExHeader ACI Program ID {program_id} belongs to {candidate['display_name']} "
+                        f"({kind}), not {profile['display_name']}"
+                    )
+                program_owner = (candidate_id, kind)
+
     identity: dict[str, Any] = {
+        "program_id": program_id,
+        "program_id_match": "matched" if program_owner else "unrecognized",
+        "program_id_kind": program_owner[1] if program_owner else None,
         "title_id_provided": title_id is not None,
         "title_id": None,
         "title_id_match": "not-supplied",
         "title_kind": None,
     }
     warnings: list[str] = []
+    if not program_owner:
+        warnings.append(
+            "ExHeader ACI Program ID is not in the known target profile list; the target/revision is not independently confirmed"
+        )
     if title_id is not None:
         normalized_id = normalize_title_id(title_id)
         identity["title_id"] = normalized_id
@@ -149,6 +175,7 @@ def inspect_target(
     occupied: list[tuple[int, int, str]] = []
     minimum_declared_payload = 0
     allocated_capacity = 0
+    code_file_offset = 0
     for name, offset in segment_specs:
         address = _u32(exheader, offset)
         pages = _u32(exheader, offset + 4)
@@ -177,29 +204,27 @@ def inspect_target(
         allocated_capacity += allocated
         segments.append({
             "name": name,
+            "code_file_offset": code_file_offset,
             "virtual_address": address,
             "allocated_pages": pages,
             "allocated_bytes": allocated,
             "declared_size_bytes": size,
         })
+        code_file_offset += allocated
 
     if len(code) < minimum_declared_payload:
         raise TargetInspectionError(
             f"decompressed .code is too short ({len(code)} bytes); "
             f"declared segment payload needs at least {minimum_declared_payload} bytes"
         )
-    if len(code) > allocated_capacity:
-        raise TargetInspectionError(
-            f"decompressed .code is larger than the combined page allocation "
-            f"({len(code)} > {allocated_capacity} bytes)"
-        )
     if len(code) != allocated_capacity:
-        warnings.append(
-            "decompressed .code length fits the declared segment sizes but does not equal total page allocation; "
-            "verify the extraction/layout before translation"
+        relation = "shorter than" if len(code) < allocated_capacity else "larger than"
+        raise TargetInspectionError(
+            f"decompressed .code length ({len(code)} bytes) must exactly match the page-padded "
+            f"layout ({allocated_capacity} bytes); input is {relation} the combined page allocation"
         )
     if not identity["title_id_provided"]:
-        warnings.append("no title ID supplied; selected target is a user declaration, not an independently verified identity")
+        warnings.append("no NCCH/container title ID supplied; base/update title identity may remain ambiguous")
     if not app_title:
         warnings.append("ExHeader application title field is empty or non-ASCII")
 
@@ -242,6 +267,8 @@ def inspect_target(
             "bss_size_bytes": bss_size,
             "minimum_declared_segment_payload_bytes": minimum_declared_payload,
             "combined_segment_page_capacity_bytes": allocated_capacity,
+            "expected_decompressed_code_size_bytes": allocated_capacity,
+            "decompressed_code_layout": "text, rodata, data; each segment occupies its page-rounded allocation",
             "segments": segments,
         },
         "checks": {
@@ -250,7 +277,8 @@ def inspect_target(
             "segment_page_ranges_do_not_overlap": True,
             "code_is_large_enough_for_declared_payload": True,
             "code_fits_combined_page_capacity": True,
-            "title_id_match": identity["title_id_match"],
+            "program_id_match": identity["program_id_match"],
+        "title_id_match": identity["title_id_match"],
         },
         "warnings": warnings,
         "limitations": [
@@ -270,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--target", required=True, choices=sorted(profiles), help="game target profile")
         parser.add_argument("--exheader", required=True, type=Path, help="local ExHeader file from the same executable")
         parser.add_argument("--code", required=True, type=Path, help="local, already-decompressed ExeFS/.code file")
-        parser.add_argument("--title-id", help="optional 16-digit NCCH/title ID read from local metadata")
+        parser.add_argument("--title-id", help="optional 16-digit NCCH/container title ID, recorded separately from the ExHeader ACI Program ID")
         parser.add_argument("--report", type=Path, help="optional JSON report destination; keep outside the repository")
         args = parser.parse_args(argv)
         report = inspect_target(args.target, args.exheader, args.code, args.title_id)
