@@ -31,9 +31,26 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaises(poc.UnsupportedInstruction):
             poc.decode_word(0xE3A04003)  # MOV r4, #3
 
-    def test_rejects_flag_setting_instruction(self):
-        with self.assertRaises(poc.UnsupportedInstruction):
-            poc.decode_word(0xE2900001)  # ADDS r0, r0, #1
+    def test_decodes_adds_with_flags(self):
+        self.assertEqual(("adds", 0, 0, 1), poc.decode_word(0xE2900001))
+
+    def test_decodes_subs_with_flags(self):
+        self.assertEqual(("subs", 0, 0, 1), poc.decode_word(0xE2500001))
+
+    def test_decodes_cmn_immediate(self):
+        self.assertEqual(("cmn", 0, 0x80000000), poc.decode_word(0xE3700102))
+
+    def test_rejects_unsupported_flag_setting_instruction(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
+            poc.decode_word(0xE3B00001)  # MOVS remains unsupported
+
+    def test_rejects_cmn_without_s_bit(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN requires"):
+            poc.decode_word(0xE3600001)
+
+    def test_rejects_noncanonical_cmn_destination(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
+            poc.decode_word(0xE3711001)
 
     def test_decodes_sub_immediate(self):
         self.assertEqual(("sub", 0, 0, 3), poc.decode_word(0xE2400003))
@@ -108,7 +125,8 @@ class TranslationTests(unittest.TestCase):
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(0, result.returncode, msg=result.stderr)
-        self.assertIn("uint32_t synthetic_entry(void)", result.stdout)
+        self.assertIn("uint32_t synthetic_entry(uint8_t *nzcv_out)", result.stdout)
+        self.assertIn("*nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);", result.stdout)
         self.assertIn("UINT32_C(12)", result.stdout)
         self.assertIn("UINT32_C(8)", result.stdout)
         self.assertIn("UINT32_C(3)", result.stdout)
@@ -133,7 +151,7 @@ class TranslationTests(unittest.TestCase):
         if not compiler:
             self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
         source = poc.translate(list(poc.DEFAULT_WORDS))
-        harness = source + "\nint main(void) { return synthetic_entry() == UINT32_C(12) ? 0 : 1; }\n"
+        harness = source + "\nint main(void) { uint8_t flags = UINT8_C(255); return synthetic_entry(&flags) == UINT32_C(12) && flags == UINT8_C(0) ? 0 : 1; }\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "poc.c"
             exe = Path(directory) / ("poc.exe" if os.name == "nt" else "poc")
@@ -143,6 +161,38 @@ class TranslationTests(unittest.TestCase):
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+
+    def test_generated_c_reports_adds_overflow_flags_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
+        words = [0xE3A00102, 0xE2400001, 0xE2900001, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(0x80000000) && flags == UINT8_C(9) ? 0 : 1; }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "adds.c"
+            exe = Path(directory) / ("adds.exe" if os.name == "nt" else "adds")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_generated_c_reports_cmn_flags_without_writing_destination_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native-code proof must be run on a compiler-enabled host")
+        words = [0xE3A00102, 0xE2400001, 0xE2900001, 0xE3700102, 0xE12FFF1E]
+        source = poc.translate(words)
+        harness = source + "\nint main(void) { uint8_t flags = 0; return synthetic_entry(&flags) == UINT32_C(0x80000000) && flags == UINT8_C(7) ? 0 : 1; }\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "cmn.c"
+            exe = Path(directory) / ("cmn.exe" if os.name == "nt" else "cmn")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
 if __name__ == "__main__":
     unittest.main()
