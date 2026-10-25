@@ -414,3 +414,11 @@ Esta verificação isolada **não é a suíte integral do repositório** e não 
 - Testes cobrem todos os 6144 encodings nos espaços 0x0000..0x17FF, casos nativos de LSL overflow, LSR #32, ASR #32, LSR #1, preservação de C/V em LSL #0 e extensão de sinal em ASR #1, mais a formatação do inspetor.
 - **Validação integral:** [run 40195030086](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195030086), commit `2996f7f6ae6f0d44b0f2de3d71bcda40aa4dd495`: `Ran 224 tests in 2.270s`, `OK`; Python 3.14.4, GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS com 41 caminhos indexados e zero arquivos não ignorados não rastreados.
 - Nenhum `.code` real foi usado. A evidência valida apenas tradução sintética/inspeção, não gameplay ou runtime.
+
+## Ampliação do grupo Thumb-1 de processamento de registradores — 2026-10-25
+
+- Adicionados ANDS, EORS, ORRS, BICS, MVNS e TST no grupo Thumb-1 de data-processing register. O tradutor só aceita esses opcodes específicos; as outras operações daquele espaço continuam explicitamente desconhecidas.
+- Adicionados CMP Rdn,Rm e CMN Rdn,Rm, atualizando NZCV sem escrever de volta em Rdn. Adicionado RSBS Rdn,Rm,#0 com teste de negação simples e overflow assinado no caso `0x80000000`.
+- O inspetor de intervalo mostra os mnemônicos/operandos e os testes nativos verificam C/V preservados em operações lógicas, ausência de escrita para TST/CMP/CMN e NZCV correto em RSBS.
+- **Validação integral:** [run 40195815460](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40195815460), commit `f28715c296641378c4b3884539379d6a61052674`: `Ran 230 tests in 2.114s`, `OK`; Python 3.14.4, GCC 15.2.0; matriz diferencial 96/96; verificador de segurança PASS em 41 caminhos rastreados e zero arquivos não ignorados não rastreados.
+- A primeira execução encontrou uma falha na fórmula de overflow de RSBS para `0 - 0x80000000`. A fórmula foi corrigida; o teste nativo passou na execução integral acima. Nenhum `.code` real foi lido; isto não demonstra gameplay nem runtime.
