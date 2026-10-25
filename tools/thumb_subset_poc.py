@@ -167,7 +167,8 @@ def decode_halfword(word: int) -> tuple[object, ...]:
             )
         return ("ldmia" if load else "stmia", rn, register_list)
 
-    # Thumb-1 PC/SP address-generation instructions.    if (word & 0xF800) in (0xA000, 0xA800):
+    # Thumb-1 PC/SP address-generation instructions.
+    if (word & 0xF800) in (0xA000, 0xA800):
         rd = (word >> 8) & 0x7
         offset = (word & 0xFF) * 4
         operation = "adr" if (word & 0xF800) == 0xA000 else "add_sp_imm"

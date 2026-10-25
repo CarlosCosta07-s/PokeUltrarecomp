@@ -560,7 +560,7 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertEqual(3, stored["transfer_count"])
         self.assertEqual(12, stored["total_bytes"])
         self.assertTrue(stored["base_register_writeback"])
-        self.assertTrue(stored["base_register_stored_value_unknown"]) is False
+        self.assertFalse(stored["base_register_stored_value_unknown"])
         loaded = result["instructions"][1]["memory_access"]
         self.assertEqual("load", loaded["direction"])
         self.assertTrue(loaded["base_register_writeback"])
