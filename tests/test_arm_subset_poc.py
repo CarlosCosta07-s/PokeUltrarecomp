@@ -607,5 +607,67 @@ int main(void) {
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
+
+    def test_runtime_state_io_uses_live_registers_and_returns_registers_flags_and_steps(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 runtime-state proof requires cc, gcc, or clang")
+        add = poc.translate(
+            [0xE2800005, 0xE12FFF1E],
+            max_execution_steps=2,
+            runtime_state_io=True,
+        ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_add(")
+        skipped = poc.translate(
+            [0x12800005, 0xE12FFF1E],  # ADDNE r0,r0,#5
+            max_execution_steps=2,
+            runtime_state_io=True,
+        ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_add_ne(")
+        harness = "\n".join((add, skipped)) + """
+int main(void) {
+    const uint32_t input[4] = {
+        UINT32_C(37), UINT32_C(0x12345678), UINT32_C(0x80000000), UINT32_C(0xDEADBEEF)
+    };
+    uint32_t output[4] = {0U, 0U, 0U, 0U};
+    uint8_t flags = UINT8_C(255), status = UINT8_C(255);
+    uint32_t steps = 0U;
+    if (!(a32_runtime_add(input, UINT8_C(11), &flags, &steps, &status, output) == UINT32_C(42)
+        && flags == UINT8_C(11) && status == UINT8_C(0) && steps == UINT32_C(2)
+        && output[0] == UINT32_C(42) && output[1] == input[1]
+        && output[2] == input[2] && output[3] == input[3])) return 1;
+    if (!(input[0] == UINT32_C(37))) return 2;
+    output[0] = output[1] = output[2] = output[3] = 0U;
+    flags = UINT8_C(255); status = UINT8_C(255); steps = 0U;
+    if (!(a32_runtime_add_ne(input, UINT8_C(4), &flags, &steps, &status, output) == UINT32_C(37)
+        && flags == UINT8_C(4) && status == UINT8_C(0) && steps == UINT32_C(2)
+        && output[0] == input[0] && output[1] == input[1]
+        && output[2] == input[2] && output[3] == input[3])) return 3;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_runtime_state.c"
+            exe = Path(directory) / ("a32_runtime_state.exe" if os.name == "nt" else "a32_runtime_state")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"runtime A32 input/output/flags/step check failed with {run.returncode}")
+
+    def test_runtime_state_io_rejects_null_registers_and_invalid_nzcv(self):
+        source = poc.translate(
+            [0xE2800001, 0xE12FFF1E],
+            max_execution_steps=2,
+            runtime_state_io=True,
+        ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_validate(")
+        self.assertIn("uint8_t initial_nzcv", source)
+        self.assertIn("initial_nzcv > UINT8_C(15)", source)
+
+    def test_runtime_state_io_requires_boolean_option_and_execution_budget(self):
+        words = [0xE2800001, 0xE12FFF1E]
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "requires an explicit execution budget"):
+            poc.translate(words, runtime_state_io=True)
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "must be a bool"):
+            poc.translate(words, max_execution_steps=2, runtime_state_io=1)
+
 if __name__ == "__main__":
     unittest.main()
