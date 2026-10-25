@@ -72,7 +72,7 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
 
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de três instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **9 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de três instruções ARM A32 em C, para compilação no host. No ambiente Linux desta sessão, **11 testes passaram** e o C emitido foi compilado e executado com o resultado esperado `7`.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
