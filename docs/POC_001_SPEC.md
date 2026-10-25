@@ -61,7 +61,7 @@ A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) m
 
     python tools/arm_differential_poc.py
 
-O teste compara duas implementações dentro deste projeto; **não é uma validação contra emulador independente**, não substitui o teste de referência 001 e não prova compatibilidade com o jogo. A matriz foi executada localmente com um compilador C11 e -Wall -Wextra -Werror, resultando em 72/72 correspondências.
+O teste compara duas implementações dentro deste projeto; **não é uma validação contra emulador independente**, não substitui o teste de referência 001 e não prova compatibilidade com o jogo. Uma execução inicial no workspace temporário retornou 72/72 correspondências com C11 e -Wall -Wextra -Werror. Depois, a conferência de hashes mostrou que as cópias locais do tradutor e do modelo NZCV não correspondiam aos blobs atuais de `main`; portanto, o resultado é preliminar e ainda não valida a versão publicada. A matriz precisa ser repetida num checkout sincronizado.
 
 ## Como reproduzir
 
