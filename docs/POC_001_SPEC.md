@@ -47,7 +47,7 @@ Gerar C para stdout:
 
 Fornecer a fixture explicitamente (palavras hexadecimais):
 
-    python tools/arm_subset_poc.py E3A00003 E2800004 E12FFF1E
+    python tools/arm_subset_poc.py E3A0000C E2400008 E2800003 E12FFF1E
 
 Escrever o C em um arquivo local:
 
