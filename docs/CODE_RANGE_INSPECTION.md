@@ -31,6 +31,9 @@ O resultado é JSON para stdout. Para salvar, passe `--report /caminho/fora/do/r
 
 O decodificador Thumb-16 também reconhece ANDS/EORS/ORRS/BICS/MVNS/TST, CMP/CMN entre registradores e RSBS (negação) no grupo de data-processing register, além de LSL/LSR/ASR com imediato de 5 bits, incluindo a semântica especial de imm5=0, e ADD/SUB de três operandos: `ADDS/SUBS Rd, Rn, Rm` e `ADDS/SUBS Rd, Rn, #imm3`, formatos de 16 bits do ARMv6K. O relatório registra mnemônicos e operandos; não infere valores dos registradores no jogo. A emissão C e os testes de NZCV dessas formas pertencem à POC-002 sintética.
 
+No grupo Thumb-1 data-processing register, o inspetor também identifica ANDS/EORS/ORRS/BICS/MVNS/TST, ADCS/SBCS, CMP/CMN e RSBS (subtração de zero). As demais operações do mesmo grupo continuam desconhecidas até terem decoder, contrato de flags e testes próprios.
+
+
 
 Cada relatório contém `control_flow`, um grafo candidato de blocos básicos construído a partir do intervalo explicitamente selecionado. Destinos de branches só viram arestas internas quando coincidem com o início de uma instrução descodificada no mesmo estado; branches condicionais têm arestas de tomada e não tomada; branches incondicionais não recebem uma aresta de fallthrough. Chamadas diretas são listadas como transferências candidatas com continuação possível após retorno, sem afirmar identidade do callee. Transferências indiretas ficam sem destino inventado.
 
