@@ -70,14 +70,18 @@ Foi adicionado um verificador sem dependências externas para ajudar a detectar 
 
 É necessário Python 3.10 ou mais recente e Git. O verificador analisa os blobs preparados no índice Git, as versões atuais dos arquivos na pasta de trabalho e arquivos não ignorados ainda não rastreados. Isso permite detectar diferenças entre o que será commitado e o que está no disco. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de arquivos binários ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
 
+## Pesquisa de bases de código
+
+Foi criada uma pesquisa de **nove repositórios de código** relacionados a recompilação ARM, emulação, decodificação e validação: [docs/CODEBASE_RESEARCH.md](docs/CODEBASE_RESEARCH.md). Inclui observações técnicas e notas de licença para distinguir referências de código realmente autorizadas para reutilização. Nenhum código de terceiro foi copiado.
+
 ## Prova de conceito sintética ARM A32 → C
 
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de oito palavras ARM A32 em C, para compilação no host. Após a iteração com `BIC` imediato, **21 testes específicos da POC passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. A suíte completa publicada (POC + verificador do repositório) passou em **30 testes**, sem falhas nem testes ignorados, no ambiente Linux desta sessão.
+Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que transforma uma sequência sintética de dez palavras ARM A32 em C, para compilação no host. Após a iteração com `MVN` imediato, **23 testes específicos da POC passaram** e o C emitido foi compilado e executado com o resultado esperado `12`. A suíte completa publicada (POC + verificador do repositório) passou em **32 testes**, sem falhas nem testes ignorados, no ambiente Linux desta sessão.
 
     python tools/arm_subset_poc.py
     python -m unittest discover -s tests -v
 
-A POC cobre apenas `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR` e `BIC` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A POC cobre apenas `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags, além de `BX LR`, com registradores `r0-r3`. Não lê ROMs nem dados de jogo, não é um recompilador geral, não demonstra suporte a Windows e não é uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
 
 ## Como acompanhar o progresso
 
