@@ -14,6 +14,7 @@ from pathlib import Path
 
 DEFAULT_WORDS = (0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008, 0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E)
 MAX_INSTRUCTIONS = 256
+MAX_EXECUTION_STEPS = 100000
 
 # ARM condition field (bits 31:28) -> supported predicate name for B and data ops.
 # 0xF selects the unconditional/BLX-immediate space and is rejected by this POC.
@@ -174,16 +175,30 @@ def decode_word(word: int) -> tuple[object, ...]:
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
 
 
-def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
-    """Translate a bounded instruction sequence to a standalone C function.
+def translate(
+    words: tuple[int, ...] | list[int],
+    initial_nzcv: int = 0,
+    max_execution_steps: int | None = None,
+) -> str:
+    """Translate a synthetic A32 sequence to standalone C.
 
-    ``initial_nzcv`` is the explicit entry state of the flags, as the nibble
-    N:bit3, Z:bit2, C:bit1, V:bit0 (the same layout as ``*nzcv_out``). It
-    defaults to 0, so a BEQ/BNE with no earlier flag-setting instruction sees
-    Z=0 unless the caller chooses another entry state.
+    ``initial_nzcv`` is the entry flag nibble N:bit3, Z:bit2, C:bit1, V:bit0.
+    If ``max_execution_steps`` is supplied, code is emitted with an explicit
+    execution counter and status output; this is required to accept backward
+    or self-targeting branches. The counter includes every guest instruction,
+    including a conditional instruction whose predicate is false and BX LR.
+    ``execution_status_out`` is 0 on BX LR and 1 when the budget is exhausted.
     """
     if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
         raise UnsupportedInstruction(f"initial NZCV must be a 4-bit value (0..15): {initial_nzcv!r}")
+    if max_execution_steps is not None and (
+        isinstance(max_execution_steps, bool)
+        or not isinstance(max_execution_steps, int)
+        or not 1 <= max_execution_steps <= MAX_EXECUTION_STEPS
+    ):
+        raise UnsupportedInstruction(
+            f"execution budget must be an integer in 1..{MAX_EXECUTION_STEPS}: {max_execution_steps!r}"
+        )
     if not words:
         raise UnsupportedInstruction("empty instruction sequence")
     if len(words) > MAX_INSTRUCTIONS:
@@ -203,9 +218,9 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
                 raise UnsupportedInstruction(
                     f"branch at instruction {instruction_index} targets out-of-range instruction {target}"
                 )
-            if target <= instruction_index:
+            if target <= instruction_index and max_execution_steps is None:
                 raise UnsupportedInstruction(
-                    f"backward or self-targeting branch at instruction {instruction_index} is unsupported"
+                    f"backward or self-targeting branch at instruction {instruction_index} is unsupported without an execution budget"
                 )
             branch_targets[instruction_index] = target
 
@@ -221,22 +236,33 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
         elif instruction[0] in ("cmn", "cmp"):
             used_registers.add(instruction[1])
 
+    bounded = max_execution_steps is not None
+    function_signature = (
+        "uint32_t synthetic_entry_bounded(uint8_t *nzcv_out, "
+        "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
+        if bounded else "uint32_t synthetic_entry(uint8_t *nzcv_out)"
+    )
     lines = [
         "#include <stdint.h>",
         "",
         "/* Generated only from the synthetic instruction sequence supplied. */",
-        "uint32_t synthetic_entry(uint8_t *nzcv_out)",
+        function_signature,
         "{",
         f"    uint32_t flag_n = {(initial_nzcv >> 3) & 1};",
         f"    uint32_t flag_z = {(initial_nzcv >> 2) & 1};",
         f"    uint32_t flag_c = {(initial_nzcv >> 1) & 1};",
         f"    uint32_t flag_v = {initial_nzcv & 1};",
     ]
+    if bounded:
+        lines.append("    uint32_t execution_steps = 0U;")
     lines.extend(f"    uint32_t r{register} = 0;" for register in sorted(used_registers))
     branch_target_indices = set(branch_targets.values())
     for instruction_index, instruction in enumerate(decoded[:-1]):
         if instruction_index in branch_target_indices:
             lines.append(f"arm_label_{instruction_index}: ;")
+        if bounded:
+            lines.append(f"    if (execution_steps >= UINT32_C({max_execution_steps})) goto arm_budget_exhausted;")
+            lines.append("    execution_steps++;")
         condition_name: str | None = None
         if instruction[0] == "predicated":
             _, condition_name, instruction = instruction
@@ -312,6 +338,18 @@ def translate(words: tuple[int, ...] | list[int], initial_nzcv: int = 0) -> str:
         # BX LR is represented by the common C epilogue, which is the target
         # associated with the final guest instruction index.
         lines.append(f"arm_label_{len(decoded) - 1}: ;")
+    if bounded:
+        lines.extend((
+            f"    if (execution_steps >= UINT32_C({max_execution_steps})) goto arm_budget_exhausted;",
+            "    execution_steps++;",
+            "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+            "    if (execution_status_out != 0) *execution_status_out = UINT8_C(0);",
+            "    goto arm_exit;",
+            "arm_budget_exhausted: ;",
+            "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+            "    if (execution_status_out != 0) *execution_status_out = UINT8_C(1);",
+            "arm_exit: ;",
+        ))
     lines.extend((
         "    if (nzcv_out != 0) {",
         "        *nzcv_out = (uint8_t)((flag_n << 3) | (flag_z << 2) | (flag_c << 1) | flag_v);",
@@ -343,6 +381,20 @@ def parse_nzcv(token: str) -> int:
     return value
 
 
+def parse_execution_budget(token: str) -> int:
+    try:
+        value = int(token, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"expected an execution budget in 1..{MAX_EXECUTION_STEPS}, got {token!r}"
+        ) from exc
+    if not 1 <= value <= MAX_EXECUTION_STEPS:
+        raise argparse.ArgumentTypeError(
+            f"execution budget must be in 1..{MAX_EXECUTION_STEPS}: {token!r}"
+        )
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Translate a tiny, synthetic ARM A32 instruction subset into C; no game files are read."
@@ -356,10 +408,18 @@ def main(argv: list[str] | None = None) -> int:
         "--initial-nzcv", type=parse_nzcv, default=0,
         help="entry flag state as a 4-bit nibble N:bit3 Z:bit2 C:bit1 V:bit0 (default: 0)",
     )
+    parser.add_argument(
+        "--max-execution-steps", type=parse_execution_budget, default=None,
+        help=f"maximum guest instructions executed (1..{MAX_EXECUTION_STEPS}); required for backward/self-targeting branches",
+    )
     args = parser.parse_args(argv)
 
     try:
-        source = translate(args.words or list(DEFAULT_WORDS), initial_nzcv=args.initial_nzcv)
+        source = translate(
+            args.words or list(DEFAULT_WORDS),
+            initial_nzcv=args.initial_nzcv,
+            max_execution_steps=args.max_execution_steps,
+        )
         if args.output:
             args.output.write_text(source, encoding="utf-8", newline="\n")
         else:
