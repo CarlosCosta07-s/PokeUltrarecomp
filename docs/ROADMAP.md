@@ -61,7 +61,7 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 ## Fase 5 — Definir a primeira prova de conceito
 
-**Preparação experimental:** a POC-001 traduz a fixture sintética de dez palavras ARM A32 para C e retorna NZCV pelo parâmetro de saída. `ADDS`, `SUBS` e `CMN` imediatos são aceitos em fixtures restritas, com casos de execução C verificando flags e que `CMN` não altera o registrador de destino. A suíte tem **31 testes do tradutor**, 18 testes do modelo NZCV de referência e 9 do verificador de segurança: **58 aprovados** no ambiente Linux verificado. A pesquisa de nove bases está em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). O projeto ainda não valida equivalência com Ultra Sun/Ultra Moon nem constitui um runtime de jogo.
+**Preparação experimental:** a POC-001 traduz uma fixture sintética ARM A32 para C e retorna NZCV pelo parâmetro de saída. `ADDS`, `SUBS` e `CMN` imediatos são aceitos em fixtures restritas. As suítes preexistentes somam **58 testes aprovados** no ambiente Linux documentado. A nova ferramenta [arm_differential_poc.py](../tools/arm_differential_poc.py) compara 72 execuções de C com o modelo NZCV e passou isoladamente; a suíte combinada de 61 testes ainda precisa ser repetida em um checkout limpo da `main`. Essa comparação é interna ao projeto, não usa emulador independente e não demonstra equivalência com Ultra Sun/Ultra Moon. A pesquisa de nove bases está em [CODEBASE_RESEARCH.md](CODEBASE_RESEARCH.md). O projeto ainda não constitui um runtime de jogo.
 
 **Tarefas**
 - [ ] Escolher apenas uma unidade pequena, com limite de escopo e um resultado observável.
