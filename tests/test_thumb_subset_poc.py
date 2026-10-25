@@ -37,6 +37,21 @@ class ThumbDecodeTests(unittest.TestCase):
     def test_decodes_subs_immediate(self):
         self.assertEqual(("subs", 4, 0x11), poc.decode_halfword(0x3C11))
 
+    def test_decodes_three_operand_add_sub_and_imm3_forms(self):
+        self.assertEqual(("adds_reg", 0, 1, 2), poc.decode_halfword(0x1888))
+        self.assertEqual(("subs_reg", 0, 1, 2), poc.decode_halfword(0x1A88))
+        self.assertEqual(("adds_imm3", 0, 1, 3), poc.decode_halfword(0x1CC8))
+        self.assertEqual(("subs_imm3", 0, 1, 3), poc.decode_halfword(0x1EC8))
+
+    def test_classifies_every_encoding_in_three_operand_add_sub_space(self):
+        for word in range(0x1800, 0x2000):
+            with self.subTest(word=f"0x{word:04X}"):
+                decoded = poc.decode_halfword(word)
+                expected_op = "subs" if word & 0x0200 else "adds"
+                suffix = "imm3" if word & 0x0400 else "reg"
+                self.assertEqual(f"{expected_op}_{suffix}", decoded[0])
+                self.assertEqual((word >> 3) & 7, decoded[2])
+
     def test_decodes_unconditional_forward_and_backward_branches(self):
         self.assertEqual(("branch", "al", 0), poc.decode_halfword(0xE000))
         self.assertEqual(("branch", "al", -1), poc.decode_halfword(0xE7FF))
@@ -139,6 +154,37 @@ class ThumbTranslationTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, msg=result.stderr)
         self.assertIn("thumb_entry_bounded", result.stdout)
         self.assertIn("execution_status_out", result.stdout)
+
+    def test_native_three_operand_add_sub_updates_result_and_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; Thumb arithmetic proof requires cc, gcc, or clang")
+        # Function A: 7 + 3 - 5 = 5, with the final no-borrow flag set.
+        add_imm3 = poc.translate([0x2107, 0x1CC8, 0x1F40, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_add_imm3("
+        )
+        # Function B: 0 - 1 = 0xFFFFFFFF; then x + x = 0xFFFFFFFE.
+        # A final register subtraction sets N=1 and C=0 without changing r0.
+        add_reg = poc.translate([0x2100, 0x1E4A, 0x1890, 0x1A83, 0x4770]).replace(
+            "uint32_t thumb_entry(", "uint32_t thumb_add_reg("
+        )
+        harness = "\n".join((add_imm3, add_reg)) + """
+int main(void) {
+    uint8_t flags = 0;
+    if (!(thumb_add_imm3(&flags) == UINT32_C(5) && flags == UINT8_C(2))) return 1;
+    flags = 0;
+    if (!(thumb_add_reg(&flags) == UINT32_C(0xFFFFFFFE) && flags == UINT8_C(8))) return 2;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_add_sub.c"
+            exe = Path(directory) / ("thumb_add_sub.exe" if os.name == "nt" else "thumb_add_sub")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_native_default_fixture_compiles_and_returns_seven(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
