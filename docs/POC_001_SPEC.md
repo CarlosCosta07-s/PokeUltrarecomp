@@ -73,7 +73,7 @@ O teste de compilação compila o C emitido dentro de um diretório temporário,
 
 - Python: verificação sintática aprovada.
 - Suíte da POC: 17 testes aprovados no ambiente temporário desta sessão, incluindo decodificação e rejeição de registradores de origem fora do subconjunto para `ORR`, além de verificação da emissão C.
-- Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 7 foi confirmado pelo código de saída zero.
+- Prova host nativa: C gerado compilado com GCC e o executável foi executado; o resultado 15 foi confirmado pelo código de saída zero.
 - Plataforma verificada: Linux x86-64 no ambiente da sessão; Windows ainda não testado.
 - Não houve compilação do runtime do jogo nem execução de Pokémon.
 - Essa POC valida o encadeamento *decodificação sintética → emissão C → compilador host → resultado* para seis palavras da fixture (cinco operações e o terminador). Não demonstra cobertura útil para um jogo real nem substitui o teste de referência 001.
