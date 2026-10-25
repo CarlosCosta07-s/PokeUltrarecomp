@@ -13,10 +13,10 @@ import arm_subset_poc as poc  # noqa: E402
 
 
 class DecoderTests(unittest.TestCase):
-    def test_default_fixture_decodes_to_mov_sub_add_orr_eor_bic_return(self):
+    def test_default_fixture_decodes_to_mov_sub_add_orr_eor_bic_mvn_and_return(self):
         decoded = [poc.decode_word(word) for word in poc.DEFAULT_WORDS]
         self.assertEqual(
-            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("and", 0, 0, 7), ("orr", 0, 0, 8), ("eor", 0, 0, 1), ("bic", 0, 0, 2), ("return",)],
+            [("mov", 0, 12), ("sub", 0, 0, 8), ("add", 0, 0, 3), ("and", 0, 0, 7), ("orr", 0, 0, 8), ("eor", 0, 0, 1), ("bic", 0, 0, 2), ("mvn", 1, 0), ("and", 0, 1, 12), ("return",)],
             decoded,
         )
 
@@ -66,6 +66,13 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
             poc.decode_word(0xE3C40002)  # BIC r0, r4, #2
 
+    def test_decodes_mvn_immediate(self):
+        self.assertEqual(("mvn", 1, 0), poc.decode_word(0xE3E01000))
+
+    def test_rejects_mvn_with_noncanonical_rn(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "canonical MVN"):
+            poc.decode_word(0xE3E11000)  # Noncanonical Rn=1
+
     def test_rejects_sub_with_source_outside_supported_registers(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
             poc.decode_word(0xE2440001)  # SUB r0, r4, #1
@@ -81,6 +88,8 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r0 = (uint32_t)(r0 | UINT32_C(8));", source)
         self.assertIn("r0 = (uint32_t)(r0 ^ UINT32_C(1));", source)
         self.assertIn("r0 = (uint32_t)(r0 & ~UINT32_C(2));", source)
+        self.assertIn("r1 = (uint32_t)~UINT32_C(0);", source)
+        self.assertIn("r0 = (uint32_t)(r1 & UINT32_C(12));", source)
         self.assertIn("return r0;", source)
 
     def test_requires_bx_lr_as_final_instruction(self):
@@ -107,6 +116,8 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r0 | UINT32_C(8)", result.stdout)
         self.assertIn("r0 ^ UINT32_C(1)", result.stdout)
         self.assertIn("r0 & ~UINT32_C(2)", result.stdout)
+        self.assertIn("~UINT32_C(0)", result.stdout)
+        self.assertIn("r1 & UINT32_C(12)", result.stdout)
         self.assertIn("return r0;", result.stdout)
 
     def test_cli_returns_nonzero_for_incomplete_sequence(self):
