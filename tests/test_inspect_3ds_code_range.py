@@ -11,11 +11,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 import inspect_3ds_code_range as ranges  # noqa: E402
 
 
-def build_exheader(program_id="00040000001B5000", text_size=0x100):
+def build_exheader(program_id="00040000001B5000", text_size=0x100, text_address=0x00100000):
     data = bytearray(0x800)
     data[0:8] = b"UltraSun"
     data[0x10:0x1C] = b"".join((
-        (0x00100000).to_bytes(4, "little"), (1).to_bytes(4, "little"),
+        text_address.to_bytes(4, "little"), (1).to_bytes(4, "little"),
         text_size.to_bytes(4, "little"),
     ))
     data[0x1C:0x20] = (0x4000).to_bytes(4, "little")
@@ -93,7 +93,7 @@ class ExplicitRangeTests(unittest.TestCase):
         )
         call = result["instructions"][0]
         self.assertEqual("BL", call["mnemonic"])
-        self.assertEqual(["call", "bl", 0], call["decoded_ir"])
+        self.assertEqual(["call", "bl", 0], list(call["decoded_ir"]))
         self.assertEqual("0x00100004", call["link_register_value"])
         self.assertEqual("0x00100008", call["branch_target_virtual_address"])
         self.assertEqual("arm", call["branch_target_state"])
@@ -116,7 +116,7 @@ class ExplicitRangeTests(unittest.TestCase):
                 )
                 call = result["instructions"][0]
                 self.assertEqual("BLX", call["mnemonic"])
-                self.assertEqual(["call", "blx", expected_offset], call["decoded_ir"])
+                self.assertEqual(["call", "blx", expected_offset], list(call["decoded_ir"]))
                 self.assertEqual("0x00100004", call["link_register_value"])
                 self.assertEqual(expected_target, call["branch_target_virtual_address"])
                 self.assertEqual("thumb", call["branch_target_state"])
@@ -129,11 +129,11 @@ class ExplicitRangeTests(unittest.TestCase):
         )
         bx, blx = result["instructions"][:2]
         self.assertEqual("BX r3", bx["mnemonic"])
-        self.assertEqual(["bx", 3], bx["decoded_ir"])
+        self.assertEqual(["bx", 3], list(bx["decoded_ir"]))
         self.assertIsNone(bx["branch_target_virtual_address"])
         self.assertTrue(bx["indirect_branch"])
         self.assertEqual("BLX r3", blx["mnemonic"])
-        self.assertEqual(["blx_reg", 3], blx["decoded_ir"])
+        self.assertEqual(["blx_reg", 3], list(blx["decoded_ir"]))
         self.assertIsNone(blx["branch_target_virtual_address"])
         self.assertEqual("0x00100008", blx["link_register_value"])
         self.assertTrue(blx["indirect_branch"])
@@ -155,10 +155,12 @@ class ExplicitRangeTests(unittest.TestCase):
         self.assertTrue(any("literal referenced" in w for w in result["control_flow"]["warnings"]))
 
     def test_rejects_a32_literal_address_outside_uint32_without_wrapping(self):
-        self.put_arm([0xE51F0FFF])
+        text_start = 0xFFFFE000
+        self.exheader.write_bytes(build_exheader(text_size=0x1000, text_address=text_start))
+        self.put_arm([0xE59F0FFF], offset=0x0FFC)
         with self.assertRaisesRegex(ranges.TargetRangeError, "A32 literal address.*outside the 32-bit"):
             ranges.inspect_code_range(
-                "ultra-sun", self.exheader, self.code, "arm", 0x00100000, 1,
+                "ultra-sun", self.exheader, self.code, "arm", text_start + 0x0FFC, 1,
                 title_id="00040000001B5000",
             )
 
