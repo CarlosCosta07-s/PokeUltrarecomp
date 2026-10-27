@@ -107,4 +107,4 @@ A validação integral mais recente, no commit `aebc07b88024de06e899ae849f1fd33c
 
 ## Validação mais recente — 2026-10-27
 
-O [workflow nativo #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261093) passou em Windows/MSVC e Linux/GCC com 4/4 testes CTest por plataforma, incluindo o smoke test do modelo de memória. A suíte Python completa passou em 325 testes no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261098). Todos os casos deste modelo são sintéticos; isso não é evidência de compatibilidade com código ou memória real do jogo.
+O [workflow nativo #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443547298) passou em Windows/MSVC e Linux/GCC com 4/4 testes CTest por plataforma, incluindo o smoke test do modelo de memória. A suíte Python completa passou em 325 testes no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443547245). Todos os casos deste modelo são sintéticos; isso não é evidência de compatibilidade com código ou memória real do jogo.

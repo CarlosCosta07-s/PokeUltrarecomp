@@ -168,7 +168,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** pipeline sintético, ABI C/C++20 e o primeiro modelo de memória Thumb experimental validados em Windows e Linux no [workflow #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261093), commit `d7109a2f5023d4a4fd62f16ed76b8e686f635c2f`. Ambos os jobs passaram 4/4 testes CTest usando GCC no Linux e MSVC no Windows. O smoke test traduz C nativo a partir de fixtures A32/Thumb e testa stores/loads Thumb de 8/16/32 bits, extensão de sinal, validação da faixa, alinhamento, mapas inválidos e memória intacta após falha. A suíte Python independente passou em 325 testes no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261098). A evidência é sintética: não existe ainda runtime de jogo integrado, função real recompilada nem gameplay validado.
+**Estado:** pipeline sintético, ABI C/C++20 e o primeiro modelo de memória Thumb experimental validados em Windows e Linux no [workflow #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443547298), commit `ed4e42a84edc6f8e6099407854ec235052a5e877`. Ambos os jobs passaram 4/4 testes CTest usando GCC no Linux e MSVC no Windows. O smoke test cobre as 14 formas de load/store do subconjunto experimental, com extensão de sinal, validação da faixa, alinhamento, mapas inválidos e memória intacta após falha. A suíte Python independente passou em 325 testes no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443547245). A evidência é sintética: não existe ainda runtime de jogo integrado, função real recompilada nem gameplay validado.
 
 **Tarefas**
 - [x] Adicionar `CMakeLists.txt` com C11/C++20, CTest e alvo `verify` para coordenar smoke test, testes Python e verificador de segurança.
@@ -182,7 +182,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Adicionar um workflow de CI para executar o smoke test em Windows e Linux sem arquivos de jogo.
 - [x] Confirmar execuções aprovadas do workflow em ambos os sistemas; corrigir qualquer falha antes de prosseguir.
 - [ ] Unificar/estender a interface para cobrir regressões de decodificação, fluxo de controle, limites, contratos e falhas do compilador, mantendo um oráculo independente baseado na especificação.
-- [x] Implementar um modelo de memória guest limitado para fixtures sintéticas e emitir loads/stores nativos para o subconjunto explicitamente aceito; validar limites, alinhamento, extensão de sinal e ausência de escrita parcial em erro no [workflow #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261093).
+- [x] Implementar um modelo de memória guest limitado para fixtures sintéticas e emitir loads/stores nativos para o subconjunto explicitamente aceito; validar limites, alinhamento, extensão de sinal e ausência de escrita parcial em erro no [workflow #40443547298](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443547298).
 - [ ] Decidir a semântica de alinhamento e continuar expandindo a cobertura de instruções de memória somente após teste independente; manter `LDR` literal, acessos SP-relativos e `LDM/STM` rejeitados até que seu contrato seja implementado e testado.
 - [ ] Fazer com que toda instrução sem suporte, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução; nunca usar fallback interpretado.
 
