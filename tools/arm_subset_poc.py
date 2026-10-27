@@ -104,8 +104,8 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
     rm = word & 0xF
 
     flag_setting_opcodes = {
-        0b0000, 0b0001, 0b0010, 0b0100, 0b1000, 0b1001,
-        0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
+        0b0000, 0b0001, 0b0010, 0b0011, 0b0100, 0b0101, 0b0110, 0b0111,
+        0b1000, 0b1001, 0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
     }
     if set_flags and opcode not in flag_setting_opcodes:
         raise UnsupportedInstruction(
@@ -169,11 +169,15 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         operation = (base + "s" if set_flags else base) + "_reg"
         return complete((operation, rd, rn, rm))
 
-    if opcode in (0b0100, 0b0010):  # ADD/SUB, optionally setting arithmetic flags.
+    arithmetic_operations = {
+        0b0100: "add", 0b0010: "sub", 0b0101: "adc",
+        0b0110: "sbc", 0b0111: "rsc",
+    }
+    if opcode in arithmetic_operations:
         if rn > 3 or rm > 3:
             register = max(rn, rm)
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
-        base = "add" if opcode == 0b0100 else "sub"
+        base = arithmetic_operations[opcode]
         operation = (base + "s" if set_flags else base) + "_reg"
         return complete((operation, rd, rn, rm))
 
@@ -322,8 +326,8 @@ def decode_word(word: int) -> tuple[object, ...]:
 
     # Flag-setting forms accepted here have explicit NZCV and shifter-carry rules.
     flag_setting_opcodes = {
-        0b0000, 0b0001, 0b0010, 0b0100, 0b1000, 0b1001,
-        0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
+        0b0000, 0b0001, 0b0010, 0b0011, 0b0100, 0b0101, 0b0110, 0b0111,
+        0b1000, 0b1001, 0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
     }
     if set_flags and opcode not in flag_setting_opcodes:
         raise UnsupportedInstruction(f"flag-setting form is unsupported: 0x{word:08X}")
@@ -345,6 +349,15 @@ def decode_word(word: int) -> tuple[object, ...]:
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
         return _apply_condition(condition, ("cmp", rn, immediate))
+
+    if opcode in (0b0101, 0b0110, 0b0111):  # ADC/SBC/RSC: consume C-in.
+        if rd > 3:
+            raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+        if rn > 3:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        base = {0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc"}[opcode]
+        operation = base + "s" if set_flags else base
+        return _apply_condition(condition, (operation, rd, rn, immediate))
 
     if opcode in (0b1000, 0b1001):  # TST/TEQ (immediate): logical flags only.
         operation = "tst_imm" if opcode == 0b1000 else "teq_imm"
@@ -504,12 +517,13 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("ands_imm", "orrs_imm", "eors_imm", "bics_imm"):
             used_registers.update((instruction[1], instruction[2]))
-        elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
+        elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs", "adc", "adcs", "sbc", "sbcs", "rsc", "rscs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
         elif operation in (
             "and_reg", "orr_reg", "eor_reg", "bic_reg", "ands_reg", "orrs_reg",
             "eors_reg", "bics_reg", "add_reg", "sub_reg", "adds_reg", "subs_reg",
+            "adc_reg", "adcs_reg", "sbc_reg", "sbcs_reg", "rsc_reg", "rscs_reg",
         ):
             used_registers.update((instruction[1], instruction[2], instruction[3]))
         elif operation in ("cmn", "cmp"):
@@ -839,7 +853,24 @@ def translate(
             rm_expression = shifted_operand_expr or f"r{rm}"
             expression = f"r{rn} {operator} ({rm_expression})" if shifted_operand_expr else f"r{rn} {operator} r{rm}"
             lines.append(f"    r{rd} = (uint32_t)({expression});")
-        elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg"):
+        elif instruction[0] in ("adc", "sbc", "rsc", "adc_reg", "sbc_reg", "rsc_reg"):
+            register_operand = str(instruction[0]).endswith("_reg")
+            operation_name = str(instruction[0]).removesuffix("_reg")
+            if register_operand:
+                _, rd, rn, rm = instruction
+                rhs_expr = shifted_operand_expr or f"r{rm}"
+            else:
+                _, rd, rn, immediate = instruction
+                rhs_expr = f"UINT32_C({immediate})"
+            carry_in = f"flag_c"
+            if operation_name == "adc":
+                expression = f"(uint64_t)r{rn} + (uint64_t)({rhs_expr}) + (uint64_t){carry_in}"
+            elif operation_name == "sbc":
+                expression = f"(uint64_t)r{rn} - ((uint64_t)({rhs_expr}) + (uint64_t)(1U - {carry_in}))"
+            else:
+                expression = f"(uint64_t)({rhs_expr}) - ((uint64_t)r{rn} + (uint64_t)(1U - {carry_in}))"
+            lines.append(f"    r{rd} = (uint32_t)({expression});")
+        elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adcs", "sbcs", "rscs", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg", "adcs_reg", "sbcs_reg", "rscs_reg"):
             operation = str(instruction[0]).removesuffix("_reg")
             register_operand = str(instruction[0]).endswith("_reg")
             if operation in ("cmn", "cmp"):
@@ -857,21 +888,41 @@ def translate(
                 else:
                     _, rd, rn, immediate = instruction
                     rhs_expression = f"UINT32_C({immediate})"
+
+            # RSC reverses the subtraction operands: Operand2 - Rn - (1-C).
+            lhs_expression = f"r{rn}"
+            rhs_expr = rhs_expression
+            if operation == "rscs":
+                lhs_expression, rhs_expr = rhs_expr, lhs_expression
+
             suffix = f"{len(lines)}"
             lhs = f"flag_lhs_{suffix}"
             result = f"flag_result_{suffix}"
             rhs = f"flag_rhs_{suffix}"
-            lines.append(f"    uint32_t {lhs} = r{rn};")
-            lines.append(f"    uint32_t {rhs} = {rhs_expression};")
-            if operation in ("adds", "cmn"):
+            lines.append(f"    uint32_t {lhs} = (uint32_t)({lhs_expression});")
+            lines.append(f"    uint32_t {rhs} = (uint32_t)({rhs_expr});")
+            if operation in ("adds", "cmn", "adcs"):
+                carry_in = f"flag_carry_in_{suffix}"
+                if operation == "adcs":
+                    lines.append(f"    uint32_t {carry_in} = flag_c;")
+                else:
+                    lines.append(f"    uint32_t {carry_in} = UINT32_C(0);")
                 wide = f"flag_wide_{suffix}"
-                lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs};")
+                lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs} + (uint64_t){carry_in};")
                 lines.append(f"    uint32_t {result} = (uint32_t){wide};")
                 lines.append(f"    flag_c = (uint32_t)(({wide} >> 32) & UINT64_C(1));")
                 lines.append(f"    flag_v = (uint32_t)((~({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
             else:
-                lines.append(f"    uint32_t {result} = (uint32_t)({lhs} - {rhs});")
-                lines.append(f"    flag_c = (uint32_t)({lhs} >= {rhs});")
+                if operation in ("sbcs", "rscs"):
+                    carry_in = f"flag_carry_in_{suffix}"
+                    lines.append(f"    uint32_t {carry_in} = flag_c;")
+                    subtrahend = f"flag_subtrahend_{suffix}"
+                    lines.append(f"    uint64_t {subtrahend} = (uint64_t){rhs} + (uint64_t)(1U - {carry_in});")
+                    lines.append(f"    uint32_t {result} = (uint32_t)((uint64_t){lhs} - {subtrahend});")
+                    lines.append(f"    flag_c = (uint32_t)((uint64_t){lhs} >= {subtrahend});")
+                else:
+                    lines.append(f"    uint32_t {result} = (uint32_t)({lhs} - {rhs});")
+                    lines.append(f"    flag_c = (uint32_t)({lhs} >= {rhs});")
                 lines.append(f"    flag_v = (uint32_t)((({lhs} ^ {rhs}) & ({lhs} ^ {result}) & UINT32_C(0x80000000)) != 0U);")
             if rd is not None:
                 lines.append(f"    r{rd} = {result};")
