@@ -169,9 +169,23 @@ class DecoderTests(unittest.TestCase):
             poc.decode_word(0x11A00001),
         )
 
-    def test_rejects_register_operand_shifts_and_flag_setting_logic(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register Operand2 shifts"):
-            poc.decode_word(0xE0800081)  # ADD r0,r0,r1,LSL #1
+    def test_decodes_immediate_register_operand_shifts(self):
+        cases = (
+            (0xE0800081, ("shifted_operand", ("add_reg", 0, 0, 1), "lsl", 1)),
+            (0xE1B00021, ("shifted_operand", ("movs_reg", 0, 1), "lsr", 32)),
+            (0xE1B00041, ("shifted_operand", ("movs_reg", 0, 1), "asr", 32)),
+            (0xE1B000E1, ("shifted_operand", ("movs_reg", 0, 1), "ror", 1)),
+            (0xE1B00061, ("shifted_operand", ("movs_reg", 0, 1), "rrx", 0)),
+            (0xE1B00001, ("movs_reg", 0, 1)),  # LSL #0 preserves incoming carry.
+            (0x11B000E1, ("predicated", "ne", ("shifted_operand", ("movs_reg", 0, 1), "ror", 1))),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:08X}"):
+                self.assertEqual(expected, poc.decode_word(word))
+
+    def test_rejects_register_specified_operand2_shift(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register-specified Operand2 shifts"):
+            poc.decode_word(0xE0800211)  # ADD r0,r0,r1,LSL r2
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
             poc.decode_word(0xE3B00001)  # MOVS immediate remains outside this register-only extension
 
@@ -492,6 +506,64 @@ int main(void) {
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
             executed = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_immediate_operand_shifts_match_expected_values_and_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 shifted-Operand2 proof requires cc, gcc, or clang")
+
+        words_by_name = {
+            "lsl": 0xE1B00081,  # MOVS r0,r1,LSL #1
+            "lsr32": 0xE1B00021,  # MOVS r0,r1,LSR #32
+            "asr32": 0xE1B00041,  # MOVS r0,r1,ASR #32
+            "ror": 0xE1B000E1,  # MOVS r0,r1,ROR #1
+            "rrx": 0xE1B00061,  # MOVS r0,r1,RRX
+        }
+        snippets = []
+        for name, word in words_by_name.items():
+            function = poc.translate(
+                [word, 0xE12FFF1E],
+                max_execution_steps=2,
+                runtime_state_io=True,
+            )
+            snippets.append(function.replace(
+                "uint32_t synthetic_entry_bounded(",
+                f"uint32_t shifted_{name}(",
+                1,
+            ))
+        harness = "\\n".join(snippets) + """
+#include <stdint.h>
+static int run_case(
+    uint32_t (*fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *),
+    uint32_t r1, uint8_t initial_nzcv, uint32_t expected_r0,
+    uint8_t expected_nzcv
+) {
+    uint32_t input[4] = { UINT32_C(0x13579BDF), r1, UINT32_C(0x2468ACE0), UINT32_C(0xDEADBEEF) };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
+    return result == expected_r0 && output[0] == expected_r0
+        && output[1] == r1 && output[2] == input[2] && output[3] == input[3]
+        && flags == expected_nzcv && status == UINT8_C(0) && steps == UINT32_C(2) ? 0 : 1;
+}
+int main(void) {
+    if (run_case(shifted_lsl, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(2), UINT8_C(3)) != 0) return 1;
+    if (run_case(shifted_lsr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0), UINT8_C(7)) != 0) return 2;
+    if (run_case(shifted_asr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0xFFFFFFFF), UINT8_C(0xB)) != 0) return 3;
+    if (run_case(shifted_ror, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(0xC0000000), UINT8_C(0xB)) != 0) return 4;
+    if (run_case(shifted_rrx, UINT32_C(2), UINT8_C(3), UINT32_C(0x80000001), UINT8_C(9)) != 0) return 5;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_shifted_operand.c"
+            exe = Path(directory) / ("a32_shifted_operand.exe" if os.name == "nt" else "a32_shifted_operand")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=f"shifted Operand2 semantic check failed with exit {executed.returncode}")
 
     def test_a32_ldrh_rejects_unaligned_halfword_access(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
