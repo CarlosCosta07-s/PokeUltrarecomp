@@ -293,17 +293,17 @@ public class FunctionCensusSummary extends GhidraScript {
             throw new java.io.IOException("could not create private candidate sidecar directory");
         }
         StringBuilder candidatesJson = new StringBuilder("{\n")
-            .append("  \\"schema_version\\": 1,\n")
-            .append("  \\"omitted_candidate_count\\": ").append(privateTranslationCandidatesOmitted).append(",\n")
-            .append("  \\"candidates\\": [");
+            .append("  \"schema_version\": 1,\n")
+            .append("  \"omitted_candidate_count\": ").append(privateTranslationCandidatesOmitted).append(",\n")
+            .append("  \"candidates\": [");
         for (int candidateIndex = 0; candidateIndex < privateTranslationCandidates.size(); candidateIndex++) {
             if (candidateIndex > 0) {
                 candidatesJson.append(",");
             }
-            candidatesJson.append("\\n    ").append(privateTranslationCandidates.get(candidateIndex));
+            candidatesJson.append("\n    ").append(privateTranslationCandidates.get(candidateIndex));
         }
         if (!privateTranslationCandidates.isEmpty()) {
-            candidatesJson.append("\\n  ");
+            candidatesJson.append("\n  ");
         }
         candidatesJson.append("]\n}\n");
         BufferedWriter candidateWriter = new BufferedWriter(new FileWriter(candidateDestination));
