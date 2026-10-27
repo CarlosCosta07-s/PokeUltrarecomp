@@ -333,6 +333,12 @@ def classify_ghidra_failure(log_path: Path) -> str:
     if "out of memory" in diagnostic or "java heap space" in diagnostic:
         return "memory-pressure"
 
+    if any(token in diagnostic for token in (
+        "script terminated with an exception", "script execution failed",
+        "error while running script", "error running post script",
+    )):
+        return "script-execution"
+
     # Exception type names are safe to report; raw messages and stack traces may not be.
     exception_match = re.search(
         r"\b([a-z_$][a-z0-9_$]*(?:exception|error))\b",
