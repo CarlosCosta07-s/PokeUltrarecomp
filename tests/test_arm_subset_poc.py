@@ -334,7 +334,7 @@ int main(void) {
     uint8_t flags = 0U, status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     uint32_t result = synthetic_entry_bounded(registers, UINT8_C(0xB), &flags, &steps, &status,
-        output, memory, UINT32_C(0x1000), UINT32_C(sizeof(memory)));
+        output, memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)));
     return result == UINT32_C(0x1000) && flags == UINT8_C(0xB)
         && status == UINT8_C(0) && steps == UINT32_C(3)
         && output[0] == UINT32_C(0x1000) && output[2] == UINT32_C(0xA1B2C3D4)
