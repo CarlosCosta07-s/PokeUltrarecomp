@@ -337,6 +337,7 @@ int main(void) {
     if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 9;
     return 0;
 }
+"""
 
 
 def run_pipeline(compiler_override: str | None = None) -> int:
