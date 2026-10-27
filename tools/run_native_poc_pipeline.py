@@ -100,7 +100,7 @@ def _compile_and_run(
             "/std:c11",
             "/W4",
             "/WX",
-            f"/Fe:{executable_path.name}",
+            f"/Fe{executable_path.name}",
             source_path.name,
         ]
     else:
