@@ -2,9 +2,9 @@
 """Clean-room proof of concept: translate a tiny synthetic ARM A32 subset to C.
 
 This demonstrator is not a general-purpose recompiler and does not load game files.
-It supports a bounded immediate data-processing subset, NZCV for ADDS/SUBS/CMN/CMP,
-and B with standard condition codes. Logical S-bit forms, memory and game runtime
-services remain outside the scope of this proof of concept.
+It supports narrow immediate and plain register-Operand2 data-processing forms,
+NZCV for ADDS/SUBS/CMN/CMP, and B with standard condition codes. Operand2 shifts,
+logical S-bit forms, memory and game runtime services remain outside its scope.
 """
 from __future__ import annotations
 
