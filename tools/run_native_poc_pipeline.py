@@ -43,11 +43,18 @@ THUMB_HALFWORDS = (0x200C, 0x3808, 0x3003, 0x2807, 0x4770)
 MEMORY_HALFWORDS = (
     0x5042,  # STR r2, [r0, r1]
     0x5843,  # LDR r3, [r0, r1]
-    0x8102,  # STRH r2, [r0, #8]
-    0x8904,  # LDRH r4, [r0, #8]
-    0x7282,  # STRB r2, [r0, #10]
+    0x5242,  # STRH r2, [r0, r1]
+    0x5A44,  # LDRH r4, [r0, r1]
+    0x5442,  # STRB r2, [r0, r1]
     0x5645,  # LDRSB r5, [r0, r1]
-    0x7A86,  # LDRB r6, [r0, #10]
+    0x5C46,  # LDRB r6, [r0, r1]
+    0x5E47,  # LDRSH r7, [r0, r1]
+    0x60C2,  # STR r2, [r0, #12]
+    0x68C3,  # LDR r3, [r0, #12]
+    0x7402,  # STRB r2, [r0, #16]
+    0x7C06,  # LDRB r6, [r0, #16]
+    0x8242,  # STRH r2, [r0, #18]
+    0x8A44,  # LDRH r4, [r0, #18]
     0x4770,  # BX lr
 )
 
@@ -279,37 +286,41 @@ int main(void) {
         UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)
     };
     uint32_t registers_out[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
-    uint8_t memory[16];
+    uint8_t memory[24];
     for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
     uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
     uint32_t steps = 0U;
     const uint32_t returned = native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(16)
+        memory, UINT32_C(0x1000), UINT32_C(24)
     );
-    if (returned != UINT32_C(0x1000) || status != UINT8_C(0) || steps != UINT32_C(8) || nzcv != UINT8_C(0x9)) return 1;
+    if (returned != UINT32_C(0x1000) || status != UINT8_C(0) || steps != UINT32_C(15) || nzcv != UINT8_C(0x9)) return 1;
     if (registers_out[0] != UINT32_C(0x1000) || registers_out[1] != UINT32_C(4)
         || registers_out[2] != UINT32_C(0xA1B2C380) || registers_out[3] != UINT32_C(0xA1B2C380)
         || registers_out[4] != UINT32_C(0xC380) || registers_out[5] != UINT32_C(0xFFFFFF80)
-        || registers_out[6] != UINT32_C(0x80) || registers_out[7] != UINT32_C(0xAAAAAAAA)) return 2;
+        || registers_out[6] != UINT32_C(0x80) || registers_out[7] != UINT32_C(0xFFFFC380)) return 2;
     if (memory[4] != UINT8_C(0x80) || memory[5] != UINT8_C(0xC3)
         || memory[6] != UINT8_C(0xB2) || memory[7] != UINT8_C(0xA1)
-        || memory[8] != UINT8_C(0x80) || memory[9] != UINT8_C(0xC3)
-        || memory[10] != UINT8_C(0x80) || memory[11] != UINT8_C(0xEE)) return 3;
+        || memory[8] != UINT8_C(0xEE) || memory[9] != UINT8_C(0xEE)
+        || memory[10] != UINT8_C(0xEE) || memory[11] != UINT8_C(0xEE)) return 3;
+    if (memory[12] != UINT8_C(0x80) || memory[13] != UINT8_C(0xC3)
+        || memory[14] != UINT8_C(0xB2) || memory[15] != UINT8_C(0xA1)
+        || memory[16] != UINT8_C(0x80) || memory[17] != UINT8_C(0xEE)
+        || memory[18] != UINT8_C(0x80) || memory[19] != UINT8_C(0xC3)) return 4;
 
     uint8_t before[sizeof(memory)];
     memcpy(before, memory, sizeof(memory));
     const uint32_t out_of_range[8] = {
-        UINT32_C(0x100C), UINT32_C(4), UINT32_C(0x11223344), 0U, 0U, 0U, 0U, 0U
+        UINT32_C(0x1014), UINT32_C(4), UINT32_C(0x11223344), 0U, 0U, 0U, 0U, 0U
     };
     for (unsigned int i = 0U; i < 8U; ++i) registers_out[i] = UINT32_C(0xAAAAAAAA);
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         out_of_range, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(16)
+        memory, UINT32_C(0x1000), UINT32_C(24)
     );
-    if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 4;
-    if (memcmp(before, memory, sizeof(memory)) != 0) return 5;
+    if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 5;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 6;
 
     const uint32_t misaligned[8] = {
         UINT32_C(0x1002), 0U, UINT32_C(0x11223344), 0U, 0U, 0U, 0U, 0U
@@ -317,24 +328,24 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         misaligned, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(16)
+        memory, UINT32_C(0x1000), UINT32_C(24)
     );
-    if (status != UINT8_C(4) || steps != UINT32_C(1)) return 6;
-    if (memcmp(before, memory, sizeof(memory)) != 0) return 7;
+    if (status != UINT8_C(4) || steps != UINT32_C(1)) return 7;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 8;
 
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        0, UINT32_C(0x1000), UINT32_C(16)
+        0, UINT32_C(0x1000), UINT32_C(24)
     );
-    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 8;
+    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 9;
 
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
         memory, UINT32_C(0xFFFFFFF8), UINT32_C(16)
     );
-    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 9;
+    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 10;
     return 0;
 }
 """
