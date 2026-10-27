@@ -484,6 +484,7 @@ def translate(
         "{",
     ]
     if runtime_memory_io:
+        lines.append("    (void)guest_entry_address;")
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory_bytes == 0 || guest_memory_size == 0U || "
             "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))) {",
