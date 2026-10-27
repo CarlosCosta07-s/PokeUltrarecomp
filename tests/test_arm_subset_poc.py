@@ -125,7 +125,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_rejects_noncanonical_register_cmp_and_mov(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMP register encoding with Rd=0"):
-            poc.decode_word(0xE1510001)
+            poc.decode_word(0xE1511001)  # Rd=1 is noncanonical for CMP
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "canonical MOV register encoding with Rn=0"):
             poc.decode_word(0xE1A10001)
 
