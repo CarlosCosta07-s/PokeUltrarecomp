@@ -387,10 +387,10 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
     # the private import before allowing a short diagnostic through.
     line = re.sub(r"(?i)0x[0-9a-f]{1,16}", "<address>", line)
     line = re.sub(r"\b[a-f0-9]{8,}\b", "<hex>", line, flags=re.IGNORECASE)
-    line = re.sub(r"(?:(?:[A-Za-z]:)?[/\\\\])[^\\s:]+", "<path>", line)
-    line = re.sub(r"(?i)[A-Za-z0-9_.-]+\\.(?:elf|cci|cia|3ds|code|bin)", "<private-file>", line)
+    line = re.sub(r"(?:(?:[A-Za-z]:)?[\\/])[^\s:]+", "<path>", line)
+    line = re.sub(r"(?i)[A-Za-z0-9_.-]+\.(?:elf|cci|cia|3ds|code|bin)", "<private-file>", line)
     line = re.sub(r"\\s+", " ", line).strip()
-    line = re.sub(r"[^A-Za-z0-9 _.,:;()\\[\\]<>/'=+?-]", "?", line)
+    line = re.sub(r"[^A-Za-z0-9 _.,:;()\[\]<>/'=+?-]", "?", line)
     return line[:180] or "diagnostic-redacted"
 
 
