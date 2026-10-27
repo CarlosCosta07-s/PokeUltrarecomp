@@ -135,7 +135,7 @@ def decode_halfword(word: int) -> tuple[object, ...]:
         return (supported_ops[opcode], rd, rm)
 
     # Thumb-1 register-offset load/store group: 0101 op Rm Rn Rt.
-    # Decoded for inspection only; the synthetic translator has no memory model.
+    # Decoded here; translation is gated by the explicit, bounded runtime_memory_io subset.
     if (word & 0xF000) == 0x5000:
         opcode = (word >> 9) & 0x7
         rm = (word >> 6) & 0x7

@@ -1,5 +1,14 @@
 # Notas de build e testes reproduzíveis
 
+## Modelo de memória Thumb nativo limitado — 2026-10-27
+
+- **Implementação:** `tools/thumb_subset_poc.py` aceita o parâmetro de API `runtime_memory_io=True` apenas junto de `runtime_state_io=True` e um orçamento finito. Emite C nativo para um subconjunto explícito de loads/stores Thumb-1 por registrador e imediato: transferências de 8, 16 e 32 bits, incluindo LDRSB/LDRSH.
+- **Mapeamento:** o host de teste fornece uma região byte-array e endereço-base guest uint32. O gerado verifica ponteiros/NZCV, tamanho maior que zero, soma base+tamanho até 2^32, limites e alinhamento natural para acessos multibyte; os loads/stores são bytewise little-endian, sem depender de alinhamento/aliasing do host.
+- **Falhas:** status 0 = retorno normal; 1 = orçamento esgotado; 2 = argumentos/mapeamento de entrada inválidos; 3 = faixa de memória inválida; 4 = acesso multibyte desalinhado. O teste verifica que o buffer não muda quando o primeiro store falha por limite ou alinhamento.
+- **Fora do escopo:** o modo experimental continua recusando LDR literal, transferências SP-relativas, LDM/STM, stack transfers e aritmética PC/SP. O rigor de alinhamento é uma política conservadora deste modelo de teste; não é uma validação das regras completas de acessos desalinhados da CPU ARM11 do Nintendo 3DS.
+- **Validação cruzada:** [workflow nativo #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261093), commit `d7109a2f5023d4a4fd62f16ed76b8e686f635c2f`, passou nos dois jobs Windows/MSVC e Linux/GCC com 4/4 testes CTest por job. A suíte Python completa passou em **325 testes** no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261098); o verificador de segurança passou nos dois workflows.
+- **Limite:** todos os bytes de memória usados são fixtures sintéticas; nenhum .code real foi lido e nenhuma memória real de Ultra Sun/Ultra Moon foi mapeada. Não é uma implementação de serviço do runtime do jogo nem um intérprete de instruções.
+
 ## Integração sintética C/C++20 por ABI versionada — 2026-10-27
 
 - **Contrato:** `include/pokeultrarecomp/native_abi.h` define `PokeNativeCall`, `PokeNativeResult`, versão da ABI e códigos de erro. É um contrato de teste inicial, ainda não a ABI definitiva de gameplay.

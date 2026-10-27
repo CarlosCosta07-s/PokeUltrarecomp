@@ -71,12 +71,40 @@ A cobertura inclui também os deslocamentos imediatos Thumb-1 LSL, LSR e ASR. Os
 
 A cobertura inclui agora a família Thumb-1 de três operandos ADD/SUB (registrador ou imediato de 3 bits). Todos os encodings no intervalo 0x1800..0x1FFF são classificados nos testes; a execução nativa verifica carry/no-borrow, overflow e resultados. Isso não adiciona acesso à memória nem chamadas.
 
+## Modelo de memória nativo limitado (API experimental)
+
+O tradutor oferece um modo opcional, usado pela CI somente com instruções sintéticas:
+
+```python
+translate(
+    halfwords,
+    max_execution_steps=limite_finito,
+    runtime_state_io=True,
+    runtime_memory_io=True,
+)
+```
+
+Este modo emite operações C normais que o compilador host traduz em instruções nativas. O código gerado recebe um buffer de bytes, uma base guest e um tamanho. É um modelo simples de endereçamento, não uma CPU virtual: não há decodificação/interpretação de instruções durante a execução, nem fallback para instruções não suportadas.
+
+O subconjunto coberto é:
+- Loads/stores por registrador: `STR/LDR`, `STRH/LDRH`, `STRB/LDRB`, `LDRSB` e `LDRSH`.
+- Loads/stores com deslocamento imediato: word, halfword e byte (`STR/LDR`, `STRH/LDRH`, `STRB/LDRB`).
+
+Os acessos são emitidos bytewise em little-endian. O código verifica a validade dos argumentos, o intervalo de endereço de 32 bits, os limites do buffer e o alinhamento natural de acessos multibyte, além de usar código de status explícito: 0 (retorno), 1 (orçamento esgotado), 2 (mapeamento/entrada inválida), 3 (fora da região) e 4 (desalinhamento). Os testes nativos verificam que um store fora dos limites ou desalinhado não altera o buffer.
+
+O modelo e a política de alinhamento são apenas um contrato de teste sintético. Eles não demonstram o mapeamento das regiões de memória reais de Ultra Sun/Ultra Moon nem a semântica completa de acessos desalinhados da CPU ARM11. O modo CLI normal continua sem ativar esse parâmetro. LDR literal, formas SP-relativas, LDM/STM e transferências de stack permanecem recusadas.
+
 ## Limites
 
-Isto não é um disassembler geral nem um recompilador de jogos. O inspetor de intervalos reconhece load/store Thumb-1 por registrador, offsets imediatos e SP-relativos, transferências `LDMIA/STMIA`, `ADR` e ajustes de SP, fornecendo mnemônicos e metadados estáticos. O tradutor sintético recusa memory loads/stores, literal loads, múltiplas transferências, aritmética PC/SP, stack transfers e calls porque ainda não possui modelo de memória/pilha/ABI. O inspetor não lê os valores dos acessos nem resolve registradores em tempo de execução. Ainda faltam outras famílias Thumb-1, a maioria de Thumb-2 (não é o foco para ARMv6K) e integração com código real do alvo. O scanner não deve ser aplicado a todo `.text` como se cada halfword fosse instrução: áreas de dados/literal pools e transições ARM/Thumb exigem análise de fluxo e proveniência.
+Isto não é um disassembler geral nem um recompilador de jogos. O inspetor de intervalos reconhece load/store Thumb-1 por registrador, offsets imediatos e SP-relativos, transferências `LDMIA/STMIA`, `ADR` e ajustes de SP, fornecendo mnemônicos e metadados estáticos; não lê os valores dos acessos nem resolve registradores em tempo de execução. O tradutor padrão/CLI continua a recusar loads/stores. Apenas a API experimental `translate(..., runtime_state_io=True, runtime_memory_io=True, max_execution_steps=N)` aceita o subconjunto limitado descrito acima e gera C nativo para uma região de memória byte-array fornecida pelo host. A maioria das formas de memória, incluindo loads literais, acesso SP-relativo, `LDMIA/STMIA`, stack transfers e PC/SP address generation continua rejeitada. A política de falhar em acessos multibyte desalinhados é uma guarda do modelo sintético, não prova a semântica exata de alinhamento da CPU ARM11. Ainda faltam outras famílias Thumb-1, a maioria de Thumb-2 (não é o foco para ARMv6K), regras de memória mais completas, ABI real e integração com código real do alvo. O scanner não deve ser aplicado a todo `.text` como se cada halfword fosse instrução: áreas de dados/literal pools e transições ARM/Thumb exigem análise de fluxo e proveniência.
 
 Nenhuma ROM, dump, chave, firmware, ExHeader real ou byte de `.code` foi usado em testes. A validação cobre apenas as fixtures sintéticas da POC-002. A etapa que conecta um range ARM/Thumb identificado no executável local aos tradutores ainda está pendente.
 
 ## Evidência de validação — POC-002
 
 A validação integral mais recente, no commit `aebc07b88024de06e899ae849f1fd33c026012a7`, passou em **234 testes, zero falhas e zero ignorados**. O runner usou Python 3.14.4 e GCC 15.2.0; a matriz diferencial foi 96/96 e o verificador de segurança passou em 41 caminhos indexados, com zero arquivos não ignorados e não rastreados. [Run reproduzível](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40197061451). Nenhum `.code` real foi lido; a evidência é sintética.
+
+
+## Validação mais recente — 2026-10-27
+
+O [workflow nativo #40443261093](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261093) passou em Windows/MSVC e Linux/GCC com 4/4 testes CTest por plataforma, incluindo o smoke test do modelo de memória. A suíte Python completa passou em 325 testes no [workflow #40443261098](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443261098). Todos os casos deste modelo são sintéticos; isso não é evidência de compatibilidade com código ou memória real do jogo.
