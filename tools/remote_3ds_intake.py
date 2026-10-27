@@ -834,6 +834,15 @@ def main() -> int:
                     f"- Small leaf functions with a return-like instruction: {ghidra['leaf_functions_le_64_bytes_with_return_like_instruction']}",
                     f"- Private candidates screened against the current ARM subset: {screen.get('private_candidates_screened', 0)}",
                     f"- Sequences accepted by the ARM translator: {screen.get('sequences_accepted_by_current_arm_subset_translator', 0)}",
+                    f"- Candidate sequences rejected by the ARM translator: {screen.get('candidate_sequences_rejected_by_current_arm_subset_translator', 0)}",
+                    f"- Rejected sequences with unsupported instruction encodings: {screen.get('candidate_sequences_with_instruction_decode_rejections', 0)}",
+                    f"- Rejected by sequence/runtime constraints: {screen.get('candidate_sequences_rejected_by_sequence_constraints', 0)}",
+                    "- Unsupported instruction families (instruction-site counts in screened candidates): " + (
+                        ", ".join(
+                            f"{family} ({count})"
+                            for family, count in screen.get("unsupported_instruction_encodings_by_family", {}).items()
+                        ) or "none reported"
+                    ),
                     f"- Sample host-C syntax check: {screen.get('native_c_syntax_check', 'not-run')}",
                     "- Native semantic equivalence independently verified: **no**",
                     "- Function boundaries independently verified: **no**",
