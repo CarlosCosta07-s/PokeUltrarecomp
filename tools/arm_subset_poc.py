@@ -310,13 +310,20 @@ def translate(
     for instruction in decoded[:-1]:
         if instruction[0] == "predicated":
             instruction = instruction[2]
-        if instruction[0] in ("mov", "mvn"):
+        operation = str(instruction[0])
+        if operation in ("mov", "mvn"):
             used_registers.add(instruction[1])
-        elif instruction[0] in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
+        elif operation in ("mov_reg", "mvn_reg"):
+            used_registers.update((instruction[1], instruction[2]))
+        elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
-        elif instruction[0] in ("cmn", "cmp"):
+        elif operation in ("and_reg", "orr_reg", "eor_reg", "bic_reg", "add_reg", "sub_reg", "adds_reg", "subs_reg"):
+            used_registers.update((instruction[1], instruction[2], instruction[3]))
+        elif operation in ("cmn", "cmp"):
             used_registers.add(instruction[1])
+        elif operation in ("cmn_reg", "cmp_reg"):
+            used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
         used_registers = set(range(4))
@@ -395,6 +402,15 @@ def translate(
         elif instruction[0] == "mvn":
             _, rd, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)~UINT32_C({immediate});")
+        elif instruction[0] in ("mov_reg", "mvn_reg"):
+            _, rd, rm = instruction
+            expression = f"r{rm}" if instruction[0] == "mov_reg" else f"(uint32_t)~r{rm}"
+            lines.append(f"    r{rd} = {expression};")
+        elif instruction[0] in ("and_reg", "orr_reg", "eor_reg", "bic_reg"):
+            _, rd, rn, rm = instruction
+            operator = {"and_reg": "&", "orr_reg": "|", "eor_reg": "^", "bic_reg": "& ~"}[instruction[0]]
+            expression = f"r{rn} {operator} r{rm}" if instruction[0] != "bic_reg" else f"r{rn} & ~r{rm}"
+            lines.append(f"    r{rd} = (uint32_t)({expression});")
         elif instruction[0] == "and":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} & UINT32_C({immediate}));")
@@ -413,19 +429,34 @@ def translate(
         elif instruction[0] == "sub":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
-        elif instruction[0] in ("adds", "subs", "cmn", "cmp"):
-            operation = instruction[0]
+        elif instruction[0] in ("add_reg", "sub_reg"):
+            _, rd, rn, rm = instruction
+            operator = "+" if instruction[0] == "add_reg" else "-"
+            lines.append(f"    r{rd} = (uint32_t)(r{rn} {operator} r{rm});")
+        elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg"):
+            operation = str(instruction[0]).removesuffix("_reg")
+            register_operand = str(instruction[0]).endswith("_reg")
             if operation in ("cmn", "cmp"):
-                _, rn, immediate = instruction
+                if register_operand:
+                    _, rn, rm = instruction
+                    rhs_expression = f"r{rm}"
+                else:
+                    _, rn, immediate = instruction
+                    rhs_expression = f"UINT32_C({immediate})"
                 rd = None
             else:
-                _, rd, rn, immediate = instruction
+                if register_operand:
+                    _, rd, rn, rm = instruction
+                    rhs_expression = f"r{rm}"
+                else:
+                    _, rd, rn, immediate = instruction
+                    rhs_expression = f"UINT32_C({immediate})"
             suffix = f"{len(lines)}"
             lhs = f"flag_lhs_{suffix}"
             result = f"flag_result_{suffix}"
             rhs = f"flag_rhs_{suffix}"
             lines.append(f"    uint32_t {lhs} = r{rn};")
-            lines.append(f"    uint32_t {rhs} = UINT32_C({immediate});")
+            lines.append(f"    uint32_t {rhs} = {rhs_expression};")
             if operation in ("adds", "cmn"):
                 wide = f"flag_wide_{suffix}"
                 lines.append(f"    uint64_t {wide} = (uint64_t){lhs} + (uint64_t){rhs};")
