@@ -779,7 +779,7 @@ def translate(
             else:
                 if register_operand:
                     _, rd, rn, rm = instruction
-                    rhs_expression = f"r{rm}"
+                    rhs_expression = shifted_operand_expr or f"r{rm}"
                 else:
                     _, rd, rn, immediate = instruction
                     rhs_expression = f"UINT32_C({immediate})"
