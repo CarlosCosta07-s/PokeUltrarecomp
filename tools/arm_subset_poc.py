@@ -170,8 +170,8 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         return complete((operation, rd, rn, rm))
 
     arithmetic_operations = {
-        0b0100: "add", 0b0010: "sub", 0b0101: "adc",
-        0b0110: "sbc", 0b0111: "rsc",
+        0b0100: "add", 0b0010: "sub", 0b0011: "rsb",
+        0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc",
     }
     if opcode in arithmetic_operations:
         if rn > 3 or rm > 3:
@@ -350,12 +350,12 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
         return _apply_condition(condition, ("cmp", rn, immediate))
 
-    if opcode in (0b0101, 0b0110, 0b0111):  # ADC/SBC/RSC: consume C-in.
+    if opcode in (0b0011, 0b0101, 0b0110, 0b0111):  # RSB/ADC/SBC/RSC.
         if rd > 3:
             raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
-        base = {0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc"}[opcode]
+        base = {0b0011: "rsb", 0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc"}[opcode]
         operation = base + "s" if set_flags else base
         return _apply_condition(condition, (operation, rd, rn, immediate))
 
@@ -517,12 +517,12 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("ands_imm", "orrs_imm", "eors_imm", "bics_imm"):
             used_registers.update((instruction[1], instruction[2]))
-        elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs", "adc", "adcs", "sbc", "sbcs", "rsc", "rscs"):
+        elif operation in ("and", "orr", "eor", "bic", "add", "sub", "rsb", "adds", "subs", "rsbs", "adc", "adcs", "sbc", "sbcs", "rsc", "rscs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
         elif operation in (
             "and_reg", "orr_reg", "eor_reg", "bic_reg", "ands_reg", "orrs_reg",
-            "eors_reg", "bics_reg", "add_reg", "sub_reg", "adds_reg", "subs_reg",
+            "eors_reg", "bics_reg", "add_reg", "sub_reg", "rsb_reg", "adds_reg", "subs_reg", "rsbs_reg",
             "adc_reg", "adcs_reg", "sbc_reg", "sbcs_reg", "rsc_reg", "rscs_reg",
         ):
             used_registers.update((instruction[1], instruction[2], instruction[3]))
@@ -841,19 +841,26 @@ def translate(
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
             if carry_out is not None:
                 lines.append(f"    flag_c = UINT32_C({carry_out});")
-        elif instruction[0] == "add":
+        elif instruction[0] in ("add", "sub", "rsb"):
             _, rd, rn, immediate = instruction
-            lines.append(f"    r{rd} = (uint32_t)(r{rn} + UINT32_C({immediate}));")
-        elif instruction[0] == "sub":
-            _, rd, rn, immediate = instruction
-            lines.append(f"    r{rd} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
-        elif instruction[0] in ("add_reg", "sub_reg"):
-            _, rd, rn, rm = instruction
-            operator = "+" if instruction[0] == "add_reg" else "-"
-            rm_expression = shifted_operand_expr or f"r{rm}"
-            expression = f"r{rn} {operator} ({rm_expression})" if shifted_operand_expr else f"r{rn} {operator} r{rm}"
+            if instruction[0] == "add":
+                expression = f"r{rn} + UINT32_C({immediate})"
+            elif instruction[0] == "sub":
+                expression = f"r{rn} - UINT32_C({immediate})"
+            else:
+                expression = f"UINT32_C({immediate}) - r{rn}"
             lines.append(f"    r{rd} = (uint32_t)({expression});")
-        elif instruction[0] in ("adc", "sbc", "rsc", "adc_reg", "sbc_reg", "rsc_reg"):
+        elif instruction[0] in ("add_reg", "sub_reg", "rsb_reg"):
+            _, rd, rn, rm = instruction
+            rm_expression = shifted_operand_expr or f"r{rm}"
+            if instruction[0] == "add_reg":
+                expression = f"r{rn} + ({rm_expression})"
+            elif instruction[0] == "sub_reg":
+                expression = f"r{rn} - ({rm_expression})"
+            else:
+                expression = f"({rm_expression}) - r{rn}"
+            lines.append(f"    r{rd} = (uint32_t)({expression});")
+        elif instruction[0] in ("adc", "sbc", "rsc", "rsb", "adc_reg", "sbc_reg", "rsc_reg", "rsb_reg"):
             register_operand = str(instruction[0]).endswith("_reg")
             operation_name = str(instruction[0]).removesuffix("_reg")
             if register_operand:
@@ -867,10 +874,12 @@ def translate(
                 expression = f"(uint64_t)r{rn} + (uint64_t)({rhs_expr}) + (uint64_t){carry_in}"
             elif operation_name == "sbc":
                 expression = f"(uint64_t)r{rn} - ((uint64_t)({rhs_expr}) + (uint64_t)(1U - {carry_in}))"
+            elif operation_name == "rsb":
+                expression = f"(uint64_t)({rhs_expr}) - (uint64_t)r{rn}"
             else:
-                expression = f"(uint64_t)({rhs_expr}) - ((uint64_t)r{rn} + (uint64_t)(1U - {carry_in}))"
+                expression = f"(uint64_t)({rhs_expr}) - ((uint64_t)r{rn} + (uint64_t)(1U - {carry_in}))
             lines.append(f"    r{rd} = (uint32_t)({expression});")
-        elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adcs", "sbcs", "rscs", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg", "adcs_reg", "sbcs_reg", "rscs_reg"):
+        elif instruction[0] in ("adds", "subs", "rsbs", "cmn", "cmp", "adcs", "sbcs", "rscs", "adds_reg", "subs_reg", "rsbs_reg", "cmn_reg", "cmp_reg", "adcs_reg", "sbcs_reg", "rscs_reg"):
             operation = str(instruction[0]).removesuffix("_reg")
             register_operand = str(instruction[0]).endswith("_reg")
             if operation in ("cmn", "cmp"):
@@ -889,10 +898,10 @@ def translate(
                     _, rd, rn, immediate = instruction
                     rhs_expression = f"UINT32_C({immediate})"
 
-            # RSC reverses the subtraction operands: Operand2 - Rn - (1-C).
+            # RSB reverses subtraction operands; RSC additionally subtracts the borrow (1-C).
             lhs_expression = f"r{rn}"
             rhs_expr = rhs_expression
-            if operation == "rscs":
+            if operation in ("rscs", "rsbs"):
                 lhs_expression, rhs_expr = rhs_expr, lhs_expression
 
             suffix = f"{len(lines)}"
