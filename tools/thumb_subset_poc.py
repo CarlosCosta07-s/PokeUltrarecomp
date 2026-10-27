@@ -356,6 +356,11 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
+    contains_alignment_sensitive_memory = any(
+        (inst[0] in MEMORY_ACCESS_WIDTHS and MEMORY_ACCESS_WIDTHS[inst[0]] > 1)
+        or inst[0] in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS
+        for inst in decoded
+    )
     supported_memory_found = False
     for inst in decoded:
         if inst[0] in LITERAL_OPS:
@@ -933,10 +938,13 @@ def translate(
                 "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
                 "    if (execution_status_out != 0) *execution_status_out = UINT8_C(3);",
                 "    goto thumb_exit;",
-                "thumb_alignment_fault: ;",
-                "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
-                "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
             ))
+            if contains_alignment_sensitive_memory:
+                lines.extend((
+                    "thumb_alignment_fault: ;",
+                    "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+                    "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
+                ))
             if contains_literal_load:
                 lines.extend((
                     "    goto thumb_exit;",
