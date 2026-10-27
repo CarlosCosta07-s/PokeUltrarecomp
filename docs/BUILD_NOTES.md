@@ -1,5 +1,16 @@
 # Notas de build e testes reproduzíveis
 
+## Pipeline de recompilação nativa sintética — 2026-10-26
+
+- **Ferramenta:** `tools/run_native_poc_pipeline.py`. Exercita duas fixtures sintéticas de código: ARM A32 e Thumb-16.
+- **Fluxo:** o tradutor já existente gera C; o compilador C do host compila um executável temporário; o pipeline executa esse binário e verifica retorno, registradores relevantes, NZCV, contagem de passos e preservação dos registradores não escritos.
+- **Falha fechada:** a ferramenta exige rejeição explícita de um registrador A32 fora do subconjunto e de um acesso à memória Thumb que o tradutor não suporta. Não há fallback interpretado, JIT, emulador, arquivo ou recurso de jogo.
+- **Compiladores:** GCC/Clang com `-std=c11 -Wall -Wextra -Werror`; MSVC/Clang-cl com opções equivalentes de C11 e avisos tratados como erros.
+- **CI:** `.github/workflows/native-pipeline.yml` adiciona jobs `ubuntu-latest` e `windows-latest`; executa o pipeline, a suíte Python e o verificador do repositório. O job Windows inicializa o ambiente de desenvolvedor do Visual Studio e testa o smoke pipeline com `cl.exe`.
+- **Commits de implementação:** ferramenta `95c1241`, correção sintática `4710db2`, ajuste de saída MSVC `3c01124`, workflow `47e6c51`.
+- **Estado de validação deste registro:** **pendente de confirmação da execução do GitHub Actions**. A cópia deste ambiente não conseguiu resolver DNS para `github.com`, portanto não foi possível clonar nem executar a suíte localmente. Não registrar os testes como aprovados até observar o resultado de ambos os jobs.
+- **Limite:** este passo demonstra somente uma sequência de teste sintética compilada e executada como código nativo. Não prova compatibilidade com instruções reais dos jogos, ABI, serviços do 3DS, renderização ou gameplay.
+
 Este documento é o registro canônico dos testes locais. Nenhum teste de build da porta foi executado por PokeUltrarecomp na auditoria inicial. Não preencher resultados por suposição.
 
 ## Regras
