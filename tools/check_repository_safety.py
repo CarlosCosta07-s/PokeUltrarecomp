@@ -56,6 +56,9 @@ REQUIRED_FILES = (
     "tools/generate_native_abi_fixtures.py",
     "include/pokeultrarecomp/native_abi.h",
     "tests/native_runtime_host.cpp",
+    "tools/wrap_retail_code.py",
+    "tests/test_wrap_retail_code.py",
+    "docs/REAL_GAME_CODE_WORKFLOW.md",
 )
 
 # These extensions commonly contain title images, executable modules, or
