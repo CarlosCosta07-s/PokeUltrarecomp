@@ -65,12 +65,12 @@ public class FunctionCensusSummary extends GhidraScript {
     @Override
     protected void run() throws Exception {
         String[] args = getScriptArgs();
-        if (args.length != 3) {
+        if (args.length != 4) {
             throw new IllegalArgumentException(
-                "expected summary output path, text start address (hex), and logical text size (decimal)");
+                "expected summary path, private candidate path, text start address (hex), and logical text size (decimal)");
         }
-        long textStartOffset = Long.parseLong(args[1].replace("0x", "").replace("0X", ""), 16);
-        long textSize = Long.parseLong(args[2]);
+        long textStartOffset = Long.parseLong(args[2].replace("0x", "").replace("0X", ""), 16);
+        long textSize = Long.parseLong(args[3]);
         if (textStartOffset < 0 || textStartOffset > 0xffffffffL ||
             textSize <= 0 || textSize > 0x100000000L ||
             textStartOffset > 0xffffffffL - (textSize - 1)) {
@@ -95,6 +95,12 @@ public class FunctionCensusSummary extends GhidraScript {
         long smallLeafInstructionCount = 0;
         long excludedOutOfTextBodies = 0;
         Map<String, Long> smallLeafMnemonics = new HashMap<String, Long>();
+        // This sidecar is written only under the caller's private temporary directory.
+        // It holds a bounded set of small, contiguous ARM functions ending in BX LR.
+        // Python screens these candidates against the current narrow ARM-to-C subset.
+        List<String> privateTranslationCandidates = new ArrayList<String>();
+        long privateTranslationCandidatesOmitted = 0;
+        final int maxPrivateTranslationCandidates = 10000;
 
         FunctionIterator functions = manager.getFunctions(true);
         while (functions.hasNext() && !monitor.isCancelled()) {
@@ -118,6 +124,10 @@ public class FunctionCensusSummary extends GhidraScript {
             boolean hasReturn = false;
             long instructionCount = 0;
             List<String> mnemonics = new ArrayList<String>();
+            List<String> candidateWords = new ArrayList<String>();
+            boolean candidateIsLinearA32 = true;
+            boolean lastInstructionIsBxLr = false;
+            long expectedInstructionAddress = body.getMinAddress().getOffset();
 
             InstructionIterator instructions = listing.getInstructions(body, true);
             while (instructions.hasNext()) {
@@ -128,6 +138,24 @@ public class FunctionCensusSummary extends GhidraScript {
                 instructionCount++;
                 String mnemonic = instruction.getMnemonicString().toLowerCase(Locale.ROOT);
                 mnemonics.add(mnemonic);
+
+                long instructionAddress = instruction.getAddress().getOffset();
+                if (instructionAddress != expectedInstructionAddress || instruction.getLength() != 4) {
+                    candidateIsLinearA32 = false;
+                }
+                expectedInstructionAddress = instructionAddress + instruction.getLength();
+                lastInstructionIsBxLr = "bx".equals(mnemonic) &&
+                    "bxlr".equals(instruction.toString().toLowerCase(Locale.ROOT).replace(" ", ""));
+                byte[] encoding = instruction.getBytes();
+                if (encoding == null || encoding.length != 4) {
+                    candidateIsLinearA32 = false;
+                } else {
+                    long word = (encoding[0] & 0xffL) |
+                        ((encoding[1] & 0xffL) << 8) |
+                        ((encoding[2] & 0xffL) << 16) |
+                        ((encoding[3] & 0xffL) << 24);
+                    candidateWords.add(String.format(Locale.ROOT, "\"0x%08X\"", word));
+                }
                 if (instruction.getFlowType().isCall()) {
                     hasCall = true;
                 }
@@ -173,6 +201,35 @@ public class FunctionCensusSummary extends GhidraScript {
             }
             if (hasReturn) {
                 returnLikeCount++;
+            }
+
+            boolean translationCandidate =
+                !hasCall &&
+                lastInstructionIsBxLr &&
+                body.getNumAddressRanges() == 1 &&
+                bodySize >= 8 && bodySize <= 64 &&
+                bodySize == instructionCount * 4 &&
+                candidateIsLinearA32 &&
+                candidateWords.size() == instructionCount;
+            if (translationCandidate) {
+                if (privateTranslationCandidates.size() < maxPrivateTranslationCandidates) {
+                    StringBuilder wordsJson = new StringBuilder("[");
+                    for (int wordIndex = 0; wordIndex < candidateWords.size(); wordIndex++) {
+                        if (wordIndex > 0) {
+                            wordsJson.append(",");
+                        }
+                        wordsJson.append(candidateWords.get(wordIndex));
+                    }
+                    wordsJson.append("]");
+                    privateTranslationCandidates.add(
+                        "{\"entry_address\":\"0x" +
+                        String.format(Locale.ROOT, "%08X", entry.getOffset()) +
+                        "\",\"body_size_bytes\":" + bodySize +
+                        ",\"instruction_count\":" + instructionCount +
+                        ",\"words\":" + wordsJson.toString() + "}");
+                } else {
+                    privateTranslationCandidatesOmitted++;
+                }
             }
         }
 
@@ -228,6 +285,32 @@ public class FunctionCensusSummary extends GhidraScript {
             writer.write(json);
         } finally {
             writer.close();
+        }
+
+        File candidateDestination = new File(args[1]);
+        File candidateParent = candidateDestination.getParentFile();
+        if (candidateParent != null && !candidateParent.exists() && !candidateParent.mkdirs()) {
+            throw new java.io.IOException("could not create private candidate sidecar directory");
+        }
+        StringBuilder candidatesJson = new StringBuilder("{\n")
+            .append("  \\"schema_version\\": 1,\n")
+            .append("  \\"omitted_candidate_count\\": ").append(privateTranslationCandidatesOmitted).append(",\n")
+            .append("  \\"candidates\\": [");
+        for (int candidateIndex = 0; candidateIndex < privateTranslationCandidates.size(); candidateIndex++) {
+            if (candidateIndex > 0) {
+                candidatesJson.append(",");
+            }
+            candidatesJson.append("\\n    ").append(privateTranslationCandidates.get(candidateIndex));
+        }
+        if (!privateTranslationCandidates.isEmpty()) {
+            candidatesJson.append("\\n  ");
+        }
+        candidatesJson.append("]\n}\n");
+        BufferedWriter candidateWriter = new BufferedWriter(new FileWriter(candidateDestination));
+        try {
+            candidateWriter.write(candidatesJson.toString());
+        } finally {
+            candidateWriter.close();
         }
     }
 }
