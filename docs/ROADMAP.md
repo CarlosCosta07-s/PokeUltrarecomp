@@ -168,7 +168,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** parcialmente implementado. O script `tools/run_native_poc_pipeline.py` agora gera C a partir de duas fixtures sintéticas, compila os resultados com um compilador C do host e executa os binários para verificar resultados, registradores, NZCV e contagem de instruções. Também inclui casos negativos que devem ser recusados. O workflow `.github/workflows/native-pipeline.yml` foi adicionado para Linux e Windows. A aprovação de CI deve ser verificada no GitHub antes de declarar esse passo validado; não existe ainda um runtime de jogo integrado nem suporte comprovado a código real.
+**Estado:** pipeline sintético validado em Windows e Linux. O workflow [Native recompilation smoke tests #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) passou nos dois jobs em 27/10/2026 UTC. Em ambos, ARM A32 e Thumb-16 foram traduzidos para C, compilados com GCC/cc ou MSVC, executados como binários nativos e verificados quanto ao resultado, registradores, NZCV e orçamento de instruções. A suíte completa passou em 324 testes em cada sistema e o verificador do repositório passou. A evidência permanece sintética: não há ainda runtime de jogo integrado, função real recompilada ou gameplay validado.
 
 **Tarefas**
 - [ ] Organizar um build reproduzível com CMake + Ninja para Windows e Linux x86-64, com toolchains nativos documentados.
@@ -176,7 +176,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Validar resultados esperados, estado de registradores/flags e orçamento de instruções no processo nativo.
 - [x] Cobrir inputs negativos: registrador ARM fora do subconjunto e operação de memória Thumb sem modelo de memória devem falhar explicitamente.
 - [x] Adicionar um workflow de CI para executar o smoke test em Windows e Linux sem arquivos de jogo.
-- [ ] Confirmar execuções aprovadas do workflow em ambos os sistemas; corrigir qualquer falha antes de prosseguir.
+- [x] Confirmar execuções aprovadas do workflow em ambos os sistemas; corrigir qualquer falha antes de prosseguir.
 - [ ] Unificar/estender a interface para cobrir regressões de decodificação, fluxo de controle, limites, contratos e falhas do compilador, mantendo um oráculo independente baseado na especificação.
 - [ ] Fazer com que toda instrução sem suporte, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução; nunca usar fallback interpretado.
 
