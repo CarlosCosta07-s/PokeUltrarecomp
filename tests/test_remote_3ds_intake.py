@@ -249,6 +249,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual(("cci", "ncsd"), intake.normalize_format("cci"))
         self.assertEqual(("cia", "cia"), intake.normalize_format(".CIA"))
 
+    def test_ghidra_census_uses_primitive_long_address_count_api(self):
+        script_path = ROOT / "tools" / "ghidra_scripts" / "FunctionCensusSummary.java"
+        source = script_path.read_text(encoding="utf-8")
+        self.assertIn("body.getNumAddresses() == 0L", source)
+        self.assertIn("long bodySize = body.getNumAddresses();", source)
+        self.assertNotRegex(source, r"getNumAddresses\(\)\.(?:signum|longValue)")
+
     def test_google_drive_share_link_uses_gdown(self):
         from types import SimpleNamespace
         from unittest.mock import patch
