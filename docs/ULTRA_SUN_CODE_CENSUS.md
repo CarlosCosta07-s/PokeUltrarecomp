@@ -81,7 +81,11 @@ Por isso, a contagem de entradas do Ghidra não indica quantas funções já pod
 
 ## Execuções posteriores e limitações operacionais
 
-A tentativa posterior de repetir a ingestão, [workflow #40594739458](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594739458), falhou antes da análise porque o Google Drive limitou o download. Nenhum resultado dessa tentativa deve ser contado como uma nova inspeção do código. Não há artefatos da execução de referência nem persistência do segmento de código entre runners; uma nova análise real precisa executar de novo a ingestão no próprio workflow.
+A tentativa posterior de repetir a ingestão, [workflow #40594739458](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594739458), falhou antes da análise porque o Google Drive limitou o download. Nenhum resultado dessa tentativa deve ser contado como uma nova inspeção do código.
+
+A versão atual de `tools/remote_3ds_intake.py` também contém uma triagem agregada de candidatos Ghidra contra o subconjunto A32 do tradutor. O teste sintético `test_runs_ghidra_in_precreated_private_project_directory` verifica o formato agregado e confirma que o resultado não publica endereços ou palavras de instrução, mas isso **não** é evidência de compatibilidade com o jogo real. A execução bem-sucedida #40582007887 não incluiu os números dessa triagem; a tentativa #40594739458 parou no download antes que ela pudesse rodar. Assim, ainda não há resultados verificados da triagem do tradutor sobre candidatos reais.
+
+Não há artefatos da execução de referência nem persistência do segmento de código entre runners; uma nova análise real precisa executar de novo a ingestão no próprio workflow.
 
 ## Próxima tarefa técnica recomendada
 
