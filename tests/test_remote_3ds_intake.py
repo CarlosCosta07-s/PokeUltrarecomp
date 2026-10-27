@@ -54,6 +54,85 @@ class Remote3DSIntakeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _valid_ghidra_summary(self, **overrides):
+        summary = {
+            "schema_version": 1,
+            "status": "pass",
+            "text_size_bytes": 128,
+            "functions_with_entry_inside_text": 10,
+            "functions_le_32_bytes": 2,
+            "functions_le_64_bytes": 4,
+            "functions_le_128_bytes": 8,
+            "leaf_functions": 5,
+            "leaf_functions_le_32_bytes": 1,
+            "leaf_functions_le_64_bytes": 3,
+            "leaf_functions_le_128_bytes": 4,
+            "functions_with_return_like_instruction": 7,
+            "leaf_functions_le_64_bytes_with_return_like_instruction": 2,
+            "instructions_in_leaf_functions_le_64_bytes": 31,
+            "excluded_bodies_crossing_text_bounds": 1,
+            "top_mnemonics_in_leaf_functions_le_64_bytes": [
+                {"mnemonic": "mov", "count": 12},
+                {"mnemonic": "adds", "count": 8},
+            ],
+            "function_boundaries_verified": False,
+            "addresses_emitted": False,
+            "disassembly_emitted": False,
+            "interpretation": "synthetic test fixture only",
+        }
+        summary.update(overrides)
+        return summary
+
+    def test_sanitizes_aggregate_ghidra_summary(self):
+        summary_path = self.work / "ghidra-summary.json"
+        summary_path.write_text(json.dumps(self._valid_ghidra_summary()), encoding="utf-8")
+        sanitized = intake.sanitize_ghidra_summary(summary_path, 128)
+        self.assertEqual("pass", sanitized["status"])
+        self.assertEqual(10, sanitized["functions_with_entry_inside_text"])
+        self.assertEqual(
+            [{"mnemonic": "mov", "count": 12}, {"mnemonic": "adds", "count": 8}],
+            sanitized["top_mnemonics_in_leaf_functions_le_64_bytes"],
+        )
+        self.assertNotIn("interpretation", sanitized)
+        self.assertFalse(sanitized["addresses_emitted"])
+        self.assertFalse(sanitized["disassembly_emitted"])
+
+    def test_ghidra_summary_rejects_unexpected_address_fields(self):
+        summary = self._valid_ghidra_summary()
+        summary["addresses"] = ["0x00100000"]
+        summary_path = self.work / "ghidra-summary-addresses.json"
+        summary_path.write_text(json.dumps(summary), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "unexpected or missing fields"):
+            intake.sanitize_ghidra_summary(summary_path, 128)
+
+    def test_ghidra_summary_rejects_verified_boundary_claim(self):
+        summary = self._valid_ghidra_summary(function_boundaries_verified=True)
+        summary_path = self.work / "ghidra-summary-boundary.json"
+        summary_path.write_text(json.dumps(summary), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "aggregate-only"):
+            intake.sanitize_ghidra_summary(summary_path, 128)
+
+    def test_ghidra_summary_rejects_wrong_text_size_and_invalid_counters(self):
+        summary_path = self.work / "ghidra-summary-size.json"
+        summary_path.write_text(json.dumps(self._valid_ghidra_summary()), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "text-size"):
+            intake.sanitize_ghidra_summary(summary_path, 256)
+        invalid = self._valid_ghidra_summary(functions_le_64_bytes=99)
+        summary_path.write_text(json.dumps(invalid), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "ordering"):
+            intake.sanitize_ghidra_summary(summary_path, 128)
+
+    def test_ghidra_summary_rejects_invalid_mnemonic_histogram(self):
+        invalid = self._valid_ghidra_summary(
+            top_mnemonics_in_leaf_functions_le_64_bytes=[
+                {"mnemonic": "mov r0, [0x1234]", "count": 1}
+            ]
+        )
+        summary_path = self.work / "ghidra-summary-mnemonic.json"
+        summary_path.write_text(json.dumps(invalid), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "non-mnemonic"):
+            intake.sanitize_ghidra_summary(summary_path, 128)
+
     def test_extract_container_title_id_from_ncsd_ncch_header(self):
         self.assertEqual(
             "00040000001b5000",
