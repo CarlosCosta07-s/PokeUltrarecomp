@@ -1,5 +1,13 @@
 # Notas de build e testes reproduzíveis
 
+## Orquestração CMake/Ninja — 2026-10-26
+
+- **Arquivos:** `CMakeLists.txt` e atualização de `.github/workflows/native-pipeline.yml`.
+- **Configuração:** CMake exige C11/C++20, encontra Python 3.10+ e define três testes CTest: recompilação/execução nativa sintética, suíte `unittest` e verificador de segurança.
+- **Alvo:** `cmake --build build --target verify` executa os testes registrados por CTest. O diretório `build/` já é ignorado pelo Git.
+- **Dependências externas:** nenhuma biblioteca de runtime SDL3/Vulkan é baixada ou ligada nesta etapa. A configuração apenas valida os toolchains C/C++ e orquestra testes existentes; não existe ainda binário do jogo nem runtime C++ do jogo.
+- **Estado:** implementação no repositório; validação do novo caminho CMake+Ninja pendente de conclusão do [workflow nativo](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/workflows/native-pipeline.yml) em ambos os sistemas. Os resultados anteriores do smoke test direto (run [40441067580](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580)) não são evidência da nova orquestração CMake.
+
 ## Pipeline de recompilação nativa sintética — 2026-10-26
 
 - **Ferramenta:** `tools/run_native_poc_pipeline.py`. Exercita duas fixtures sintéticas de código: ARM A32 e Thumb-16.
