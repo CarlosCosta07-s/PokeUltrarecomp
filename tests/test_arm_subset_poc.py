@@ -531,7 +531,7 @@ int main(void) {
                 f"uint32_t shifted_{name}(",
                 1,
             ))
-        harness = "\\n".join(snippets) + """
+        harness = "\n".join(snippets) + """
 #include <stdint.h>
 static int run_case(
     uint32_t (*fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *),
