@@ -1,5 +1,6 @@
 #include "pokeultrarecomp/native_abi.h"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <type_traits>
@@ -97,6 +98,125 @@ int main()
         }
     }
     std::cout << "PASS: C++20 host calls generated Thumb C through the versioned C ABI\n";
+
+    PokeNativeCall memory_call{};
+    memory_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    memory_call.registers[0] = UINT32_C(0x1000);
+    memory_call.registers[1] = UINT32_C(4);
+    memory_call.registers[2] = UINT32_C(0xA1B2C380);
+    memory_call.registers[3] = UINT32_C(0xAAAAAAAA);
+    memory_call.registers[4] = UINT32_C(0xAAAAAAAA);
+    memory_call.registers[5] = UINT32_C(0xAAAAAAAA);
+    memory_call.registers[6] = UINT32_C(0xAAAAAAAA);
+    memory_call.registers[7] = UINT32_C(0xAAAAAAAA);
+    memory_call.initial_nzcv = UINT8_C(0x9);
+
+    std::array<uint8_t, 24> guest_bytes{};
+    guest_bytes.fill(UINT8_C(0xEE));
+    PokeNativeMemory guest_memory{};
+    guest_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+    guest_memory.guest_base = UINT32_C(0x1000);
+    guest_memory.size = static_cast<uint32_t>(guest_bytes.size());
+    guest_memory.bytes = guest_bytes.data();
+    PokeNativeResult memory_result{};
+
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK) {
+        return fail("Thumb memory call through the C ABI returned an error");
+    }
+    if (memory_result.abi_version != POKE_NATIVE_ABI_VERSION
+        || memory_result.return_value != UINT32_C(0x1000)
+        || memory_result.steps_executed != 15U
+        || memory_result.nzcv != UINT8_C(0x9)
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED) {
+        return fail("Thumb memory result/status/step-count mismatch");
+    }
+    if (memory_result.registers[0] != UINT32_C(0x1000)
+        || memory_result.registers[1] != UINT32_C(4)
+        || memory_result.registers[2] != UINT32_C(0xA1B2C380)
+        || memory_result.registers[3] != UINT32_C(0xA1B2C380)
+        || memory_result.registers[4] != UINT32_C(0xC380)
+        || memory_result.registers[5] != UINT32_C(0xFFFFFF80)
+        || memory_result.registers[6] != UINT32_C(0x80)
+        || memory_result.registers[7] != UINT32_C(0xFFFFC380)) {
+        return fail("Thumb memory register output mismatch");
+    }
+    if (guest_bytes[4] != UINT8_C(0x80) || guest_bytes[5] != UINT8_C(0xC3)
+        || guest_bytes[6] != UINT8_C(0xB2) || guest_bytes[7] != UINT8_C(0xA1)
+        || guest_bytes[12] != UINT8_C(0x80) || guest_bytes[13] != UINT8_C(0xC3)
+        || guest_bytes[14] != UINT8_C(0xB2) || guest_bytes[15] != UINT8_C(0xA1)
+        || guest_bytes[16] != UINT8_C(0x80)
+        || guest_bytes[18] != UINT8_C(0x80) || guest_bytes[19] != UINT8_C(0xC3)) {
+        return fail("Thumb memory byte layout mismatch");
+    }
+    std::cout << "PASS: C++20 host calls Thumb loads/stores through the versioned C ABI\n";
+
+    const auto memory_before_fault = guest_bytes;
+    memory_call.registers[0] = UINT32_C(0x1014);
+    memory_call.registers[1] = UINT32_C(4);
+    memory_call.registers[2] = UINT32_C(0x11223344);
+    memory_call.initial_nzcv = UINT8_C(0x6);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
+        || memory_result.steps_executed != UINT32_C(1)
+        || memory_result.nzcv != UINT8_C(0x6)
+        || guest_bytes != memory_before_fault) {
+        return fail("out-of-range memory call did not fail atomically through the C ABI");
+    }
+
+    memory_call.registers[0] = UINT32_C(0x1002);
+    memory_call.registers[1] = UINT32_C(0);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
+        || memory_result.steps_executed != UINT32_C(1)
+        || guest_bytes != memory_before_fault) {
+        return fail("misaligned memory call did not fail atomically through the C ABI");
+    }
+
+    memory_call.registers[0] = UINT32_C(0x1000);
+    memory_call.registers[1] = UINT32_C(4);
+    guest_memory.size = 0U;
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || memory_result.steps_executed != 0U) {
+        return fail("invalid guest memory size was not reported by execution status");
+    }
+    guest_memory.size = static_cast<uint32_t>(guest_bytes.size());
+
+    guest_memory.guest_base = UINT32_C(0xFFFFFFF8);
+    guest_memory.size = UINT32_C(16);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || memory_result.steps_executed != 0U) {
+        return fail("guest memory mapping overflow was not rejected");
+    }
+    guest_memory.guest_base = UINT32_C(0x1000);
+    guest_memory.size = static_cast<uint32_t>(guest_bytes.size());
+
+    guest_memory.abi_version = UINT32_C(99);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_VERSION_MISMATCH || !equals_sentinel(memory_result)) {
+        return fail("memory ABI version mismatch changed the result");
+    }
+    guest_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+
+    guest_memory.bytes = nullptr;
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_memory(&memory_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_INVALID_ARGUMENT || !equals_sentinel(memory_result)) {
+        return fail("null guest-memory buffer was not rejected atomically");
+    }
+    guest_memory.bytes = guest_bytes.data();
+    std::cout << "PASS: C++20 memory ABI preserves outputs on contract errors\n";
 
     set_sentinel(result);
     call.initial_nzcv = UINT8_C(16);

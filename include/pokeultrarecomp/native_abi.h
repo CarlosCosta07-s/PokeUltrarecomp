@@ -17,6 +17,14 @@ typedef enum PokeNativeAbiStatus {
     POKE_NATIVE_ABI_EXECUTION_FAILED = 3
 } PokeNativeAbiStatus;
 
+typedef enum PokeNativeExecutionStatus {
+    POKE_NATIVE_EXECUTION_RETURNED = 0,
+    POKE_NATIVE_EXECUTION_BUDGET_EXHAUSTED = 1,
+    POKE_NATIVE_EXECUTION_INVALID_STATE = 2,
+    POKE_NATIVE_EXECUTION_MEMORY_FAULT = 3,
+    POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT = 4
+} PokeNativeExecutionStatus;
+
 /* Stable, versioned boundary between generated C units and the C++20 host. */
 typedef struct PokeNativeCall {
     uint32_t abi_version;
@@ -33,9 +41,22 @@ typedef struct PokeNativeResult {
     uint8_t execution_status;
 } PokeNativeResult;
 
-/* The two entries below are only generated synthetic fixtures used by tests. */
+/* Test-only view of a bounded guest-address region, not a real game memory map. */
+typedef struct PokeNativeMemory {
+    uint32_t abi_version;
+    uint32_t guest_base;
+    uint32_t size;
+    uint8_t *bytes;
+} PokeNativeMemory;
+
+/* These entries bind generated synthetic fixtures to the stable C ABI. */
 int poke_native_execute_a32(const PokeNativeCall *call, PokeNativeResult *result);
 int poke_native_execute_thumb(const PokeNativeCall *call, PokeNativeResult *result);
+int poke_native_execute_thumb_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
 
 #ifdef __cplusplus
 }

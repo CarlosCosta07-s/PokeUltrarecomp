@@ -34,6 +34,7 @@ if(BUILD_TESTING)
     set(NATIVE_GENERATED_C_FILES
         "${NATIVE_GENERATED_DIR}/native_a32_generated.c"
         "${NATIVE_GENERATED_DIR}/native_thumb_generated.c"
+        "${NATIVE_GENERATED_DIR}/native_thumb_memory_generated.c"
     )
 
     add_custom_command(
