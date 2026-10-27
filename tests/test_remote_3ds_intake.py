@@ -160,13 +160,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
                     "entry_address": "0x00102000",
                     "body_size_bytes": 8,
                     "instruction_count": 2,
-                    "words": ["0xE5D00000", "0xE12FFF1E"],  # unsupported LDRB form
+                    "words": ["0xE7910000", "0xE12FFF1E"],  # unsupported register-offset LDR form
                 },
                 {
                     "entry_address": "0x00103000",
                     "body_size_bytes": 8,
                     "instruction_count": 2,
-                    "words": ["0xE5900000", "0xE12FFF1E"],  # supported LDR word with bounded model
+                    "words": ["0xE5D00000", "0xE12FFF1E"],  # supported LDRB byte with bounded model
                 },
             ],
         }
