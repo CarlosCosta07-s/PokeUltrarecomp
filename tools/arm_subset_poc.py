@@ -4,9 +4,10 @@
 This demonstrator is not a general-purpose recompiler and does not load game files.
 It supports a narrow immediate subset plus unshifted register-Operand2 operations,
 including arithmetic flags and logical N/Z updates for MOVS/MVNS, ANDS/ORRS/EORS/
-BICS and TST/TEQ. The optional memory mode only handles bounded, pre-indexed
-immediate word LDR/STR accesses without writeback. Operand2 shifts, logical S-bit
-immediate forms, other memory modes and real game runtime services remain outside its scope.
+BICS and TST/TEQ. The optional bounded-memory mode handles pre-indexed immediate
+word/byte/halfword transfers and signed LDRSB/LDRSH loads without writeback.
+Operand2 shifts, logical S-bit immediate forms, other memory modes and real game
+runtime services remain outside its scope.
 """
 from __future__ import annotations
 
