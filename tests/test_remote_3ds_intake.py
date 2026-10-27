@@ -16,7 +16,16 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.work = Path(self.temporary.name)
         self.fake_ctrtool = self.work / "fake_ctrtool.py"
         self.image_path = self.work / "synthetic.3ds"
-        self.image_path.write_bytes(b"synthetic input only")
+        synthetic_ncsd = bytearray(0x1000)
+        synthetic_ncsd[0x100:0x104] = b"NCSD"
+        synthetic_ncsd[0x120:0x124] = (2).to_bytes(4, "little")
+        synthetic_ncsd[0x124:0x128] = (4).to_bytes(4, "little")
+        ncch_offset = 2 * 0x200
+        synthetic_ncsd[ncch_offset + 0x100:ncch_offset + 0x104] = b"NCCH"
+        synthetic_ncsd[ncch_offset + 0x118:ncch_offset + 0x120] = int(
+            "00040000001B5000", 16
+        ).to_bytes(8, "little")
+        self.image_path.write_bytes(synthetic_ncsd)
         self.work_directory = self.work / "processing"
 
         header = bytearray(0x208)
@@ -44,6 +53,31 @@ class Remote3DSIntakeTests(unittest.TestCase):
             f"(out/'code.bin').write_bytes(Path({str(self.code_fixture)!r}).read_bytes())\n",
             encoding="utf-8",
         )
+
+    def test_extract_container_title_id_from_ncsd_ncch_header(self):
+        self.assertEqual(
+            "00040000001b5000",
+            intake.extract_container_title_id(self.image_path, "cci", 0),
+        )
+
+    def test_cia_container_title_id_is_not_claimed_without_tmd_parser(self):
+        self.assertIsNone(intake.extract_container_title_id(self.image_path, "cia", 0))
+
+    def test_ncsd_title_id_rejects_invalid_magic(self):
+        invalid = self.work / "invalid.3ds"
+        invalid.write_bytes(b"X" * 0x1000)
+        with self.assertRaisesRegex(intake.IntakeError, "NCSD header"):
+            intake.extract_container_title_id(invalid, "3ds", 0)
+
+    def test_ncsd_title_id_rejects_absent_partition_and_bad_index(self):
+        no_partition = self.work / "no-partition.cci"
+        empty = bytearray(0x1000)
+        empty[0x100:0x104] = b"NCSD"
+        no_partition.write_bytes(empty)
+        with self.assertRaisesRegex(intake.IntakeError, "partition is absent"):
+            intake.extract_container_title_id(no_partition, "cci", 0)
+        with self.assertRaisesRegex(intake.IntakeError, "index must be from 0 to 7"):
+            intake.extract_container_title_id(self.image_path, "cci", 8)
 
     def test_format_mapping(self):
         self.assertEqual(("3ds", "ncsd"), intake.normalize_format(".3DS"))
@@ -155,6 +189,9 @@ class Remote3DSIntakeTests(unittest.TestCase):
         )
         self.assertEqual("pass", result["status"])
         self.assertEqual(".3ds", result["format"])
+        self.assertTrue(result["container_title_id_supplied"])
+        self.assertEqual("matched", result["container_title_id_match"])
+        self.assertEqual("base", result["container_title_kind"])
         self.assertEqual(0x80, result["text_size_bytes"])
         self.assertTrue(result["no_game_bytes_or_disassembly_uploaded"])
 
