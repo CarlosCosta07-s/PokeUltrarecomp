@@ -28,13 +28,24 @@ No Linux/WSL use caminhos locais equivalentes. Um Program ID desconhecido é rec
 
 O JSON registra os hashes SHA-256, alocações e endereços virtuais, avisos e a confirmação de que os segmentos de arquivo no ELF preservam os bytes da entrada. A saída precisa permanecer privada e não deve ser enviada ao GitHub ou aos workflows.
 
-## 3. Encontrar uma primeira função real
+## 3. Conferir um intervalo com Capstone
+
+O repositório também inclui tools/disassemble_retail_range.py. Instale as dependências locais de análise (Capstone é fixado em tools/requirements-analysis.txt) e selecione um intervalo que você já confirmou pertencer ao segmento .text:
+
+    python -m pip install -r tools/requirements-analysis.txt
+    python tools/disassemble_retail_range.py --target ultra-sun --exheader "C:/local/exheader.bin" --code "C:/local/code.bin" --state arm --start-address 0x00100000 --byte-count 0x20 --report "C:/local-analysis/range.json"
+
+O endereço e a quantidade acima são somente exemplos sintáticos; substitua-os por valores confirmados no seu próprio alvo. A ferramenta exige alinhamento ARM (4 bytes) ou Thumb (2 bytes), respeita o tamanho lógico de .text, requer Program ID reconhecido por padrão e falha se Capstone não decodificar exatamente todo o intervalo. Para uma identidade não reconhecida, só use --allow-unverified-target após investigação manual.
+
+O relatório contém os bytes de cada instrução, mnemônicos e operandos. Capstone serve como decodificador independente, mas não descobre limites de função e não foi configurado aqui para provar que cada instrução é permitida pelo ARM11. Não decodifique cegamente regiões que possam conter tabelas ou pools de literais; escolha apenas intervalos cuja origem e estado já foram investigados. Mantenha o JSON no diretório privado local.
+
+## 4. Encontrar uma primeira função real
 
 Abra o ELF no Ghidra ou configure localmente uma ferramenta compatível. Comece por uma função pequena e isolada. Confirme independentemente endereço, limite, estado ARM/Thumb, pools de literais, fluxo de controle, chamadas e referências; um decodificador independente como Capstone pode ajudar a conferir a decodificação. Não trate uma varredura linear de toda a região .text como código, pois ela pode conter dados e literais.
 
 Registre localmente o alvo e a revisão declarados, hashes, endereço virtual, estado de instrução, limites aceitos, chamadas, referências, entradas/saídas e efeitos observáveis. Só depois escolha uma sequência real controlada e expanda o tradutor para os encodings observados. A primeira meta é traduzir uma função real pequena com limites e semântica verificados de forma independente e, então, comparar a função reconstruída como C compilado nativamente. Ainda não há uma função real do jogo validada neste repositório.
 
-## 4. Arquivos privados
+## 5. Arquivos privados
 
 Não envie ROMs, CIA/3DS/CXI, .code, ExHeader, ELF gerado, recursos extraídos, chaves ou relatórios brutos de desassemblagem para commits, issues, releases, GitHub Pages, CI ou artefatos. As regras de .gitignore ajudam, mas não substituem a conferência manual do conteúdo e do estado do Git.
 
