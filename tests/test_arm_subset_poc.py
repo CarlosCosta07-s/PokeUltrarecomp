@@ -94,6 +94,9 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(("ldrh_imm", 0, 1, 4, True), poc.decode_word(0xE1D100B4))
         self.assertEqual(("strh_imm", 2, 3, 8, True), poc.decode_word(0xE1C320B8))
         self.assertEqual(("ldrh_imm", 0, 1, 4, False), poc.decode_word(0xE15100B4))
+        self.assertEqual(("ldrsb_imm", 0, 1, 4, True), poc.decode_word(0xE1D100D4))
+        self.assertEqual(("ldrsh_imm", 0, 1, 4, True), poc.decode_word(0xE1D100F4))
+        self.assertEqual(("ldrsh_imm", 0, 1, 4, False), poc.decode_word(0xE15100F4))
 
     def test_rejects_unsupported_a32_single_and_halfword_data_transfer_forms(self):
         cases = (
@@ -104,17 +107,19 @@ class DecoderTests(unittest.TestCase):
             (0xE5940004, "base register r4"),
             (0xE19100B2, "register-offset halfword memory access"),
             (0xE0D100B4, "post-indexed or writeback halfword memory access"),
-            (0xE1F100B4, "post-indexed or writeback halfword memory access"),
+            (0xE1F100B4, "post-indexed or writeback halfword/signed memory access"),
             (0xE1D140B4, "destination register r4"),
             (0xE1D400B4, "base register r4"),
-            (0xE1D000D0, "signed or doubleword A32 extra memory transfer"),
+            (0xE1D00090, "reserved or doubleword A32 extra memory transfer"),
+            (0xE1C100D4, "signed-byte store encoding is reserved"),
+            (0xE1C100F4, "signed-halfword store encoding is reserved"),
         )
         for word, message in cases:
             with self.subTest(word=f"0x{word:08X}"), self.assertRaisesRegex(poc.UnsupportedInstruction, message):
                 poc.decode_word(word)
 
     def test_translator_requires_explicit_memory_model_for_all_supported_memory_widths(self):
-        for word in (0xE5802004, 0xE5C02004, 0xE1C020B4):
+        for word in (0xE5802004, 0xE5C02004, 0xE1C020B4, 0xE1D020D4, 0xE1D020F4):
             with self.subTest(word=f"0x{word:08X}"), self.assertRaisesRegex(poc.UnsupportedInstruction, "runtime_memory_io=True"):
                 poc.translate([word, 0xE12FFF1E])
 
@@ -432,6 +437,54 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "a32_bounded_halfword_memory.c"
             exe = Path(directory) / ("a32_bounded_halfword_memory.exe" if os.name == "nt" else "a32_bounded_halfword_memory")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_signed_byte_and_halfword_loads_sign_extend_in_bounded_memory(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 signed-load proof requires cc, gcc, or clang")
+        generated = poc.translate(
+            [0xE1D030D5, 0xE1D020F2, 0xE12FFF1E],  # LDRSB r3,[r0,#5]; LDRSH r2,[r0,#2]; BX LR
+            max_execution_steps=8,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        )
+        harness = generated + chr(10) + """
+#include <stddef.h>
+int main(void) {
+    uint32_t registers[4] = { UINT32_C(0x1000), 0U, 0U, 0U };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t memory[16] = {0};
+    memory[2] = UINT8_C(0x00);
+    memory[3] = UINT8_C(0x80); /* signed halfword: -32768 */
+    memory[5] = UINT8_C(0xFE); /* signed byte: -2 */
+    uint8_t flags = 0U, status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = synthetic_entry_bounded(registers, UINT8_C(0xB), &flags, &steps, &status,
+        output, memory, UINT32_C(0x1000), (uint32_t)sizeof(memory));
+    if (!(result == UINT32_C(0x1000) && status == UINT8_C(0) && steps == UINT32_C(3)
+        && flags == UINT8_C(0xB) && output[2] == UINT32_C(0xFFFF8000)
+        && output[3] == UINT32_C(0xFFFFFFFE))) return 1;
+
+    memory[2] = UINT8_C(0x34);
+    memory[3] = UINT8_C(0x12); /* positive halfword: 0x1234 */
+    memory[5] = UINT8_C(0x7E); /* positive byte: 126 */
+    flags = 0U; status = UINT8_C(0xFF); steps = 0U;
+    result = synthetic_entry_bounded(registers, UINT8_C(0x4), &flags, &steps, &status,
+        output, memory, UINT32_C(0x1000), (uint32_t)sizeof(memory));
+    if (!(result == UINT32_C(0x1000) && status == UINT8_C(0) && steps == UINT32_C(3)
+        && flags == UINT8_C(0x4) && output[2] == UINT32_C(0x1234)
+        && output[3] == UINT32_C(0x7E))) return 2;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_signed_memory.c"
+            exe = Path(directory) / ("a32_signed_memory.exe" if os.name == "nt" else "a32_signed_memory")
             src.write_text(harness, encoding="utf-8")
             compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
