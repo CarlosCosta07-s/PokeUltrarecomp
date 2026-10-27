@@ -88,6 +88,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.
 - [x] Executar um preflight para uma imagem CCI autorizada de Ultra Sun em runner temporário, com resultado redigido e sem artifact de jogo (workflow [#40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483)). A identidade exata da revisão ainda não foi comprovada.
 - [x] Executar uma contagem heurística agregada de padrões comuns de prólogo no segmento `.text` de Ultra Sun: 25.019 ocorrências candidatas. Isso não equivale ao número de funções e pode incluir dados/padrões coincidentes.
+- [x] Refinar a triagem com Capstone: 12.752 candidatos alcançaram linearmente um retorno comum dentro de 512 bytes/96 instruções; 3.803 chegaram ao retorno em até 16 instruções. A leitura não segue o grafo de controle e esses totais não representam funções validadas.
 - [x] Criar um inventário heurístico agregado de padrões comuns de prólogo ARM/Thumb, com saída sanitizada e testes sintéticos; isso não substitui a identificação manual de funções reais.
 - [ ] Validar separadamente uma entrada autorizada de Ultra Moon.
 - [ ] Identificar e confirmar manualmente limites/estados de funções ARM/Thumb reais, sem reutilizar fontes cuja licença não está confirmada.
