@@ -90,6 +90,7 @@ O subconjunto coberto é:
 - Loads/stores por registrador: `STR/LDR`, `STRH/LDRH`, `STRB/LDRB`, `LDRSB` e `LDRSH`.
 - Loads/stores com deslocamento imediato: word, halfword e byte (`STR/LDR`, `STRH/LDRH`, `STRB/LDRB`).
 - `LDR Rd, [PC, #imm]` (literal): usa o endereço de entrada Thumb informado pelo host, calcula `Align(entry + índice*2 + 4, 4) + imm*4`, verifica overflow de endereço e limites do buffer e só então lê quatro bytes little-endian. Exige endereço de entrada halfword-aligned.
+- Transferência de vários registradores: `LDMIA` e `STMIA`, transferindo registradores da lista em ordem crescente. A região total é verificada antes de qualquer leitura/gravação; `STMIA` atualiza a base, enquanto `LDMIA` suprime o write-back quando a base está na lista. Por segurança, o subconjunto recusa `STMIA` quando a base está na lista.
 
 Os acessos são emitidos bytewise em little-endian. O código verifica a validade dos argumentos, o intervalo de endereço de 32 bits, os limites do buffer e o alinhamento natural de acessos multibyte, além de usar código de status explícito: 0 (retorno), 1 (orçamento esgotado), 2 (mapeamento/entrada inválida), 3 (fora da região) e 4 (desalinhamento). O `PokeNativeCall` da ABI C versão 2 carrega o endereço de entrada necessário ao literal. Testes verificam falhas de faixa, desalinhamento e overflow sem leitura fora do buffer nem alteração do registrador de destino.
 
