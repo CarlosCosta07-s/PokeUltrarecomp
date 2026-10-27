@@ -40,16 +40,16 @@ MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_r
 SUPPORTED_NATIVE_MEMORY_OPS = frozenset((
     "str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg",
     "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm",
-    "strh_imm", "ldrh_imm",
+    "strh_imm", "ldrh_imm", "str_sp", "ldr_sp",
 ))
 SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS = frozenset(("stmia", "ldmia"))
 MEMORY_ACCESS_WIDTHS = {
     "str_reg": 4, "ldr_reg": 4, "str_imm": 4, "ldr_imm": 4,
     "strh_reg": 2, "ldrh_reg": 2, "strh_imm": 2, "ldrh_imm": 2,
     "strb_reg": 1, "ldrsb_reg": 1, "ldrb_reg": 1, "ldrsh_reg": 2,
-    "strb_imm": 1, "ldrb_imm": 1,
+    "strb_imm": 1, "ldrb_imm": 1, "str_sp": 4, "ldr_sp": 4,
 }
-MEMORY_STORE_OPS = frozenset(("str_reg", "strh_reg", "strb_reg", "str_imm", "strb_imm", "strh_imm"))
+MEMORY_STORE_OPS = frozenset(("str_reg", "strh_reg", "strb_reg", "str_imm", "strb_imm", "strh_imm", "str_sp"))
 ADDRESS_OPS = ("adr", "add_sp_imm", "add_sp", "sub_sp")
 
 
@@ -326,9 +326,10 @@ def translate(
 
     ``runtime_state_io=True`` exposes r0-r7 and NZCV at runtime.
     ``runtime_memory_io=True`` adds a bounded guest-memory byte region and
-    emits native C loads/stores for a conservative Thumb-1 subset. Unsupported
-    memory forms, invalid addresses, misaligned multi-byte accesses and invalid
-    entry state fail explicitly; no interpreter or fallback exists.
+    emits native C loads/stores for a conservative Thumb-1 subset, including
+    PC-literal and SP-relative word accesses with explicit host entry-PC/SP
+    inputs. Unsupported memory forms, invalid addresses, misaligned multi-byte
+    accesses and invalid entry state fail explicitly; no interpreter or fallback exists.
     This is a synthetic candidate model, not a general ARM ABI proof.
     """
     if not isinstance(runtime_state_io, bool):
@@ -356,6 +357,8 @@ def translate(
 
     decoded = [decode_halfword(word) for word in halfwords]
     contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
+    contains_sp_memory = any(inst[0] in ("str_sp", "ldr_sp") for inst in decoded)
+    contains_invalid_state_access = contains_literal_load or contains_sp_memory
     contains_alignment_sensitive_memory = any(
         (inst[0] in MEMORY_ACCESS_WIDTHS and MEMORY_ACCESS_WIDTHS[inst[0]] > 1)
         or inst[0] in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS
@@ -449,7 +452,8 @@ def translate(
             "uint32_t thumb_entry_memory_bounded(const uint32_t *registers_in, "
             "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
             "uint8_t *execution_status_out, uint32_t *registers_out, uint8_t *memory_bytes, "
-            "uint32_t guest_memory_base, uint32_t guest_memory_size, uint32_t guest_entry_address)"
+            "uint32_t guest_memory_base, uint32_t guest_memory_size, "
+            "uint32_t guest_entry_address, uint32_t guest_sp)"
         )
     elif runtime_state_io:
         signature = (
@@ -485,6 +489,7 @@ def translate(
     ]
     if runtime_memory_io:
         lines.append("    (void)guest_entry_address;")
+        lines.append("    (void)guest_sp;")
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory_bytes == 0 || guest_memory_size == 0U || "
             "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))) {",
@@ -793,6 +798,9 @@ def translate(
             if op.endswith("_reg"):
                 _, rd, rn, rm = inst
                 address_expression = f"(uint32_t)(r{rn} + r{rm})"
+            elif op in ("str_sp", "ldr_sp"):
+                _, rd, immediate_offset = inst
+                address_expression = None
             else:
                 _, rd, rn, immediate_offset = inst
                 address_expression = f"(uint32_t)(r{rn} + UINT32_C({immediate_offset}))"
@@ -804,7 +812,18 @@ def translate(
             if op in MEMORY_STORE_OPS:
                 value = f"thumb_memory_store_value_{suffix}"
                 lines.append("    {")
-                lines.append(f"        const uint32_t {address} = {address_expression};")
+                if address_expression is None:
+                    address_wide = f"thumb_sp_address_wide_{suffix}"
+                    lines.append(
+                        f"        const uint64_t {address_wide} = (uint64_t)guest_sp + UINT64_C({immediate_offset});"
+                    )
+                    lines.append(
+                        f"        if ({address_wide} > UINT64_C(0xFFFFFFFF) || "
+                        f"{address_wide} + UINT64_C({width}) > UINT64_C(0x100000000)) goto thumb_invalid_state;"
+                    )
+                    lines.append(f"        const uint32_t {address} = (uint32_t){address_wide};")
+                else:
+                    lines.append(f"        const uint32_t {address} = {address_expression};")
                 if width > 1:
                     lines.append(f"        if (({address} & UINT32_C({width - 1})) != 0U) goto thumb_alignment_fault;")
                 lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
@@ -823,7 +842,18 @@ def translate(
             else:
                 loaded = f"thumb_memory_loaded_{suffix}"
                 lines.append("    {")
-                lines.append(f"        const uint32_t {address} = {address_expression};")
+                if address_expression is None:
+                    address_wide = f"thumb_sp_address_wide_{suffix}"
+                    lines.append(
+                        f"        const uint64_t {address_wide} = (uint64_t)guest_sp + UINT64_C({immediate_offset});"
+                    )
+                    lines.append(
+                        f"        if ({address_wide} > UINT64_C(0xFFFFFFFF) || "
+                        f"{address_wide} + UINT64_C({width}) > UINT64_C(0x100000000)) goto thumb_invalid_state;"
+                    )
+                    lines.append(f"        const uint32_t {address} = (uint32_t){address_wide};")
+                else:
+                    lines.append(f"        const uint32_t {address} = {address_expression};")
                 if width > 1:
                     lines.append(f"        if (({address} & UINT32_C({width - 1})) != 0U) goto thumb_alignment_fault;")
                 lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
@@ -946,7 +976,7 @@ def translate(
                     "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
                     "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
                 ))
-            if contains_literal_load:
+            if contains_invalid_state_access:
                 lines.extend((
                     "    goto thumb_exit;",
                     "thumb_invalid_state: ;",

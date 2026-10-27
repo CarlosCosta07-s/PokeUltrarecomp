@@ -783,6 +783,81 @@ class ThumbLiteralLoadTests(unittest.TestCase):
                 with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "literal load"):
                     poc.translate(words)
 
+    def test_native_sp_relative_load_store_use_host_sp_and_fail_closed(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native SP-relative Thumb proof requires cc, gcc, or clang")
+        source = poc.translate(
+            [0x9101, 0x9A01, 0x4770],
+            initial_nzcv=0x9,
+            max_execution_steps=3,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_memory_bounded(", "uint32_t thumb_sp_memory(")
+        harness = source + r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0x5A), UINT32_C(0x12345678), UINT32_C(0xAAAAAAAA),
+        3U, 4U, 5U, 6U, 7U
+    };
+    uint32_t output[8] = {0U};
+    uint8_t memory[24];
+    for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U;
+    const uint32_t result = thumb_sp_memory(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0x100C)
+    );
+    if (result != UINT32_C(0x5A) || status != UINT8_C(0)
+        || steps != UINT32_C(3) || nzcv != UINT8_C(0x9)
+        || output[2] != UINT32_C(0x12345678)) return 1;
+    if (memory[16] != UINT8_C(0x78) || memory[17] != UINT8_C(0x56)
+        || memory[18] != UINT8_C(0x34) || memory[19] != UINT8_C(0x12)) return 2;
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+
+    const uint32_t range_input[8] = {
+        UINT32_C(0x5A), UINT32_C(0xCAFEBABE), UINT32_C(0xAAAAAAAA),
+        3U, 4U, 5U, 6U, 7U
+    };
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)thumb_sp_memory(
+        range_input, UINT8_C(0x9), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0x1018)
+    );
+    if (status != UINT8_C(3) || steps != UINT32_C(1)
+        || output[2] != UINT32_C(0xAAAAAAAA)
+        || memcmp(before, memory, sizeof(memory)) != 0) return 3;
+
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)thumb_sp_memory(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0x100D)
+    );
+    if (status != UINT8_C(4) || steps != UINT32_C(1)
+        || memcmp(before, memory, sizeof(memory)) != 0) return 4;
+
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)thumb_sp_memory(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0xFFFFFFFC)
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(1)
+        || memcmp(before, memory, sizeof(memory)) != 0) return 5;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_sp_memory.c"
+            exe = Path(directory) / ("thumb_sp_memory.exe" if os.name == "nt" else "thumb_sp_memory")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"native SP-relative loads/stores or fault checks failed: {run.stdout}{run.stderr}")
+
     def test_native_literal_load_uses_aligned_pc_and_bounded_memory(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
@@ -809,7 +884,7 @@ int main(void) {
     uint32_t steps = 0U;
     const uint32_t result = thumb_literal_memory(
         input, UINT8_C(0xB), &nzcv, &steps, &status, output,
-        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1000)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1000), UINT32_C(0)
     );
     if (result != 0U || status != UINT8_C(0) || steps != UINT32_C(3)
         || nzcv != UINT8_C(7) || output[1] != UINT32_C(0x12345678)) return 1;
@@ -819,7 +894,7 @@ int main(void) {
     status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
     (void)thumb_literal_memory(
         input, UINT8_C(0xB), &nzcv, &steps, &status, output,
-        memory, UINT32_C(0x1000), UINT32_C(8), UINT32_C(0x1000)
+        memory, UINT32_C(0x1000), UINT32_C(8), UINT32_C(0x1000), UINT32_C(0)
     );
     if (status != UINT8_C(3) || steps != UINT32_C(2)
         || output[1] != input[1] || memcmp(before, memory, sizeof(memory)) != 0) return 2;
@@ -827,14 +902,14 @@ int main(void) {
     status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
     (void)thumb_literal_memory(
         input, UINT8_C(0xB), &nzcv, &steps, &status, output,
-        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1001)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1001), UINT32_C(0)
     );
     if (status != UINT8_C(2) || steps != 0U) return 3;
 
     status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
     (void)thumb_literal_memory(
         input, UINT8_C(0xB), &nzcv, &steps, &status, output,
-        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0xFFFFFFFC)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0xFFFFFFFC), UINT32_C(0)
     );
     if (status != UINT8_C(2) || steps != UINT32_C(2)) return 4;
     return 0;
@@ -1008,13 +1083,12 @@ int main(void) {
         with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "requires at least one supported memory"):
             poc.translate([0x2001, 0x4770], max_execution_steps=2, runtime_state_io=True, runtime_memory_io=True)
         for word in (0x9000, 0x9800):
-            with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
-                poc.UnsupportedThumbInstruction, "outside the limited native memory model"
-            ):
-                poc.translate(
+            with self.subTest(word=f"0x{word:04X}"):
+                source = poc.translate(
                     [word, 0x4770], max_execution_steps=2,
                     runtime_state_io=True, runtime_memory_io=True,
                 )
+                self.assertIn("uint32_t guest_sp)", source)
 
     def test_stmia_base_register_in_register_list_is_rejected_conservatively(self):
         with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "STMIA base register"):

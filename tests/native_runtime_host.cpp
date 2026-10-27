@@ -274,6 +274,58 @@ int main()
         return fail("PC-relative literal PC overflow was not rejected");
     }
 
+    std::array<uint8_t, 24> sp_bytes{};
+    sp_bytes.fill(UINT8_C(0xEE));
+    PokeNativeMemory sp_memory{};
+    sp_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+    sp_memory.guest_base = UINT32_C(0x1000);
+    sp_memory.size = static_cast<uint32_t>(sp_bytes.size());
+    sp_memory.bytes = sp_bytes.data();
+    PokeNativeCall sp_call{};
+    sp_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    sp_call.guest_sp = UINT32_C(0x100C);
+    sp_call.registers[0] = UINT32_C(0x5A);
+    sp_call.registers[1] = UINT32_C(0x12345678);
+    sp_call.registers[2] = UINT32_C(0xAAAAAAAA);
+    sp_call.initial_nzcv = UINT8_C(0x9);
+    PokeNativeResult sp_result{};
+    if (poke_native_execute_thumb_sp_memory(&sp_call, &sp_memory, &sp_result)
+        != POKE_NATIVE_ABI_OK
+        || sp_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || sp_result.return_value != UINT32_C(0x5A) || sp_result.steps_executed != UINT32_C(3)
+        || sp_result.nzcv != UINT8_C(0x9)
+        || sp_result.registers[2] != UINT32_C(0x12345678)
+        || sp_bytes[16] != UINT8_C(0x78) || sp_bytes[17] != UINT8_C(0x56)
+        || sp_bytes[18] != UINT8_C(0x34) || sp_bytes[19] != UINT8_C(0x12)) {
+        return fail("SP-relative STR/LDR failed through the versioned C ABI");
+    }
+    std::cout << "PASS: C++20 host calls Thumb SP-relative STR/LDR through the C ABI\n";
+    const auto sp_bytes_before_fault = sp_bytes;
+    sp_call.guest_sp = UINT32_C(0x1018);
+    sp_call.registers[1] = UINT32_C(0xCAFEBABE);
+    sp_call.registers[2] = UINT32_C(0xAAAAAAAA);
+    set_sentinel(sp_result);
+    if (poke_native_execute_thumb_sp_memory(&sp_call, &sp_memory, &sp_result)
+        != POKE_NATIVE_ABI_OK || sp_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
+        || sp_result.steps_executed != UINT32_C(1)
+        || sp_result.registers[2] != UINT32_C(0xAAAAAAAA) || sp_bytes != sp_bytes_before_fault) {
+        return fail("SP-relative out-of-range STR changed guest memory or destination state");
+    }
+    sp_call.guest_sp = UINT32_C(0x100D);
+    set_sentinel(sp_result);
+    if (poke_native_execute_thumb_sp_memory(&sp_call, &sp_memory, &sp_result)
+        != POKE_NATIVE_ABI_OK || sp_result.execution_status != POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
+        || sp_result.steps_executed != UINT32_C(1) || sp_bytes != sp_bytes_before_fault) {
+        return fail("SP-relative misalignment was not rejected atomically");
+    }
+    sp_call.guest_sp = UINT32_C(0xFFFFFFFC);
+    set_sentinel(sp_result);
+    if (poke_native_execute_thumb_sp_memory(&sp_call, &sp_memory, &sp_result)
+        != POKE_NATIVE_ABI_OK || sp_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || sp_result.steps_executed != UINT32_C(1) || sp_bytes != sp_bytes_before_fault) {
+        return fail("SP-relative 32-bit address overflow was not rejected atomically");
+    }
+
     guest_bytes.fill(UINT8_C(0xEE));
     PokeNativeCall multiple_call{};
     multiple_call.abi_version = POKE_NATIVE_ABI_VERSION;
