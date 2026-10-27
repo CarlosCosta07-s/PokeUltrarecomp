@@ -471,6 +471,10 @@ def classify_arm_decode_rejection(message: str) -> str:
             "byte memory access is unsupported",
             "register-offset memory access is unsupported",
             "post-indexed or writeback memory access is unsupported",
+            "register-offset halfword/signed memory access is unsupported",
+            "post-indexed or writeback halfword/signed memory access is unsupported",
+            "signed-byte store encoding is reserved and unsupported",
+            "signed-halfword store encoding is reserved and unsupported",
         )
     ):
         return "unsupported-operand-class"
