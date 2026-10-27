@@ -136,7 +136,7 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "register Operand2 shifts"):
             poc.decode_word(0xE0800081)  # ADD r0,r0,r1,LSL #1
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE1B00001)  # MOVS r0,r1
+            poc.decode_word(0xE3B00001)  # MOVS immediate remains outside this register-only extension
 
     def test_rejects_register_operand_registers_outside_r0_to_r3(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
