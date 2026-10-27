@@ -34,11 +34,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install native build tools (Ubuntu)
+      - name: Ensure native build tools (Ubuntu)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes build-essential cmake ninja-build
+          if ! command -v cc >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes build-essential cmake ninja-build
+          fi
+          cc --version | head -n 1
+          cmake --version
+          ninja --version
 
       - name: Configure and verify with CMake/Ninja (Ubuntu)
         if: runner.os == 'Linux'

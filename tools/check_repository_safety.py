@@ -50,6 +50,12 @@ REQUIRED_FILES = (
     "tests/test_arm_flags.py",
     "tools/arm_differential_poc.py",
     "tests/test_arm_differential_poc.py",
+    "CMakeLists.txt",
+    ".github/workflows/native-pipeline.yml",
+    "tools/run_native_poc_pipeline.py",
+    "tools/generate_native_abi_fixtures.py",
+    "include/pokeultrarecomp/native_abi.h",
+    "tests/native_runtime_host.cpp",
 )
 
 # These extensions commonly contain title images, executable modules, or
