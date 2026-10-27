@@ -97,6 +97,7 @@ jobs:
 
       - name: Inspect user-provided image in temporary storage
         env:
+          PYTHONUNBUFFERED: "1"
           POKEULTRARECOMP_SOURCE_URL: ${{ secrets.POKEULTRARECOMP_SOURCE_URL }}
           TARGET: ${{ inputs.target || 'ultra-sun' }}
           IMAGE_FORMAT: ${{ inputs.format || 'cci' }}
