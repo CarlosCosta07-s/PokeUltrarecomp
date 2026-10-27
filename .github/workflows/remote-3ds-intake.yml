@@ -1,6 +1,13 @@
 name: Remote Nintendo 3DS container intake
 
 on:
+  # One-time push trigger is narrowly gated to run the requested intake after
+  # the Drive downloader fix. Later pushes do not download the user's image.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/remote-3ds-intake.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -31,6 +38,7 @@ permissions:
 
 jobs:
   inspect-container:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run one-time Ultra Sun CCI intake after Google Drive downloader fix' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -65,9 +73,9 @@ jobs:
       - name: Inspect user-provided image in temporary storage
         env:
           POKEULTRARECOMP_SOURCE_URL: ${{ secrets.POKEULTRARECOMP_SOURCE_URL }}
-          TARGET: ${{ inputs.target }}
-          IMAGE_FORMAT: ${{ inputs.format }}
-          NCCH_INDEX: ${{ inputs.ncch_index }}
+          TARGET: ${{ inputs.target || 'ultra-sun' }}
+          IMAGE_FORMAT: ${{ inputs.format || 'cci' }}
+          NCCH_INDEX: ${{ inputs.ncch_index || '0' }}
         shell: bash
         run: |
           set -euo pipefail
