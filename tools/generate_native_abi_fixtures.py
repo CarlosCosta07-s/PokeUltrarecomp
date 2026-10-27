@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Generate synthetic ARM/Thumb C fixtures with a stable C ABI adapter.
+
+This is build-time code generation only. It does not read game assets or produce
+an interpreter, JIT, emulator, or fallback path for unsupported instructions.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+import arm_subset_poc  # noqa: E402
+import thumb_subset_poc  # noqa: E402
+
+A32_WORDS = (
+    0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008,
+    0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E,
+)
+THUMB_HALFWORDS = (0x200C, 0x3808, 0x3003, 0x2807, 0x4770)
+
+A32_ADAPTER = r"""
+#include <stddef.h>
+#include <stdint.h>
+#include "pokeultrarecomp/native_abi.h"
+
+int poke_native_execute_a32(const PokeNativeCall *call, PokeNativeResult *result)
+{
+    uint32_t registers_out[4] = {0U, 0U, 0U, 0U};
+    uint8_t nzcv_out = UINT8_C(0xAA);
+    uint8_t execution_status = UINT8_C(0xAA);
+    uint32_t steps_executed = 0U;
+    PokeNativeResult completed = {0};
+
+    if (call == NULL || result == NULL) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+    if (call->abi_version != POKE_NATIVE_ABI_VERSION) {
+        return POKE_NATIVE_ABI_VERSION_MISMATCH;
+    }
+    if (call->initial_nzcv > UINT8_C(15)) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+
+    const uint32_t return_value = poke_a32_generated_entry(
+        call->registers, call->initial_nzcv, &nzcv_out, &steps_executed,
+        &execution_status, registers_out
+    );
+    if (execution_status != UINT8_C(0)) {
+        return POKE_NATIVE_ABI_EXECUTION_FAILED;
+    }
+
+    completed.abi_version = POKE_NATIVE_ABI_VERSION;
+    for (unsigned int index = 0U; index < POKE_NATIVE_REGISTER_COUNT; ++index) {
+        completed.registers[index] = call->registers[index];
+    }
+    for (unsigned int index = 0U; index < 4U; ++index) {
+        completed.registers[index] = registers_out[index];
+    }
+    completed.return_value = return_value;
+    completed.steps_executed = steps_executed;
+    completed.nzcv = nzcv_out;
+    completed.execution_status = execution_status;
+    *result = completed;
+    return POKE_NATIVE_ABI_OK;
+}
+"""
+
+THUMB_ADAPTER = r"""
+#include <stddef.h>
+#include <stdint.h>
+#include "pokeultrarecomp/native_abi.h"
+
+int poke_native_execute_thumb(const PokeNativeCall *call, PokeNativeResult *result)
+{
+    uint32_t registers_out[POKE_NATIVE_REGISTER_COUNT] = {0U};
+    uint8_t nzcv_out = UINT8_C(0xAA);
+    uint8_t execution_status = UINT8_C(0xAA);
+    uint32_t steps_executed = 0U;
+    PokeNativeResult completed = {0};
+
+    if (call == NULL || result == NULL) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+    if (call->abi_version != POKE_NATIVE_ABI_VERSION) {
+        return POKE_NATIVE_ABI_VERSION_MISMATCH;
+    }
+    if (call->initial_nzcv > UINT8_C(15)) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+
+    const uint32_t return_value = poke_thumb_generated_entry(
+        call->registers, call->initial_nzcv, &nzcv_out, &steps_executed,
+        &execution_status, registers_out
+    );
+    if (execution_status != UINT8_C(0)) {
+        return POKE_NATIVE_ABI_EXECUTION_FAILED;
+    }
+
+    completed.abi_version = POKE_NATIVE_ABI_VERSION;
+    for (unsigned int index = 0U; index < POKE_NATIVE_REGISTER_COUNT; ++index) {
+        completed.registers[index] = registers_out[index];
+    }
+    completed.return_value = return_value;
+    completed.steps_executed = steps_executed;
+    completed.nzcv = nzcv_out;
+    completed.execution_status = execution_status;
+    *result = completed;
+    return POKE_NATIVE_ABI_OK;
+}
+"""
+
+
+def generate_a32() -> str:
+    source = arm_subset_poc.translate(
+        list(A32_WORDS),
+        initial_nzcv=0,
+        max_execution_steps=len(A32_WORDS),
+        runtime_state_io=True,
+    )
+    old_signature = "uint32_t synthetic_entry_bounded("
+    if old_signature not in source:
+        raise RuntimeError("A32 generated function signature changed; update the ABI adapter deliberately")
+    source = source.replace(old_signature, "uint32_t poke_a32_generated_entry(", 1)
+    return source + "\n" + A32_ADAPTER
+
+
+def generate_thumb() -> str:
+    source = thumb_subset_poc.translate(
+        list(THUMB_HALFWORDS),
+        initial_nzcv=0,
+        max_execution_steps=len(THUMB_HALFWORDS),
+        runtime_state_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_bounded("
+    if old_signature not in source:
+        raise RuntimeError("Thumb generated function signature changed; update the ABI adapter deliberately")
+    source = source.replace(old_signature, "uint32_t poke_thumb_generated_entry(", 1)
+    return source + "\n" + THUMB_ADAPTER
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        outputs = {
+            args.output_dir / "native_a32_generated.c": generate_a32(),
+            args.output_dir / "native_thumb_generated.c": generate_thumb(),
+        }
+        for path, source in outputs.items():
+            path.write_text(source, encoding="utf-8", newline="\n")
+            print(f"Generated synthetic native ABI fixture: {path.name}")
+    except (OSError, RuntimeError, arm_subset_poc.UnsupportedInstruction,
+            thumb_subset_poc.UnsupportedThumbInstruction) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
