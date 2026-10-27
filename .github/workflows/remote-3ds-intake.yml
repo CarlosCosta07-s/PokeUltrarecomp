@@ -1,6 +1,12 @@
 name: Remote Nintendo 3DS container intake
 
 on:
+  # Temporary diagnostic trigger for a single named run; removed immediately afterward.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/remote-3ds-intake.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -31,6 +37,7 @@ permissions:
 
 jobs:
   inspect-container:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run one-time Ultra Sun CCI Ghidra redacted diagnostic' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
