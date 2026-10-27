@@ -406,6 +406,44 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
     return line[:180] or "diagnostic-redacted"
 
 
+ARM_DECODE_REJECTION_FAMILIES = (
+    "branch-with-link",
+    "unsupported-branch-condition",
+    "unsupported-condition-code",
+    "non-immediate-data-processing",
+    "unsupported-flag-setting-form",
+    "noncanonical-cmn-cmp",
+    "register-outside-r0-r3",
+    "noncanonical-mov-mvn",
+    "unsupported-data-processing-opcode",
+    "other-decode-rejection",
+)
+
+
+def classify_arm_decode_rejection(message: str) -> str:
+    """Map private translator errors into fixed safe categories, never emit raw words."""
+    lowered = message.casefold()
+    if "branch-with-link" in lowered or "branch with link" in lowered:
+        return "branch-with-link"
+    if "branch condition is unsupported" in lowered:
+        return "unsupported-branch-condition"
+    if "condition code" in lowered and "unsupported" in lowered:
+        return "unsupported-condition-code"
+    if "not a supported immediate data-processing instruction" in lowered:
+        return "non-immediate-data-processing"
+    if "flag-setting form is unsupported" in lowered:
+        return "unsupported-flag-setting-form"
+    if "canonical cmn" in lowered or "canonical cmp" in lowered or "cmn requires" in lowered or "cmp requires" in lowered:
+        return "noncanonical-cmn-cmp"
+    if "register r" in lowered and "outside r0-r3 subset" in lowered:
+        return "register-outside-r0-r3"
+    if "canonical mov" in lowered or "canonical mvn" in lowered:
+        return "noncanonical-mov-mvn"
+    if "unsupported data-processing opcode" in lowered:
+        return "unsupported-data-processing-opcode"
+    return "other-decode-rejection"
+
+
 def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
     """Screen private Ghidra candidates with the current narrow ARM-to-C subset.
 
@@ -439,6 +477,10 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
     word_pattern = re.compile(r"^0x[0-9A-Fa-f]{8}$")
     seen_addresses: set[str] = set()
     compatible_count = 0
+    rejected_candidate_sequences = 0
+    candidates_with_instruction_decode_rejections = 0
+    sequence_level_rejections = 0
+    rejection_family_counts: dict[str, int] = {}
     syntax_sample: list[str] = []
     max_syntax_sample = 128
 
@@ -489,7 +531,21 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
                 words, max_execution_steps=len(words), runtime_state_io=True
             )
         except ValueError:
-            # Unsupported instruction sequences are ordinary rejections, not failures.
+            # Count only fixed, sanitized decode families for diagnosis. Never
+            # write the candidate address, word, exception text, or C source to logs.
+            rejected_candidate_sequences += 1
+            found_instruction_rejection = False
+            for word in words[:-1]:
+                try:
+                    arm_subset_poc.decode_word(word)
+                except ValueError as exc:
+                    family = classify_arm_decode_rejection(str(exc))
+                    rejection_family_counts[family] = rejection_family_counts.get(family, 0) + 1
+                    found_instruction_rejection = True
+            if found_instruction_rejection:
+                candidates_with_instruction_decode_rejections += 1
+            else:
+                sequence_level_rejections += 1
             continue
 
         compatible_count += 1
@@ -526,6 +582,14 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         "private_candidates_screened": len(candidates),
         "private_candidates_omitted_by_ghidra_cap": omitted,
         "sequences_accepted_by_current_arm_subset_translator": compatible_count,
+        "candidate_sequences_rejected_by_current_arm_subset_translator": rejected_candidate_sequences,
+        "candidate_sequences_with_instruction_decode_rejections": candidates_with_instruction_decode_rejections,
+        "candidate_sequences_rejected_by_sequence_constraints": sequence_level_rejections,
+        "unsupported_instruction_encodings_by_family": {
+            family: rejection_family_counts[family]
+            for family in ARM_DECODE_REJECTION_FAMILIES
+            if rejection_family_counts.get(family, 0) > 0
+        },
         "native_c_syntax_check": syntax_status,
         "native_c_syntax_sample_count": len(syntax_sample),
         "native_semantic_equivalence_verified": False,
