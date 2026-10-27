@@ -19,7 +19,7 @@ class CandidateCensusTests(unittest.TestCase):
         self.code = self.directory / "synthetic.code"
 
         header = bytearray(0x208)
-        header[:8] = b"Synthetic"
+        header[:8] = b"SynthGam"
         header[0x200:0x208] = int("00040000001B5000", 16).to_bytes(8, "little")
         for (address, pages, size), offset in zip(
             ((0x00100000, 1, 0x80), (0x00200000, 1, 0x40), (0x00300000, 1, 0x20)),
