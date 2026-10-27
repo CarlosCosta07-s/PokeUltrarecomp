@@ -310,17 +310,25 @@ def translate(
     initial_nzcv: int = 0,
     max_execution_steps: int | None = None,
     runtime_state_io: bool = False,
+    runtime_memory_io: bool = False,
 ) -> str:
     """Translate a synthetic A32 sequence to standalone C.
 
     By default, registers and NZCV are fixed at translation time, preserving the
     original synthetic POC API. With ``runtime_state_io=True``, bounded C accepts
     entry r0-r3 and NZCV at runtime and returns all four registers plus NZCV,
-    step count and execution status. This is a candidate-range test interface,
-    not the original ARM ABI or proof of equivalence.
+    step count and execution status. ``runtime_memory_io=True`` adds an explicit,
+    bounded byte-region for the supported pre-indexed immediate word LDR/STR forms.
+    Unsupported addresses and misaligned accesses fail explicitly; no interpreter
+    or memory fallback is generated. This remains a synthetic candidate model, not
+    the original ARM ABI or proof of equivalence.
     """
     if not isinstance(runtime_state_io, bool):
         raise UnsupportedInstruction("runtime_state_io must be a bool")
+    if not isinstance(runtime_memory_io, bool):
+        raise UnsupportedInstruction("runtime_memory_io must be a bool")
+    if runtime_memory_io and not runtime_state_io:
+        raise UnsupportedInstruction("runtime_memory_io requires runtime_state_io=True")
     if runtime_state_io and max_execution_steps is None:
         raise UnsupportedInstruction("runtime_state_io requires an explicit execution budget")
     if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
@@ -343,6 +351,18 @@ def translate(
         raise UnsupportedInstruction("sequence must end with BX LR")
     if any(instruction == ("return",) for instruction in decoded[:-1]):
         raise UnsupportedInstruction("instructions after BX LR are unsupported")
+
+    def base_instruction(instruction: tuple[object, ...]) -> tuple[object, ...]:
+        return instruction[2] if instruction[0] == "predicated" else instruction
+
+    contains_memory_access = any(
+        base_instruction(instruction)[0] in ("ldr_imm", "str_imm")
+        for instruction in decoded[:-1]
+    )
+    if contains_memory_access and not runtime_memory_io:
+        raise UnsupportedInstruction(
+            "memory access requires runtime_memory_io=True and an explicit bounded guest-memory region"
+        )
 
     branch_targets: dict[int, int] = {}
     for instruction_index, instruction in enumerate(decoded):
@@ -379,6 +399,8 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("cmn_reg", "cmp_reg", "tst_reg", "teq_reg"):
             used_registers.update((instruction[1], instruction[2]))
+        elif operation in ("ldr_imm", "str_imm"):
+            used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
         used_registers = set(range(4))
@@ -386,11 +408,17 @@ def translate(
     function_signature = (
         "uint32_t synthetic_entry_bounded(const uint32_t *registers_in, "
         "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
-        "uint8_t *execution_status_out, uint32_t *registers_out)"
-        if runtime_state_io else (
-            "uint32_t synthetic_entry_bounded(uint8_t *nzcv_out, "
-            "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
-            if bounded else "uint32_t synthetic_entry(uint8_t *nzcv_out)"
+        "uint8_t *execution_status_out, uint32_t *registers_out, "
+        "uint8_t *memory, uint32_t memory_base, uint32_t memory_size)"
+        if runtime_memory_io else (
+            "uint32_t synthetic_entry_bounded(const uint32_t *registers_in, "
+            "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+            "uint8_t *execution_status_out, uint32_t *registers_out)"
+            if runtime_state_io else (
+                "uint32_t synthetic_entry_bounded(uint8_t *nzcv_out, "
+                "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
+                if bounded else "uint32_t synthetic_entry(uint8_t *nzcv_out)"
+            )
         )
     )
     flag_initializers = (
@@ -415,7 +443,16 @@ def translate(
         function_signature,
         "{",
     ]
-    if runtime_state_io:
+    if runtime_memory_io:
+        lines.extend((
+            "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory == 0 || memory_size == 0U",
+            "        || ((uint64_t)memory_base + (uint64_t)memory_size) > UINT64_C(0x100000000)) {",
+            "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
+            "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+            "        return 0U;",
+            "    }",
+        ))
+    elif runtime_state_io:
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15)) {",
             "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
@@ -426,6 +463,8 @@ def translate(
     lines.extend(flag_initializers)
     if bounded:
         lines.append("    uint32_t execution_steps = 0U;")
+        if runtime_memory_io:
+            lines.append("    uint8_t execution_status = UINT8_C(0);")
     if runtime_state_io:
         lines.extend(f"    uint32_t r{register} = registers_in[{register}];" for register in sorted(used_registers))
     else:
@@ -490,6 +529,38 @@ def translate(
             lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} r{rm});")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+        elif instruction[0] in ("ldr_imm", "str_imm"):
+            _, rd, rn, immediate, add_offset = instruction
+            suffix = f"{len(lines)}"
+            address = f"memory_address_{suffix}"
+            offset_in_region = f"memory_offset_{suffix}"
+            if add_offset:
+                wide_address = f"memory_wide_address_{suffix}"
+                lines.append(f"    uint64_t {wide_address} = (uint64_t)r{rn} + UINT32_C({immediate});")
+                lines.append(f"    if ({wide_address} > UINT64_C(0xFFFFFFFF)) {{ execution_status = UINT8_C(3); goto arm_exit; }}")
+                lines.append(f"    uint32_t {address} = (uint32_t){wide_address};")
+            else:
+                lines.append(f"    if (r{rn} < UINT32_C({immediate})) {{ execution_status = UINT8_C(3); goto arm_exit; }}")
+                lines.append(f"    uint32_t {address} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
+            lines.append(f"    if (({address} & UINT32_C(3)) != 0U) {{ execution_status = UINT8_C(4); goto arm_exit; }}")
+            lines.append(
+                f"    if ({address} < memory_base || ((uint64_t){address} + UINT64_C(4)) > ((uint64_t)memory_base + (uint64_t)memory_size)) {{ execution_status = UINT8_C(3); goto arm_exit; }}"
+            )
+            lines.append(f"    uint32_t {offset_in_region} = {address} - memory_base;")
+            if instruction[0] == "ldr_imm":
+                lines.append(
+                    f"    r{rd} = (uint32_t)memory[{offset_in_region}] "
+                    f"| ((uint32_t)memory[{offset_in_region} + 1U] << 8) "
+                    f"| ((uint32_t)memory[{offset_in_region} + 2U] << 16) "
+                    f"| ((uint32_t)memory[{offset_in_region} + 3U] << 24);"
+                )
+            else:
+                lines.extend((
+                    f"    memory[{offset_in_region}] = (uint8_t)(r{rd} & UINT32_C(0xFF));",
+                    f"    memory[{offset_in_region} + 1U] = (uint8_t)((r{rd} >> 8) & UINT32_C(0xFF));",
+                    f"    memory[{offset_in_region} + 2U] = (uint8_t)((r{rd} >> 16) & UINT32_C(0xFF));",
+                    f"    memory[{offset_in_region} + 3U] = (uint8_t)((r{rd} >> 24) & UINT32_C(0xFF));",
+                ))
         elif instruction[0] == "and":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} & UINT32_C({immediate}));")
@@ -560,7 +631,19 @@ def translate(
         # BX LR is represented by the common C epilogue, which is the target
         # associated with the final guest instruction index.
         lines.append(f"arm_label_{len(decoded) - 1}: ;")
-    if bounded:
+    if runtime_memory_io:
+        lines.extend((
+            f"    if (execution_steps >= UINT32_C({max_execution_steps})) goto arm_budget_exhausted;",
+            "    execution_steps++;",
+            "    goto arm_exit;",
+            "arm_budget_exhausted: ;",
+            "    execution_status = UINT8_C(1);",
+            "    goto arm_exit;",
+            "arm_exit: ;",
+            "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+            "    if (execution_status_out != 0) *execution_status_out = execution_status;",
+        ))
+    elif bounded:
         lines.extend((
             f"    if (execution_steps >= UINT32_C({max_execution_steps})) goto arm_budget_exhausted;",
             "    execution_steps++;",
