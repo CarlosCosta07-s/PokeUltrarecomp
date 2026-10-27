@@ -4,9 +4,21 @@
 
 ## Objetivo
 
-Investigar uma possível porta para Windows de **Pokémon Ultra Sun** e **Pokémon Ultra Moon**, preservando tanto quanto legalmente permitido a lógica e o comportamento dos jogos e estudando como substituir os serviços específicos do Nintendo 3DS por implementações para PC.
+Desenvolver uma porta nativa de **Pokémon Ultra Sun** e **Pokémon Ultra Moon** para Windows e Linux. A direção é recompilar estaticamente o código ARM/Thumb para código nativo de PC e implementar os serviços necessários com um runtime próprio, sem emulação de hardware 3DS, interpretador de instruções ou fallback interpretado.
 
 A estratégia inicial é estudar projetos de reconstrução, descompilação, recompilação e emulação existentes, aproveitar apenas resultados tecnicamente demonstrados e evitar reescritas desnecessárias. A existência de um emulador, de código C/C++ gerado ou de uma cena inicial funcional não prova, por si só, que um jogo foi portado nativamente.
+
+## Direção do porte nativo
+
+**Arquitetura escolhida:** runtime/engine próprio em C++20, SDL3 para janela/entrada/áudio e Vulkan para renderização de PC. O código recompilado será gerado em C e compilado com o toolchain nativo (MSVC no Windows; GCC/Clang no Linux). Python permanece restrito a ferramentas e testes de desenvolvimento.
+
+Não usaremos emulador 3DS, intérprete ARM/Thumb, JIT ou fallback interpretado. Instruções ou serviços sem implementação validada bloquearão a compilação ou a execução do caminho correspondente. A prioridade inicial é demonstrar execução funcional, não otimizar desempenho.
+
+- [Decisão técnica, linguagens e marcos N1–N3](docs/NATIVE_PORT_DIRECTION.md)
+- [Arquitetura do runtime](docs/ARCHITECTURE.md)
+- [Roadmap executável](docs/ROADMAP.md)
+
+SDL3 e Vulkan foram escolhidos como base proposta e ainda precisam ser incorporados ao build com versões/licenças registradas; isso não significa que o runtime já esteja implementado.
 
 ## Estado atual verificável
 
@@ -44,18 +56,16 @@ Esse aviso não é autorização, não concede direitos e não oferece imunidade
 
 O plano executável está em [docs/ROADMAP.md](docs/ROADMAP.md). A arquitetura proposta — ainda não implementada — está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Registro de ferramentas e testes reproduzíveis: [docs/BUILD_NOTES.md](docs/BUILD_NOTES.md).
 
-As fases são:
+As prioridades técnicas são:
 
-1. Organizar o projeto e registrar a auditoria.
-2. Confirmar licenças, procedência e dependências.
-3. Preparar e documentar o ambiente Windows/WSL.
-4. Reproduzir um teste documentado de referência sem distribuir conteúdo proprietário.
-5. Escolher uma prova de conceito pequena e mensurável.
-6. Investigar os requisitos de um runtime próprio para Windows.
-7. Substituir gradualmente os serviços de 3DS necessários.
-8. Validar gráficos, áudio, entrada e salvamento.
-9. Avaliar estabilidade e desempenho com evidências.
-10. Avaliar e validar a adaptação para Ultra Moon.
+1. Manter a auditoria de licença e a segurança de dados.
+2. Fechar o pipeline de recompilação estática com rejeição explícita de instruções sem suporte.
+3. Compilar e executar uma unidade de código gerado como binário nativo em Windows e Linux, usando fixtures sintéticas e validação independente.
+4. Recompilar e validar localmente uma primeira função real de um alvo autorizado, sem publicar entradas ou saídas derivadas.
+5. Integrar a primeira função real ao runtime C++ nativo e implementar somente os serviços comprovadamente necessários.
+6. Construir o caminho gráfico/áudio/input nativo sobre Vulkan/SDL3, sem modelar hardware de 3DS.
+7. Ampliar os caminhos de jogo, validar salvamentos/progressão e só então medir ou otimizar desempenho.
+8. Validar Ultra Moon separadamente.
 
 ## Primeira verificação reproduzível
 
@@ -121,10 +131,11 @@ Exemplo (os caminhos e o intervalo abaixo são ilustrativos; confirme antes o es
 
 Esta ferramenta fornece anotação sintática do intervalo, não uma descompilação, código C executável nem prova de equivalência. O ABI real do jogo e o estado de registradores ainda não são modelados.
 
-## Direção do runtime e uso de emuladores
+## Execução nativa sem emulação
 
-O objetivo é executar o código recompilado em um runtime próprio para Windows, sem depender de um emulador de Nintendo 3DS. Testes do tradutor começam com fixtures sintéticas e resultados esperados a partir da especificação ARM; usar um emulador não é requisito dessa etapa. Se for realmente necessário comparar o comportamento do jogo original no futuro, o Azahar será a referência externa preferida, usada de forma opcional e sem ser incorporada ao runtime ou ao produto final.
+O produto final terá apenas código nativo da plataforma: unidades recompiladas estaticamente e serviços C++ implementados para PC. Não haverá emulador de Nintendo 3DS, interpretador ARM/Thumb, JIT ou fallback para código não recompilado. Esta regra também vale para testes e CI: os resultados devem usar fixtures sintéticas, referências independentes baseadas na especificação e funções compiladas nativamente.
 
+O runtime ainda não existe e nenhum executável real de Ultra Sun/Ultra Moon foi validado por este repositório. As ferramentas atuais são protótipos de inspeção/recompilação limitada. Ver [Direção técnica do porte nativo](docs/NATIVE_PORT_DIRECTION.md) para os critérios de conclusão.
 ## Como acompanhar o progresso
 
 Use GitHub Issues para pesquisas ou problemas com escopo claro. Registre sempre o commit e as versões exatas das ferramentas, comandos executados, resultados observados, logs redigidos e critérios de aceitação. Diferencie resultados reproduzidos de resultados apenas relatados em documentação externa.
