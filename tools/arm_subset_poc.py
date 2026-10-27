@@ -76,7 +76,11 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
     rd = (word >> 12) & 0xF
     rm = word & 0xF
 
-    if set_flags and opcode not in (0b0100, 0b0010, 0b1011, 0b1010):
+    flag_setting_opcodes = {
+        0b0000, 0b0001, 0b0010, 0b0100, 0b1000, 0b1001,
+        0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
+    }
+    if set_flags and opcode not in flag_setting_opcodes:
         raise UnsupportedInstruction(
             f"flag-setting form is unsupported for register Operand2: 0x{word:08X}"
         )
@@ -107,20 +111,36 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             )
         if rm > 3:
             raise UnsupportedInstruction(f"source register r{rm} is outside r0-r3 subset")
-        operation = "mov_reg" if opcode == 0b1101 else "mvn_reg"
+        base = "mov" if opcode == 0b1101 else "mvn"
+        operation = (base + "s" if set_flags else base) + "_reg"
         return _apply_condition(condition, (operation, rd, rm))
 
+    if opcode in (0b1000, 0b1001):  # TST/TEQ: update flags without writing Rd.
+        operation = "tst_reg" if opcode == 0b1000 else "teq_reg"
+        if not set_flags:
+            raise UnsupportedInstruction(f"{operation[:-4].upper()} requires the S bit to be set")
+        if rd != 0:
+            raise UnsupportedInstruction(
+                f"only canonical {operation[:-4].upper()} register encoding with Rd=0 is supported"
+            )
+        if rn > 3 or rm > 3:
+            register = max(rn, rm)
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+        return _apply_condition(condition, (operation, rn, rm))
+
     logical_operations = {
-        0b0000: "and_reg",
-        0b1100: "orr_reg",
-        0b0001: "eor_reg",
-        0b1110: "bic_reg",
+        0b0000: "and",
+        0b1100: "orr",
+        0b0001: "eor",
+        0b1110: "bic",
     }
     if opcode in logical_operations:
         if rn > 3 or rm > 3:
             register = max(rn, rm)
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
-        return _apply_condition(condition, (logical_operations[opcode], rd, rn, rm))
+        base = logical_operations[opcode]
+        operation = (base + "s" if set_flags else base) + "_reg"
+        return _apply_condition(condition, (operation, rd, rn, rm))
 
     if opcode in (0b0100, 0b0010):  # ADD/SUB, optionally setting arithmetic flags.
         if rn > 3 or rm > 3:
@@ -313,16 +333,19 @@ def translate(
         operation = str(instruction[0])
         if operation in ("mov", "mvn"):
             used_registers.add(instruction[1])
-        elif operation in ("mov_reg", "mvn_reg"):
+        elif operation in ("mov_reg", "mvn_reg", "movs_reg", "mvns_reg"):
             used_registers.update((instruction[1], instruction[2]))
         elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
             used_registers.add(instruction[1])
             used_registers.add(instruction[2])
-        elif operation in ("and_reg", "orr_reg", "eor_reg", "bic_reg", "add_reg", "sub_reg", "adds_reg", "subs_reg"):
+        elif operation in (
+            "and_reg", "orr_reg", "eor_reg", "bic_reg", "ands_reg", "orrs_reg",
+            "eors_reg", "bics_reg", "add_reg", "sub_reg", "adds_reg", "subs_reg",
+        ):
             used_registers.update((instruction[1], instruction[2], instruction[3]))
         elif operation in ("cmn", "cmp"):
             used_registers.add(instruction[1])
-        elif operation in ("cmn_reg", "cmp_reg"):
+        elif operation in ("cmn_reg", "cmp_reg", "tst_reg", "teq_reg"):
             used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
@@ -402,15 +425,39 @@ def translate(
         elif instruction[0] == "mvn":
             _, rd, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)~UINT32_C({immediate});")
-        elif instruction[0] in ("mov_reg", "mvn_reg"):
+        elif instruction[0] in ("mov_reg", "mvn_reg", "movs_reg", "mvns_reg"):
             _, rd, rm = instruction
-            expression = f"r{rm}" if instruction[0] == "mov_reg" else f"(uint32_t)~r{rm}"
+            base = instruction[0].removesuffix("_reg").removesuffix("s")
+            expression = f"r{rm}" if base == "mov" else f"(uint32_t)~r{rm}"
             lines.append(f"    r{rd} = {expression};")
-        elif instruction[0] in ("and_reg", "orr_reg", "eor_reg", "bic_reg"):
+            if instruction[0] in ("movs_reg", "mvns_reg"):
+                lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
+                lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif instruction[0] in (
+            "and_reg", "orr_reg", "eor_reg", "bic_reg",
+            "ands_reg", "orrs_reg", "eors_reg", "bics_reg",
+        ):
             _, rd, rn, rm = instruction
-            operator = {"and_reg": "&", "orr_reg": "|", "eor_reg": "^", "bic_reg": "& ~"}[instruction[0]]
-            expression = f"r{rn} {operator} r{rm}" if instruction[0] != "bic_reg" else f"r{rn} & ~r{rm}"
-            lines.append(f"    r{rd} = (uint32_t)({expression});")
+            base = instruction[0].removesuffix("_reg").removesuffix("s")
+            operator = {"and": "&", "orr": "|", "eor": "^", "bic": "& ~"}[base]
+            expression = f"r{rn} & ~r{rm}" if base == "bic" else f"r{rn} {operator} r{rm}"
+            if instruction[0] in ("ands_reg", "orrs_reg", "eors_reg", "bics_reg"):
+                suffix = f"{len(lines)}"
+                result = f"logical_result_{suffix}"
+                lines.append(f"    uint32_t {result} = (uint32_t)({expression});")
+                lines.append(f"    r{rd} = {result};")
+                lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+                lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+            else:
+                lines.append(f"    r{rd} = (uint32_t)({expression});")
+        elif instruction[0] in ("tst_reg", "teq_reg"):
+            _, rn, rm = instruction
+            suffix = f"{len(lines)}"
+            result = f"test_result_{suffix}"
+            operator = "&" if instruction[0] == "tst_reg" else "^"
+            lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} r{rm});")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
         elif instruction[0] == "and":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} & UINT32_C({immediate}));")
