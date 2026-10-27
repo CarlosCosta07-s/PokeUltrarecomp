@@ -90,10 +90,11 @@ if(BUILD_TESTING)
     add_custom_target(verify
         COMMAND "${CMAKE_CTEST_COMMAND}" --output-on-failure
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-        COMMENT "Run native recompilation smoke tests, Python tests, and repository safety checks"
+        COMMENT "Run native recompilation smoke tests, C++ ABI integration, Python tests, and repository safety checks"
         USES_TERMINAL
         VERBATIM
     )
+    add_dependencies(verify native_abi_smoke)
 endif()
 
 message(STATUS "PokeUltrarecomp native validation toolchain")
