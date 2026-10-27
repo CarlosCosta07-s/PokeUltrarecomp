@@ -71,6 +71,12 @@ class DecoderTests(unittest.TestCase):
             (0xE3910001, ("orrs_imm", 0, 1, 1, None)),
             (0xE2310480, ("eors_imm", 0, 1, 0x80000000, 1)),
             (0xE3D10001, ("bics_imm", 0, 1, 1, None)),
+            (0xE2A00001, ("adc", 0, 0, 1)),
+            (0xE2B00001, ("adcs", 0, 0, 1)),
+            (0xE2C00001, ("sbc", 0, 0, 1)),
+            (0xE2D00001, ("sbcs", 0, 0, 1)),
+            (0xE2E10003, ("rsc", 0, 1, 3)),
+            (0xE2F10003, ("rscs", 0, 1, 3)),
             (0xE3110480, ("tst_imm", 1, 0x80000000, 1)),
             (0xE3310001, ("teq_imm", 1, 1, None)),
         )
@@ -80,7 +86,7 @@ class DecoderTests(unittest.TestCase):
 
     def test_rejects_unsupported_flag_setting_instruction(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE2B00001)  # ADCS immediate remains outside this subset
+            poc.decode_word(0xE2700001)  # RSBS immediate remains outside this subset
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "TST requires the S bit"):
             poc.decode_word(0xE3000001)  # TST with the S bit cleared is rejected
 
@@ -151,6 +157,12 @@ class DecoderTests(unittest.TestCase):
             (0xE1C00001, ("bic_reg", 0, 0, 1)),
             (0xE0800001, ("add_reg", 0, 0, 1)),
             (0xE0900001, ("adds_reg", 0, 0, 1)),
+            (0xE0A10002, ("adc_reg", 0, 1, 2)),
+            (0xE0B10002, ("adcs_reg", 0, 1, 2)),
+            (0xE0C10002, ("sbc_reg", 0, 1, 2)),
+            (0xE0D10002, ("sbcs_reg", 0, 1, 2)),
+            (0xE0E10002, ("rsc_reg", 0, 1, 2)),
+            (0xE0F10002, ("rscs_reg", 0, 1, 2)),
             (0xE0400001, ("sub_reg", 0, 0, 1)),
             (0xE0500001, ("subs_reg", 0, 0, 1)),
             (0xE1700001, ("cmn_reg", 0, 1)),
@@ -524,6 +536,70 @@ int main(void) {
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
             executed = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_adc_sbc_rsc_consume_carry_in_and_compute_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 carry-arithmetic proof requires cc, gcc, or clang")
+
+        words_by_name = {
+            "adc_imm": 0xE2A00001,
+            "adcs_imm_zero": 0xE2B00000,
+            "sbc_imm": 0xE2C00002,
+            "sbcs_imm_zero": 0xE2D00000,
+            "rsc_imm": 0xE2E10003,
+            "rscs_imm": 0xE2F10003,
+            "adc_reg": 0xE0A10002,
+            "adcs_reg_zero": 0xE0B10002,
+            "sbcs_reg": 0xE0D10002,
+            "rsc_reg": 0xE0E10002,
+            "rscs_shifted_reg": 0xE0F10082,  # RSC r0,r1,r2,LSL #1
+        }
+        snippets = []
+        for name, word in words_by_name.items():
+            function = poc.translate([word, 0xE12FFF1E], max_execution_steps=2, runtime_state_io=True)
+            snippets.append(function.replace(
+                "uint32_t synthetic_entry_bounded(",
+                f"uint32_t carry_{name}(",
+                1,
+            ))
+        harness = "\n".join(snippets) + """
+#include <stdint.h>
+typedef uint32_t (*entry_fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *);
+static int run_case(entry_fn fn, uint32_t r0, uint32_t r1, uint32_t r2,
+                    uint8_t initial_nzcv, uint32_t expected_r0, uint8_t expected_nzcv) {
+    uint32_t input[4] = { r0, r1, r2, UINT32_C(0xDEADBEEF) };
+    uint32_t output[4] = {0U,0U,0U,0U};
+    uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
+    return result == expected_r0 && output[0] == expected_r0
+        && output[1] == r1 && output[2] == r2 && output[3] == input[3]
+        && flags == expected_nzcv && status == UINT8_C(0) && steps == UINT32_C(2) ? 0 : 1;
+}
+int main(void) {
+    if (run_case(carry_adc_imm, UINT32_C(5), 0U, 0U, UINT8_C(2), UINT32_C(7), UINT8_C(2)) != 0) return 1;
+    if (run_case(carry_adcs_imm_zero, UINT32_C(0xFFFFFFFF), 0U, 0U, UINT8_C(2), 0U, UINT8_C(6)) != 0) return 2;
+    if (run_case(carry_sbc_imm, UINT32_C(5), 0U, 0U, UINT8_C(2), UINT32_C(3), UINT8_C(2)) != 0) return 3;
+    if (run_case(carry_sbcs_imm_zero, 0U, 0U, 0U, 0U, UINT32_C(0xFFFFFFFF), UINT8_C(8)) != 0) return 4;
+    if (run_case(carry_rsc_imm, 0U, UINT32_C(5), 0U, UINT8_C(2), UINT32_C(0xFFFFFFFE), UINT8_C(2)) != 0) return 5;
+    if (run_case(carry_rscs_imm, 0U, UINT32_C(2), 0U, 0U, 0U, UINT8_C(6)) != 0) return 6;
+    if (run_case(carry_adc_reg, 0U, UINT32_C(5), UINT32_C(2), UINT8_C(2), UINT32_C(8), UINT8_C(2)) != 0) return 7;
+    if (run_case(carry_adcs_reg_zero, 0U, UINT32_C(0xFFFFFFFF), 0U, UINT8_C(2), 0U, UINT8_C(6)) != 0) return 8;
+    if (run_case(carry_sbcs_reg, 0U, UINT32_C(5), UINT32_C(3), 0U, UINT32_C(1), UINT8_C(2)) != 0) return 9;
+    if (run_case(carry_rsc_reg, 0U, UINT32_C(5), UINT32_C(8), UINT8_C(2), UINT32_C(3), UINT8_C(2)) != 0) return 10;
+    if (run_case(carry_rscs_shifted_reg, 0U, UINT32_C(5), UINT32_C(2), UINT8_C(2), UINT32_C(0xFFFFFFFA), UINT8_C(8)) != 0) return 11;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_adc_sbc_rsc.c"
+            exe = Path(directory) / ("a32_adc_sbc_rsc.exe" if os.name == "nt" else "a32_adc_sbc_rsc")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=f"ADC/SBC/RSC semantic check failed with exit {executed.returncode}")
 
     def test_a32_immediate_logical_s_bit_preserves_or_updates_carry_correctly(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
