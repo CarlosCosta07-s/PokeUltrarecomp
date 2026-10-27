@@ -218,6 +218,62 @@ int main()
     guest_memory.bytes = guest_bytes.data();
     std::cout << "PASS: C++20 memory ABI preserves outputs on contract errors\n";
 
+    std::array<uint8_t, 24> literal_bytes{};
+    literal_bytes[8] = UINT8_C(0x78);
+    literal_bytes[9] = UINT8_C(0x56);
+    literal_bytes[10] = UINT8_C(0x34);
+    literal_bytes[11] = UINT8_C(0x12);
+    PokeNativeMemory literal_memory{};
+    literal_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+    literal_memory.guest_base = UINT32_C(0x1000);
+    literal_memory.size = static_cast<uint32_t>(literal_bytes.size());
+    literal_memory.bytes = literal_bytes.data();
+    PokeNativeCall literal_call{};
+    literal_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    literal_call.entry_address = UINT32_C(0x1000);
+    literal_call.registers[1] = UINT32_C(0xAAAAAAAA);
+    literal_call.initial_nzcv = UINT8_C(0xB);
+    PokeNativeResult literal_result{};
+    if (poke_native_execute_thumb_literal_memory(&literal_call, &literal_memory, &literal_result)
+        != POKE_NATIVE_ABI_OK
+        || literal_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || literal_result.return_value != 0U || literal_result.steps_executed != UINT32_C(3)
+        || literal_result.nzcv != UINT8_C(0x7)
+        || literal_result.registers[1] != UINT32_C(0x12345678)) {
+        return fail("Thumb PC-relative LDR literal failed through the versioned C ABI");
+    }
+    std::cout << "PASS: C++20 host calls Thumb PC-relative LDR literal through the C ABI\n";
+
+    const auto literal_memory_before_fault = literal_bytes;
+    literal_memory.size = UINT32_C(8);
+    literal_call.registers[1] = UINT32_C(0xAAAAAAAA);
+    set_sentinel(literal_result);
+    if (poke_native_execute_thumb_literal_memory(&literal_call, &literal_memory, &literal_result)
+        != POKE_NATIVE_ABI_OK
+        || literal_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
+        || literal_result.steps_executed != UINT32_C(2)
+        || literal_result.registers[1] != UINT32_C(0xAAAAAAAA)
+        || literal_bytes != literal_memory_before_fault) {
+        return fail("literal-load range fault changed the destination register or guest memory");
+    }
+    literal_memory.size = static_cast<uint32_t>(literal_bytes.size());
+    literal_call.entry_address = UINT32_C(0x1001);
+    set_sentinel(literal_result);
+    if (poke_native_execute_thumb_literal_memory(&literal_call, &literal_memory, &literal_result)
+        != POKE_NATIVE_ABI_OK
+        || literal_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || literal_result.steps_executed != 0U) {
+        return fail("unaligned Thumb entry address was not rejected before execution");
+    }
+    literal_call.entry_address = UINT32_C(0xFFFFFFFC);
+    set_sentinel(literal_result);
+    if (poke_native_execute_thumb_literal_memory(&literal_call, &literal_memory, &literal_result)
+        != POKE_NATIVE_ABI_OK
+        || literal_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || literal_result.steps_executed != UINT32_C(2)) {
+        return fail("PC-relative literal PC overflow was not rejected");
+    }
+
     guest_bytes.fill(UINT8_C(0xEE));
     PokeNativeCall multiple_call{};
     multiple_call.abi_version = POKE_NATIVE_ABI_VERSION;
