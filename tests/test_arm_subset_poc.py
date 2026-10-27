@@ -105,8 +105,8 @@ class DecoderTests(unittest.TestCase):
             (0xE5B10004, "post-indexed or writeback memory access"),
             (0xE5914004, "destination register r4"),
             (0xE5940004, "base register r4"),
-            (0xE19100B2, "register-offset halfword memory access"),
-            (0xE0D100B4, "post-indexed or writeback halfword memory access"),
+            (0xE19100B2, "register-offset halfword/signed memory access"),
+            (0xE0D100B4, "post-indexed or writeback halfword/signed memory access"),
             (0xE1F100B4, "post-indexed or writeback halfword/signed memory access"),
             (0xE1D140B4, "destination register r4"),
             (0xE1D400B4, "base register r4"),
@@ -467,8 +467,9 @@ int main(void) {
     uint32_t result = synthetic_entry_bounded(registers, UINT8_C(0xB), &flags, &steps, &status,
         output, memory, UINT32_C(0x1000), (uint32_t)sizeof(memory));
     if (!(result == UINT32_C(0x1000) && status == UINT8_C(0) && steps == UINT32_C(3)
-        && flags == UINT8_C(0xB) && output[2] == UINT32_C(0xFFFF8000)
-        && output[3] == UINT32_C(0xFFFFFFFE))) return 1;
+        && flags == UINT8_C(0xB))) return 11;
+    if (output[2] != UINT32_C(0xFFFF8000)) return 12;
+    if (output[3] != UINT32_C(0xFFFFFFFE)) return 13;
 
     memory[2] = UINT8_C(0x34);
     memory[3] = UINT8_C(0x12); /* positive halfword: 0x1234 */
@@ -477,8 +478,9 @@ int main(void) {
     result = synthetic_entry_bounded(registers, UINT8_C(0x4), &flags, &steps, &status,
         output, memory, UINT32_C(0x1000), (uint32_t)sizeof(memory));
     if (!(result == UINT32_C(0x1000) && status == UINT8_C(0) && steps == UINT32_C(3)
-        && flags == UINT8_C(0x4) && output[2] == UINT32_C(0x1234)
-        && output[3] == UINT32_C(0x7E))) return 2;
+        && flags == UINT8_C(0x4))) return 21;
+    if (output[2] != UINT32_C(0x1234)) return 22;
+    if (output[3] != UINT32_C(0x7E)) return 23;
     return 0;
 }
 """
