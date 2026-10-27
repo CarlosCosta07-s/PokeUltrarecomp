@@ -160,7 +160,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
                     "entry_address": "0x00102000",
                     "body_size_bytes": 8,
                     "instruction_count": 2,
-                    "words": ["0xE5900000", "0xE12FFF1E"],
+                    "words": ["0xE5D00000", "0xE12FFF1E"],  # unsupported LDRB form
+                },
+                {
+                    "entry_address": "0x00103000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE5900000", "0xE12FFF1E"],  # supported LDR word with bounded model
                 },
             ],
         }
@@ -342,9 +348,9 @@ class Remote3DSIntakeTests(unittest.TestCase):
         ) as compile_run:
             result = intake.screen_private_ghidra_candidates(sidecar)
 
-        self.assertEqual(2, result["private_candidates_screened"])
+        self.assertEqual(3, result["private_candidates_screened"])
         self.assertEqual(4, result["private_candidates_omitted_by_ghidra_cap"])
-        self.assertEqual(1, result["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual(2, result["sequences_accepted_by_current_arm_subset_translator"])
         self.assertEqual(1, result["candidate_sequences_rejected_by_current_arm_subset_translator"])
         self.assertEqual(1, result["candidate_sequences_with_instruction_decode_rejections"])
         self.assertEqual(0, result["candidate_sequences_rejected_by_sequence_constraints"])
@@ -353,12 +359,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
             result["unsupported_instruction_encodings_by_family"],
         )
         self.assertEqual("passed", result["native_c_syntax_check"])
-        self.assertEqual(1, result["native_c_syntax_sample_count"])
+        self.assertEqual(2, result["native_c_syntax_sample_count"])
         self.assertFalse(result["native_semantic_equivalence_verified"])
         self.assertFalse(result["function_boundaries_independently_verified"])
         self.assertFalse(result["addresses_or_instruction_words_emitted"])
         self.assertNotIn("0x00101000", compile_run.call_args.kwargs["input"])
         self.assertNotIn("0x00102000", compile_run.call_args.kwargs["input"])
+        self.assertNotIn("0x00103000", compile_run.call_args.kwargs["input"])
 
     def test_private_ghidra_candidate_screen_rejects_invalid_candidate_words(self):
         sidecar = self.work / "invalid-candidate-words.json"
