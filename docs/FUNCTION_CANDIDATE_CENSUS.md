@@ -6,7 +6,7 @@
 
 - O ExHeader e o `.code` passam pelo preflight estrutural existente.
 - Os padrões são contados apenas dentro da faixa lógica de `.text`, usando o layout de segmentos validado.
-- O modo padrão imprime apenas contagens agregadas; não imprime endereços, bytes de instrução, mnemônicos de ocorrências individuais nem pseudocódigo.
+- O modo padrão imprime apenas contagens agregadas; não imprime endereços, bytes de instrução, mnemônicos de ocorrências individuais nem pseudocódigo. Com `--decode-summary`, Capstone também conta os candidatos cuja leitura linear limitada chega a um retorno comum em até 512 bytes/96 instruções. O filtro para em desvios incondicionais e resume retornos `BX LR`, `MOV PC, LR`, `POP {..., PC}` e `LDM SP!, {..., PC}`.
 - O relatório de endereços detalhados é opcional e o script recusa gerá-lo dentro da árvore do repositório.
 
 ## O que ele não prova
@@ -23,6 +23,15 @@ python tools/summarize_arm_function_candidates.py \
   --exheader /caminho-privado/exheader.bin \
   --code /caminho-privado/code.bin
 ```
+
+Para incluir a triagem limitada com Capstone no resumo agregado:
+
+```sh
+python -m pip install -r tools/requirements-analysis.txt
+python tools/summarize_arm_function_candidates.py --decode-summary --target ultra-sun --exheader /caminho-privado/exheader.bin --code /caminho-privado/code.bin
+```
+
+O contador de retornos é apenas uma pista adicional: a leitura é linear, não segue o grafo de controle, pode atravessar dados e não prova que o retorno é alcançável. Nem o total bruto nem o total que chega a um retorno representam quantidade de funções confirmadas.
 
 Para salvar endereços candidatos em um relatório **privado**, fora do repositório:
 
