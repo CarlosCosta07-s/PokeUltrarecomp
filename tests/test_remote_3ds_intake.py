@@ -84,6 +84,19 @@ class Remote3DSIntakeTests(unittest.TestCase):
         summary.update(overrides)
         return summary
 
+    def test_redacts_paths_addresses_and_hex_from_ghidra_hint(self):
+        log_path = self.work / "private-ghidra.log"
+        log_path.write_text(
+            "ERROR: Script error at /home/runner/private-analysis.elf 0x00101234 payload E92D4010",
+            encoding="utf-8",
+        )
+        hint = intake.sanitized_ghidra_failure_hint(log_path)
+        self.assertIn("<path>", hint)
+        self.assertIn("<address>", hint)
+        self.assertNotIn("/home/runner", hint)
+        self.assertNotIn("0x00101234", hint)
+        self.assertNotIn("E92D4010", hint)
+
     def test_classifies_ghidra_errors_without_returning_raw_logs(self):
         log_path = self.work / "private-ghidra.log"
         log_path.write_text("ERROR: compilation failed at private-address 0x00101234", encoding="utf-8")
