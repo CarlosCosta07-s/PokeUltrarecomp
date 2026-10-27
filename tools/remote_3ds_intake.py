@@ -301,6 +301,29 @@ def sanitize_ghidra_summary(summary_path: Path, expected_text_size: int) -> dict
     return safe
 
 
+def classify_ghidra_failure(log_path: Path) -> str:
+    """Return a bounded diagnostic category without exposing private logs."""
+    try:
+        diagnostic = log_path.read_text(encoding="utf-8", errors="replace").casefold()
+    except OSError:
+        return "private-log-unavailable"
+    if "error: cannot find symbol" in diagnostic or "compilation failed" in diagnostic or "failed to compile" in diagnostic:
+        return "script-compilation"
+    if "script not found" in diagnostic or "could not find script" in diagnostic:
+        return "script-discovery"
+    if "no language" in diagnostic or "language id" in diagnostic and "not found" in diagnostic:
+        return "processor-language-selection"
+    if "could not open project" in diagnostic or "failed to create project" in diagnostic:
+        return "project-setup"
+    if "failed to load" in diagnostic or "could not load" in diagnostic or "import failed" in diagnostic:
+        return "elf-import"
+    if "script terminated with an exception" in diagnostic or "script execution failed" in diagnostic:
+        return "script-execution"
+    if "out of memory" in diagnostic or "java heap space" in diagnostic:
+        return "memory-pressure"
+    return "headless-analysis"
+
+
 def run_ghidra_function_census(
     ghidra_headless_path: Path, target: str, exheader_path: Path,
     code_path: Path, text_segment: dict, work_directory: Path,
@@ -345,7 +368,10 @@ def run_ghidra_function_census(
     except Exception as exc:
         raise IntakeError("Ghidra headless census could not be launched; private output was discarded") from exc
     if completed.returncode != 0:
-        raise IntakeError("Ghidra headless census failed; detailed logs remained in temporary storage")
+        category = classify_ghidra_failure(log_path)
+        raise IntakeError(
+            f"Ghidra headless census failed (category: {category}); private diagnostics were discarded"
+        )
     return sanitize_ghidra_summary(summary_path, text_size)
 
 
