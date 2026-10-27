@@ -31,12 +31,111 @@ def _outside_project(path: Path) -> Path:
     )
 
 
+def _return_kind(instruction: Any) -> str | None:
+    """Classify only common return-like encodings; this is not a CFG proof."""
+    mnemonic = str(getattr(instruction, "mnemonic", "")).casefold().split(".", 1)[0]
+    operands = str(getattr(instruction, "op_str", "")).casefold().replace(" ", "")
+    if mnemonic == "bx" and operands == "lr":
+        return "bx_lr"
+    if mnemonic == "mov" and operands == "pc,lr":
+        return "mov_pc_lr"
+    if mnemonic == "pop" and "pc" in operands:
+        return "pop_pc"
+    if mnemonic.startswith("ldm") and "sp" in operands and "pc" in operands:
+        return "ldm_sp_pc"
+    return None
+
+
+def scan_bounded_return_bodies(
+    text: bytes,
+    text_start: int,
+    candidates: list[dict[str, Any]],
+    capstone_module: Any,
+    *,
+    max_window_bytes: int = 512,
+    max_instructions: int = 96,
+) -> dict[str, Any]:
+    """Count candidates that linearly decode to a return-like instruction."""
+    if max_window_bytes <= 0 or max_instructions <= 0:
+        raise CandidateScanError("bounded decode limits must be positive")
+    engines: dict[str, Any] = {}
+    for state, mode in (
+        ("arm", capstone_module.CS_MODE_ARM),
+        ("thumb", capstone_module.CS_MODE_THUMB),
+    ):
+        engine = capstone_module.Cs(
+            capstone_module.CS_ARCH_ARM,
+            mode | capstone_module.CS_MODE_LITTLE_ENDIAN,
+        )
+        engine.detail = False
+        engines[state] = engine
+
+    bounded: list[dict[str, Any]] = []
+    terminators = {"bx_lr": 0, "mov_pc_lr": 0, "pop_pc": 0, "ldm_sp_pc": 0}
+    for candidate in candidates:
+        state = str(candidate["state"])
+        address = int(candidate["virtual_address"])
+        offset = address - text_start
+        if state not in engines or offset < 0 or offset >= len(text):
+            continue
+        window = text[offset:offset + max_window_bytes]
+        engine = engines[state]
+        try:
+            instructions = engine.disasm(window, address, count=max_instructions)
+            cursor = address
+            count = 0
+            return_kind = None
+            for instruction in instructions:
+                if int(instruction.size) <= 0 or int(instruction.address) != cursor:
+                    break
+                cursor += int(instruction.size)
+                count += 1
+                return_kind = _return_kind(instruction)
+                if return_kind:
+                    break
+                mnemonic = str(getattr(instruction, "mnemonic", "")).casefold().split(".", 1)[0]
+                # Do not pretend a linear scan can follow an unconditional branch
+                # to a distant epilogue or prove reachability across control flow.
+                if mnemonic == "b":
+                    break
+        except Exception as exc:
+            raise CandidateScanError("Capstone failed during bounded candidate decode") from exc
+        if return_kind:
+            terminators[return_kind] += 1
+            bounded.append({
+                "state": state,
+                "pattern": candidate["pattern"],
+                "virtual_address": address,
+                "span_bytes_to_return": cursor - address,
+                "instruction_count_to_return": count,
+                "return_kind": return_kind,
+            })
+
+    return {
+        "max_window_bytes": max_window_bytes,
+        "max_instructions": max_instructions,
+        "candidate_sites_with_linear_return": len(bounded),
+        "candidate_sites_with_linear_return_by_state": {
+            "arm": sum(item["state"] == "arm" for item in bounded),
+            "thumb": sum(item["state"] == "thumb" for item in bounded),
+        },
+        "candidate_sites_with_return_within_16_instructions": sum(
+            item["instruction_count_to_return"] <= 16 for item in bounded
+        ),
+        "return_kinds": terminators,
+        "function_boundaries_verified": False,
+        "addresses_emitted": False,
+    } | {"private_bounded_candidates": bounded}
+
+
 def scan_candidates(
     target_id: str,
     exheader_path: Path,
     code_path: Path,
     *,
     preflight: dict[str, Any] | None = None,
+    decode_summary: bool = False,
+    capstone_module: Any | None = None,
 ) -> dict[str, Any]:
     """Count plausible prologue encodings in .text without emitting addresses."""
     from inspect_3ds_target import TargetInspectionError, inspect_target
@@ -118,6 +217,19 @@ def scan_candidates(
                 "virtual_address": text_start + offset,
             })
 
+    bounded_body_scan = None
+    if decode_summary:
+        if capstone_module is None:
+            try:
+                import capstone as capstone_module
+            except ImportError as exc:
+                raise CandidateScanError(
+                    "Capstone is required for bounded return scanning; install tools/requirements-analysis.txt"
+                ) from exc
+        bounded_body_scan = scan_bounded_return_bodies(
+            text, text_start, candidates, capstone_module
+        )
+
     summary = {
         "schema_version": 1,
         "status": "pass",
@@ -132,7 +244,19 @@ def scan_candidates(
             "the text segment; these counts do not identify proven functions."
         ),
     }
-    return {"summary": summary, "private_candidates": candidates}
+    if bounded_body_scan is not None:
+        summary["bounded_return_scan"] = {
+            key: value for key, value in bounded_body_scan.items()
+            if key != "private_bounded_candidates"
+        }
+    return {
+        "summary": summary,
+        "private_candidates": candidates,
+        "private_bounded_candidates": (
+            bounded_body_scan["private_bounded_candidates"]
+            if bounded_body_scan is not None else []
+        ),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -160,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                 **result["summary"],
                 "addresses_emitted": True,
                 "candidates": result["private_candidates"],
+                "bounded_return_candidates": result["private_bounded_candidates"],
             }
             destination.write_text(
                 json.dumps(private_report, indent=2, ensure_ascii=False) + "\n",
