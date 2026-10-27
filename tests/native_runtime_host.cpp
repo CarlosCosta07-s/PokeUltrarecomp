@@ -218,6 +218,90 @@ int main()
     guest_memory.bytes = guest_bytes.data();
     std::cout << "PASS: C++20 memory ABI preserves outputs on contract errors\n";
 
+    guest_bytes.fill(UINT8_C(0xEE));
+    PokeNativeCall multiple_call{};
+    multiple_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    multiple_call.registers[0] = UINT32_C(0x1010);
+    multiple_call.registers[1] = UINT32_C(0x11223344);
+    multiple_call.registers[2] = UINT32_C(0x55667788);
+    multiple_call.registers[3] = UINT32_C(0x1010);
+    multiple_call.registers[4] = UINT32_C(0xAAAAAAAA);
+    multiple_call.registers[5] = UINT32_C(0xBBBBBBBB);
+    multiple_call.registers[6] = UINT32_C(0xCCCCCCCC);
+    multiple_call.registers[7] = UINT32_C(0xDDDDDDDD);
+    multiple_call.initial_nzcv = UINT8_C(0x9);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_multiple_memory(&multiple_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK) {
+        return fail("LDMIA/STMIA call through the C ABI returned an error");
+    }
+    if (memory_result.abi_version != POKE_NATIVE_ABI_VERSION
+        || memory_result.return_value != UINT32_C(0x1018)
+        || memory_result.steps_executed != UINT32_C(3)
+        || memory_result.nzcv != UINT8_C(0x9)
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || memory_result.registers[0] != UINT32_C(0x1018)
+        || memory_result.registers[1] != UINT32_C(0x11223344)
+        || memory_result.registers[2] != UINT32_C(0x55667788)
+        || memory_result.registers[3] != UINT32_C(0x1018)
+        || memory_result.registers[4] != UINT32_C(0x11223344)
+        || memory_result.registers[5] != UINT32_C(0x55667788)
+        || memory_result.registers[6] != multiple_call.registers[6]
+        || memory_result.registers[7] != multiple_call.registers[7]) {
+        return fail("LDMIA/STMIA C ABI result/write-back mismatch");
+    }
+    if (guest_bytes[16] != UINT8_C(0x44) || guest_bytes[17] != UINT8_C(0x33)
+        || guest_bytes[18] != UINT8_C(0x22) || guest_bytes[19] != UINT8_C(0x11)
+        || guest_bytes[20] != UINT8_C(0x88) || guest_bytes[21] != UINT8_C(0x77)
+        || guest_bytes[22] != UINT8_C(0x66) || guest_bytes[23] != UINT8_C(0x55)) {
+        return fail("LDMIA/STMIA C ABI memory bytes mismatch");
+    }
+    std::cout << "PASS: C++20 host calls native Thumb LDMIA/STMIA through the C ABI\n";
+
+    const auto multiple_memory_before_fault = guest_bytes;
+    multiple_call.registers[0] = UINT32_C(0x1018);
+    multiple_call.initial_nzcv = UINT8_C(0x6);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_multiple_memory(&multiple_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
+        || memory_result.steps_executed != UINT32_C(1)
+        || memory_result.nzcv != UINT8_C(0x6)
+        || guest_bytes != multiple_memory_before_fault) {
+        return fail("LDMIA/STMIA C ABI range fault did not preserve the guest region");
+    }
+    multiple_call.registers[0] = UINT32_C(0x1011);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_multiple_memory(&multiple_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
+        || memory_result.steps_executed != UINT32_C(1)
+        || guest_bytes != multiple_memory_before_fault) {
+        return fail("LDMIA/STMIA C ABI alignment fault did not preserve the guest region");
+    }
+
+    guest_bytes[0] = UINT8_C(0x78);
+    guest_bytes[1] = UINT8_C(0x56);
+    guest_bytes[2] = UINT8_C(0x34);
+    guest_bytes[3] = UINT8_C(0x12);
+    PokeNativeCall ldm_base_call{};
+    ldm_base_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    ldm_base_call.registers[0] = UINT32_C(0x1000);
+    ldm_base_call.initial_nzcv = UINT8_C(0x5);
+    set_sentinel(memory_result);
+    if (poke_native_execute_thumb_ldmia_base_list(&ldm_base_call, &guest_memory, &memory_result)
+        != POKE_NATIVE_ABI_OK
+        || memory_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || memory_result.return_value != UINT32_C(0x12345678)
+        || memory_result.registers[0] != UINT32_C(0x12345678)
+        || memory_result.steps_executed != UINT32_C(2)
+        || memory_result.nzcv != UINT8_C(0x5)) {
+        return fail("LDMIA with base in register list did not suppress write-back");
+    }
+    std::cout << "PASS: C++20 host validates LDMIA base-in-list write-back rule\n";
+
+
+
     set_sentinel(result);
     call.initial_nzcv = UINT8_C(16);
     if (poke_native_execute_a32(&call, &result) != POKE_NATIVE_ABI_INVALID_ARGUMENT) {

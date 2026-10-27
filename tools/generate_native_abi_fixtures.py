@@ -27,6 +27,8 @@ THUMB_MEMORY_HALFWORDS = (
     0x5042, 0x5843, 0x5242, 0x5A44, 0x5442, 0x5645, 0x5C46, 0x5E47,
     0x60C2, 0x68C3, 0x7402, 0x7C06, 0x8242, 0x8A44, 0x4770,
 )
+THUMB_MULTIPLE_MEMORY_HALFWORDS = (0xC006, 0xCB30, 0x4770)
+THUMB_LDMIA_BASE_LIST_HALFWORDS = (0xC801, 0x4770)
 
 A32_ADAPTER = r"""
 #include <stddef.h>
@@ -153,10 +155,23 @@ THUMB_MEMORY_ADAPTER = r"""
 #include <stdint.h>
 #include "pokeultrarecomp/native_abi.h"
 
-int poke_native_execute_thumb_memory(
+typedef uint32_t (*PokeNativeMemoryEntry)(
+    const uint32_t *registers_in,
+    uint8_t initial_nzcv,
+    uint8_t *nzcv_out,
+    uint32_t *steps_executed_out,
+    uint8_t *execution_status_out,
+    uint32_t *registers_out,
+    uint8_t *memory_bytes,
+    uint32_t guest_memory_base,
+    uint32_t guest_memory_size
+);
+
+static int poke_native_execute_thumb_memory_with_entry(
     const PokeNativeCall *call,
     const PokeNativeMemory *memory,
-    PokeNativeResult *result
+    PokeNativeResult *result,
+    PokeNativeMemoryEntry entry
 )
 {
     uint32_t registers_out[POKE_NATIVE_REGISTER_COUNT] = {0U};
@@ -172,11 +187,11 @@ int poke_native_execute_thumb_memory(
         || memory->abi_version != POKE_NATIVE_ABI_VERSION) {
         return POKE_NATIVE_ABI_VERSION_MISMATCH;
     }
-    if (call->initial_nzcv > UINT8_C(15)) {
+    if (call->initial_nzcv > UINT8_C(15) || entry == NULL) {
         return POKE_NATIVE_ABI_INVALID_ARGUMENT;
     }
 
-    const uint32_t return_value = poke_thumb_memory_generated_entry(
+    const uint32_t return_value = entry(
         call->registers, call->initial_nzcv, &nzcv_out, &steps_executed,
         &execution_status, registers_out, memory->bytes,
         memory->guest_base, memory->size
@@ -193,24 +208,64 @@ int poke_native_execute_thumb_memory(
     *result = completed;
     return POKE_NATIVE_ABI_OK;
 }
+
+int poke_native_execute_thumb_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_memory_with_entry(
+        call, memory, result, poke_thumb_memory_generated_entry
+    );
+}
+
+int poke_native_execute_thumb_multiple_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_memory_with_entry(
+        call, memory, result, poke_thumb_multiple_memory_generated_entry
+    );
+}
+
+int poke_native_execute_thumb_ldmia_base_list(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_memory_with_entry(
+        call, memory, result, poke_thumb_ldmia_base_list_generated_entry
+    );
+}
 """
 
 
-def generate_thumb_memory() -> str:
+def _generate_memory_entry(halfwords: tuple[int, ...], symbol: str) -> str:
     source = thumb_subset_poc.translate(
-        list(THUMB_MEMORY_HALFWORDS),
+        list(halfwords),
         initial_nzcv=0,
-        max_execution_steps=len(THUMB_MEMORY_HALFWORDS),
+        max_execution_steps=len(halfwords),
         runtime_state_io=True,
         runtime_memory_io=True,
     )
     old_signature = "uint32_t thumb_entry_memory_bounded("
     if old_signature not in source:
         raise RuntimeError("Thumb memory signature changed; update the ABI adapter deliberately")
-    source = source.replace(old_signature, "uint32_t poke_thumb_memory_generated_entry(", 1)
-    return source + "\n" + THUMB_MEMORY_ADAPTER
+    return source.replace(old_signature, f"uint32_t {symbol}(", 1)
 
 
+def generate_thumb_memory() -> str:
+    sources = (
+        _generate_memory_entry(THUMB_MEMORY_HALFWORDS, "poke_thumb_memory_generated_entry"),
+        _generate_memory_entry(THUMB_MULTIPLE_MEMORY_HALFWORDS, "poke_thumb_multiple_memory_generated_entry"),
+        _generate_memory_entry(THUMB_LDMIA_BASE_LIST_HALFWORDS, "poke_thumb_ldmia_base_list_generated_entry"),
+        THUMB_MEMORY_ADAPTER,
+    )
+    return "\n".join(sources)
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)

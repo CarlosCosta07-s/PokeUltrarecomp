@@ -57,6 +57,16 @@ int poke_native_execute_thumb_memory(
     const PokeNativeMemory *memory,
     PokeNativeResult *result
 );
+int poke_native_execute_thumb_multiple_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
+int poke_native_execute_thumb_ldmia_base_list(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
 
 #ifdef __cplusplus
 }
