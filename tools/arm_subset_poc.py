@@ -648,7 +648,12 @@ def translate(
             _, rd, rm = instruction
             base = instruction[0].removesuffix("_reg").removesuffix("s")
             rm_expression = shifted_operand_expr or f"r{rm}"
-            expression = rm_expression if base == "mov" else f"(uint32_t)~({rm_expression})"
+            if base == "mov":
+                expression = rm_expression
+            elif shifted_operand_expr:
+                expression = f"(uint32_t)~({rm_expression})"
+            else:
+                expression = f"(uint32_t)~r{rm}"
             lines.append(f"    r{rd} = {expression};")
             if instruction[0] in ("movs_reg", "mvns_reg"):
                 lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
@@ -663,7 +668,10 @@ def translate(
             base = instruction[0].removesuffix("_reg").removesuffix("s")
             operator = {"and": "&", "orr": "|", "eor": "^", "bic": "& ~"}[base]
             rm_expression = shifted_operand_expr or f"r{rm}"
-            expression = f"r{rn} & ~({rm_expression})" if base == "bic" else f"r{rn} {operator} ({rm_expression})"
+            if base == "bic":
+                expression = f"r{rn} & ~({rm_expression})" if shifted_operand_expr else f"r{rn} & ~r{rm}"
+            else:
+                expression = f"r{rn} {operator} ({rm_expression})" if shifted_operand_expr else f"r{rn} {operator} r{rm}"
             if instruction[0] in ("ands_reg", "orrs_reg", "eors_reg", "bics_reg"):
                 suffix = f"{len(lines)}"
                 result = f"logical_result_{suffix}"
@@ -681,7 +689,8 @@ def translate(
             result = f"test_result_{suffix}"
             operator = "&" if instruction[0] == "tst_reg" else "^"
             rm_expression = shifted_operand_expr or f"r{rm}"
-            lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} ({rm_expression}));")
+            expression = f"r{rn} {operator} ({rm_expression})" if shifted_operand_expr else f"r{rn} {operator} r{rm}"
+            lines.append(f"    uint32_t {result} = (uint32_t)({expression});")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
             if shifted_carry_expr:
@@ -764,7 +773,8 @@ def translate(
             _, rd, rn, rm = instruction
             operator = "+" if instruction[0] == "add_reg" else "-"
             rm_expression = shifted_operand_expr or f"r{rm}"
-            lines.append(f"    r{rd} = (uint32_t)(r{rn} {operator} ({rm_expression}));")
+            expression = f"r{rn} {operator} ({rm_expression})" if shifted_operand_expr else f"r{rn} {operator} r{rm}"
+            lines.append(f"    r{rd} = (uint32_t)({expression});")
         elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg"):
             operation = str(instruction[0]).removesuffix("_reg")
             register_operand = str(instruction[0]).endswith("_reg")
