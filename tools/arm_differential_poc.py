@@ -60,6 +60,7 @@ def build_cases() -> tuple[DifferentialCase, ...]:
     operations = (
         ("adds", arm_flags.add_with_flags, 0xE2900000, True),
         ("subs", arm_flags.sub_with_flags, 0xE2500000, True),
+        ("rsbs", lambda lhs, rhs: arm_flags.sub_with_flags(rhs, lhs), 0xE2700000, True),
         ("cmn", arm_flags.add_with_flags, 0xE3700000, False),
         ("cmp", arm_flags.sub_with_flags, 0xE3500000, False),
     )
@@ -79,6 +80,7 @@ def build_cases() -> tuple[DifferentialCase, ...]:
     register_operations = (
         ("adds-reg", arm_flags.add_with_flags, 0xE0900000, True),
         ("subs-reg", arm_flags.sub_with_flags, 0xE0500000, True),
+        ("rsbs-reg", lambda lhs, rhs: arm_flags.sub_with_flags(rhs, lhs), 0xE0700000, True),
         ("cmn-reg", arm_flags.add_with_flags, 0xE1700000, False),
         ("cmp-reg", arm_flags.sub_with_flags, 0xE1500000, False),
     )
