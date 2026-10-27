@@ -438,6 +438,15 @@ def classify_arm_decode_rejection(message: str) -> str:
         return "non-immediate-data-processing"
     if "not a supported data-processing operand form" in lowered:
         return "unsupported-operand-class"
+    if any(
+        phrase in lowered
+        for phrase in (
+            "byte memory access is unsupported",
+            "register-offset memory access is unsupported",
+            "post-indexed or writeback memory access is unsupported",
+        )
+    ):
+        return "unsupported-operand-class"
     if "register operand2 shifts are unsupported" in lowered:
         return "register-shifted-operand"
     if "flag-setting form is unsupported" in lowered:
@@ -535,11 +544,26 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         if size != len(words) * 4:
             raise IntakeError("private Ghidra candidate size does not match its word array")
 
+        memory_model_needed = False
+        for word in words[:-1]:
+            try:
+                decoded_word = arm_subset_poc.decode_word(word)
+                if decoded_word[0] == "predicated":
+                    decoded_word = decoded_word[2]
+                if decoded_word[0] in ("ldr_imm", "str_imm"):
+                    memory_model_needed = True
+            except ValueError:
+                # The translation attempt below records fixed, sanitized failure categories.
+                pass
+
         try:
             generated = arm_subset_poc.translate(
-                words, max_execution_steps=len(words), runtime_state_io=True
+                words,
+                max_execution_steps=len(words),
+                runtime_state_io=True,
+                runtime_memory_io=memory_model_needed,
             )
-        except ValueError:
+        except ValueError as exc:
             # Count only fixed, sanitized decode families for diagnosis. Never
             # write the candidate address, word, exception text, or C source to logs.
             rejected_candidate_sequences += 1
