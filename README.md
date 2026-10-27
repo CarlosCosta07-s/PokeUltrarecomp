@@ -22,7 +22,7 @@ A escolha de SDL3/Vulkan é arquitetural, ainda não uma dependência já integr
 
 ## O que existe hoje
 
-- **POC-001 ARM A32 → C:** tradutor experimental de um subconjunto sintético com imediatos e operações simples de operando em registrador sem shift (`MOV/MVN`, lógica, aritmética e comparações limitadas), predicação e flags NZCV. A matriz diferencial C11 passou em 192/192 casos contra o modelo NZCV separado. Continua sem memória, chamadas e ABI real; não é um recompilador ARM geral. [Especificação e limites](docs/POC_001_SPEC.md).
+- **POC-001 ARM A32 → C:** tradutor experimental de um subconjunto sintético com imediatos e operações simples de operando em registrador sem shift; inclui aritmética, lógica com e sem atualização de flags, `TST/TEQ`, predicação e NZCV. A matriz diferencial aritmética C11 passou em 192/192 casos contra o modelo NZCV separado; operações lógicas com flags possuem testes nativos adicionais. Continua sem memória, chamadas e ABI real; não é um recompilador ARM geral. [Especificação e limites](docs/POC_001_SPEC.md).
 - **POC-002 Thumb-16 → C:** tradutor experimental de um subconjunto Thumb-16 sintético. Não cobre todas as instruções usadas pelo jogo. [Especificação](docs/THUMB_POC_002.md).
 - **Intake do alvo:** perfis de Ultra Sun/Ultra Moon e verificação de metadados/segmentos em entradas locais. [Guia](docs/GAME_TARGET_INTAKE.md).
 - **Inspeção de código:** inspeção explícita de intervalos ARM/Thumb e anotações conservadoras de fluxo de controle, memória e efeitos de registradores. [Guia](docs/CODE_RANGE_INSPECTION.md).
