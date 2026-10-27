@@ -853,12 +853,19 @@ def translate(
         elif instruction[0] in ("add_reg", "sub_reg", "rsb_reg"):
             _, rd, rn, rm = instruction
             rm_expression = shifted_operand_expr or f"r{rm}"
-            if instruction[0] == "add_reg":
-                expression = f"r{rn} + ({rm_expression})"
+            if shifted_operand_expr:
+                if instruction[0] == "add_reg":
+                    expression = f"r{rn} + ({rm_expression})"
+                elif instruction[0] == "sub_reg":
+                    expression = f"r{rn} - ({rm_expression})"
+                else:
+                    expression = f"({rm_expression}) - r{rn}"
+            elif instruction[0] == "add_reg":
+                expression = f"r{rn} + r{rm}"
             elif instruction[0] == "sub_reg":
-                expression = f"r{rn} - ({rm_expression})"
+                expression = f"r{rn} - r{rm}"
             else:
-                expression = f"({rm_expression}) - r{rn}"
+                expression = f"r{rm} - r{rn}"
             lines.append(f"    r{rd} = (uint32_t)({expression});")
         elif instruction[0] in ("adc", "sbc", "rsc", "rsb", "adc_reg", "sbc_reg", "rsc_reg", "rsb_reg"):
             register_operand = str(instruction[0]).endswith("_reg")
