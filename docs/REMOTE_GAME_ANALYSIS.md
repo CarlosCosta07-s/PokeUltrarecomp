@@ -10,7 +10,7 @@ Referências técnicas:
 
 ## Executar pelo GitHub no navegador ou celular
 
-Este modo permite processar a imagem em um runner temporário do GitHub Actions sem executar as ferramentas no seu computador. Ainda é necessário ter uma URL HTTPS de download direto do arquivo, de um armazenamento que você controla e que permita download pelo link. A URL nunca deve ser colocada no código, em uma issue ou na linha de comando de um workflow.
+Este modo permite processar a imagem em um runner temporário do GitHub Actions sem executar as ferramentas no seu computador. O workflow aceita uma URL HTTPS de download direto e links de compartilhamento de arquivos do Google Drive. Para o Drive, configure o arquivo para permitir acesso a quem possui o link; o downloader converte o link de compartilhamento em uma solicitação de download e tenta tratar a confirmação de arquivo grande. A URL nunca deve ser colocada no código, em uma issue ou na linha de comando de um workflow. Links que exigem login, bloqueios de download ou confirmações que o Drive não disponibilize ao downloader ainda podem falhar.
 
 1. No repositório, abra Settings, depois Secrets and variables, depois Actions. Crie o secret POKEULTRARECOMP_SOURCE_URL com a URL HTTPS de download direto. Use um link restrito/temporário se o seu provedor permitir.
 2. Abra Actions, selecione Remote Nintendo 3DS container intake e toque em Run workflow.
