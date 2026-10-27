@@ -41,6 +41,12 @@ O relatório contém os bytes de cada instrução, mnemônicos e operandos. Caps
 
 ## 4. Encontrar uma primeira função real
 
+Antes da seleção manual, há um inventário heurístico agregado em `tools/summarize_arm_function_candidates.py`. Ele conta padrões comuns de prólogo dentro do segmento lógico `.text` e, por padrão, imprime apenas totais sem endereços nem bytes:
+
+    python tools/summarize_arm_function_candidates.py --target ultra-sun --exheader "C:/local/exheader.bin" --code "C:/local/code.bin"
+
+Consulte [FUNCTION_CANDIDATE_CENSUS.md](FUNCTION_CANDIDATE_CENSUS.md) para os detalhes. As ocorrências não são limites de função confirmados e podem corresponder a dados. Use-as apenas como pista; selecione uma candidata no Ghidra/REA e confirme manualmente o estado, limites, fluxo de controle e referências antes de qualquer tradução.
+
 Abra o ELF no Ghidra ou configure localmente uma ferramenta compatível. Comece por uma função pequena e isolada. Confirme independentemente endereço, limite, estado ARM/Thumb, pools de literais, fluxo de controle, chamadas e referências; um decodificador independente como Capstone pode ajudar a conferir a decodificação. Não trate uma varredura linear de toda a região .text como código, pois ela pode conter dados e literais.
 
 Registre localmente o alvo e a revisão declarados, hashes, endereço virtual, estado de instrução, limites aceitos, chamadas, referências, entradas/saídas e efeitos observáveis. Só depois escolha uma sequência real controlada e expanda o tradutor para os encodings observados. A primeira meta é traduzir uma função real pequena com limites e semântica verificados de forma independente e, então, comparar a função reconstruída como C compilado nativamente. Ainda não há uma função real do jogo validada neste repositório.
