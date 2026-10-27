@@ -88,6 +88,8 @@ class Remote3DSIntakeTests(unittest.TestCase):
         log_path = self.work / "private-ghidra.log"
         log_path.write_text("ERROR: compilation failed at private-address 0x00101234", encoding="utf-8")
         self.assertEqual("script-compilation", intake.classify_ghidra_failure(log_path))
+        log_path.write_text("FunctionCensusSummary.java:71: error: incompatible types", encoding="utf-8")
+        self.assertEqual("script-compilation", intake.classify_ghidra_failure(log_path))
         log_path.write_text("Script terminated with an exception: private path and address", encoding="utf-8")
         self.assertEqual("script-execution", intake.classify_ghidra_failure(log_path))
         log_path.write_text("java.lang.IllegalArgumentException: private path and address", encoding="utf-8")
