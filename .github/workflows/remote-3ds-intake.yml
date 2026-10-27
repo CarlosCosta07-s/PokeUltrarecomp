@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   inspect-container:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run one-time Ultra Sun CCI intake after Google Drive downloader fix' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run Ultra Sun CCI prologue census after intake validation' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
