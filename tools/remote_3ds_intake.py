@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -405,6 +406,138 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
     return line[:180] or "diagnostic-redacted"
 
 
+def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
+    """Screen private Ghidra candidates with the current narrow ARM-to-C subset.
+
+    Candidate addresses, instruction words, generated C, and compiler diagnostics
+    stay in the temporary directory. Only aggregate counts and boolean statuses
+    are returned to the workflow summary.
+    """
+    try:
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise IntakeError("private Ghidra candidate sidecar is missing or unreadable") from None
+    if not isinstance(sidecar, dict) or set(sidecar) != {
+        "schema_version", "omitted_candidate_count", "candidates"
+    }:
+        raise IntakeError("private Ghidra candidate sidecar has an invalid schema")
+    if sidecar.get("schema_version") != 1 or isinstance(sidecar.get("schema_version"), bool):
+        raise IntakeError("private Ghidra candidate sidecar schema version is unsupported")
+    omitted = sidecar.get("omitted_candidate_count")
+    candidates = sidecar.get("candidates")
+    if isinstance(omitted, bool) or not isinstance(omitted, int) or omitted < 0:
+        raise IntakeError("private Ghidra candidate omission count is invalid")
+    if not isinstance(candidates, list) or len(candidates) > 10000:
+        raise IntakeError("private Ghidra candidate list exceeds its allowed bound")
+
+    try:
+        import arm_subset_poc
+    except ImportError:
+        raise IntakeError("current ARM subset translator is unavailable for candidate screening") from None
+
+    address_pattern = re.compile(r"^0x[0-9A-Fa-f]{8}$")
+    word_pattern = re.compile(r"^0x[0-9A-Fa-f]{8}$")
+    seen_addresses: set[str] = set()
+    compatible_count = 0
+    syntax_sample: list[str] = []
+    max_syntax_sample = 128
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or set(candidate) != {
+            "entry_address", "body_size_bytes", "instruction_count", "words"
+        }:
+            raise IntakeError("private Ghidra candidate has unexpected or missing fields")
+        address_text = candidate.get("entry_address")
+        if not isinstance(address_text, str) or not address_pattern.fullmatch(address_text):
+            raise IntakeError("private Ghidra candidate entry address is malformed")
+        address_value = int(address_text, 16)
+        if address_value % 4:
+            raise IntakeError("private Ghidra candidate entry address is not ARM-aligned")
+        normalized_address = address_text.upper()
+        if normalized_address in seen_addresses:
+            raise IntakeError("private Ghidra candidate sidecar repeats an entry address")
+        seen_addresses.add(normalized_address)
+
+        size = candidate.get("body_size_bytes")
+        instruction_count = candidate.get("instruction_count")
+        words_raw = candidate.get("words")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 8 or size > 64 or size % 4:
+            raise IntakeError("private Ghidra candidate body size is invalid")
+        if (
+            isinstance(instruction_count, bool)
+            or not isinstance(instruction_count, int)
+            or instruction_count != size // 4
+            or instruction_count < 2
+            or instruction_count > 16
+        ):
+            raise IntakeError("private Ghidra candidate instruction count is invalid")
+        if not isinstance(words_raw, list) or len(words_raw) != instruction_count:
+            raise IntakeError("private Ghidra candidate instruction array has the wrong length")
+
+        words: list[int] = []
+        for item in words_raw:
+            if not isinstance(item, str) or not word_pattern.fullmatch(item):
+                raise IntakeError("private Ghidra candidate contains a malformed instruction word")
+            words.append(int(item, 16))
+        if words[-1] != 0xE12FFF1E:
+            raise IntakeError("private Ghidra candidate does not end with exact BX LR")
+        if size != len(words) * 4:
+            raise IntakeError("private Ghidra candidate size does not match its word array")
+
+        try:
+            generated = arm_subset_poc.translate(
+                words, max_execution_steps=len(words), runtime_state_io=True
+            )
+        except ValueError:
+            # Unsupported instruction sequences are ordinary rejections, not failures.
+            continue
+
+        compatible_count += 1
+        if len(syntax_sample) < max_syntax_sample:
+            function_name = f"private_candidate_screen_{len(syntax_sample)}"
+            signature = "uint32_t synthetic_entry_bounded("
+            if signature not in generated:
+                raise IntakeError("ARM translator emitted an unexpected runtime interface")
+            syntax_sample.append(generated.replace(signature, f"uint32_t {function_name}(", 1))
+
+    syntax_status = "not-run-no-compatible-candidates"
+    if syntax_sample:
+        compiler = None
+        for name in (os.environ.get("CC", "").strip(), "cc", "gcc", "clang"):
+            if name and (resolved := shutil.which(name)):
+                compiler = resolved
+                break
+        if compiler is None:
+            syntax_status = "not-run-no-c-compiler"
+        else:
+            try:
+                compiled = subprocess.run(
+                    [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
+                     "-fsyntax-only", "-x", "c", "-"],
+                    input="\n\n".join(syntax_sample),
+                    capture_output=True, text=True, timeout=120, check=False,
+                )
+                syntax_status = "passed" if compiled.returncode == 0 else "failed"
+            except (OSError, subprocess.TimeoutExpired):
+                syntax_status = "timed-out-or-unavailable"
+
+    return {
+        "status": "pass",
+        "private_candidates_screened": len(candidates),
+        "private_candidates_omitted_by_ghidra_cap": omitted,
+        "sequences_accepted_by_current_arm_subset_translator": compatible_count,
+        "native_c_syntax_check": syntax_status,
+        "native_c_syntax_sample_count": len(syntax_sample),
+        "native_semantic_equivalence_verified": False,
+        "function_boundaries_independently_verified": False,
+        "addresses_or_instruction_words_emitted": False,
+        "interpretation": (
+            "Compatibility screening only. Ghidra boundaries can be heuristic; successful translation "
+            "and host-C syntax checking do not prove ARM equivalence or gameplay."
+        ),
+    }
+
+
 def run_ghidra_function_census(
     ghidra_headless_path: Path, target: str, exheader_path: Path,
     code_path: Path, text_segment: dict, work_directory: Path,
@@ -422,6 +555,7 @@ def run_ghidra_function_census(
     project_path = work / "ghidra-project"
     project_path.mkdir(parents=True, exist_ok=True)
     summary_path = work / "private-ghidra-summary.json"
+    candidate_sidecar_path = work / "private-ghidra-candidates.json"
     log_path = work / "private-ghidra.log"
     script_log_path = work / "private-ghidra-script.log"
     app_log_path = work / "private-ghidra-app.log"
@@ -444,7 +578,8 @@ def run_ghidra_function_census(
         "-scriptlog", str(script_log_path),
         "-deleteProject",
         "-postScript", "FunctionCensusSummary.java",
-        str(summary_path), f"0x{text_start:08X}", str(text_size),
+        str(summary_path), str(candidate_sidecar_path),
+        f"0x{text_start:08X}", str(text_size),
     ]
     try:
         with log_path.open("wb") as log:
@@ -475,7 +610,7 @@ def run_ghidra_function_census(
             f"Ghidra headless census failed (category: {category}; diagnostic: {hint}); raw diagnostics were discarded"
         )
     try:
-        return sanitize_ghidra_summary(summary_path, text_size)
+        safe_summary = sanitize_ghidra_summary(summary_path, text_size)
     except IntakeError as exc:
         if "did not produce a readable summary" not in str(exc):
             raise
@@ -487,6 +622,8 @@ def run_ghidra_function_census(
             f"Ghidra headless census produced no readable summary "
             f"(category: {category}; diagnostic: {hint}); raw diagnostics were discarded"
         ) from None
+    candidate_screen = screen_private_ghidra_candidates(candidate_sidecar_path)
+    return {**safe_summary, "candidate_translation_screen": candidate_screen}
 
 
 def extract_and_inspect(
