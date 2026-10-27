@@ -230,7 +230,7 @@ class TranslationTests(unittest.TestCase):
             checks.append(
                 f"    {{ uint8_t flags = 0; if ({name}(&flags) != UINT32_C({expected}) || flags != UINT8_C(11)) return {len(checks)+1}; }}"
             )
-        harness = "\n".join(sources) + "\nint main(void) {\n" + "\n".join(checks) + "\n    return 0;\n}\n"
+        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + chr(10).join(checks) + chr(10) + "    return 0;" + chr(10) + "}" + chr(10)
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "register_operations.c"
             exe = Path(directory) / ("register_operations.exe" if os.name == "nt" else "register_operations")
@@ -245,9 +245,9 @@ class TranslationTests(unittest.TestCase):
         if not compiler:
             self.skipTest("no C compiler found; predicated register proof requires cc, gcc, or clang")
         words = [0xE3A00000, 0xE3A01009, 0x11A00001, 0xE12FFF1E]  # MOVNE r0,r1
-        skipped = poc.translate(words, initial_nzcv=0x4).replace("uint32_t synthetic_entry(", "movne_skipped(")
-        executed = poc.translate(words, initial_nzcv=0x0).replace("uint32_t synthetic_entry(", "movne_executed(")
-        harness = "\n".join((skipped, executed)) + """
+        skipped = poc.translate(words, initial_nzcv=0x4).replace("uint32_t synthetic_entry(", "uint32_t movne_skipped(")
+        executed = poc.translate(words, initial_nzcv=0x0).replace("uint32_t synthetic_entry(", "uint32_t movne_executed(")
+        harness = chr(10).join((skipped, executed)) + chr(10) + """
 int main(void) {
     uint8_t skipped_flags = 0, executed_flags = 0;
     return movne_skipped(&skipped_flags) == UINT32_C(0) && skipped_flags == UINT8_C(4)
@@ -390,7 +390,7 @@ int main(void) {
                 checks.append(
                     f"    {{ uint8_t f = 0; if (!({pred_name}(&f) == UINT32_C({pred_expected}) && f == UINT8_C({nzcv}))) bad++; }}"
                 )
-        harness = "\n".join(sources) + "\nint main(void) {\n    int bad = 0;\n" + "\n".join(checks) + "\n    return bad;\n}\n"
+        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + chr(10).join(checks) + chr(10) + "    return 0;" + chr(10) + "}" + chr(10)
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "conditions.c"
             exe = Path(directory) / ("conditions.exe" if os.name == "nt" else "conditions")
@@ -412,7 +412,7 @@ int main(void) {
         executed = poc.translate([0x02900001, 0xE12FFF1E], initial_nzcv=0x4).replace(
             "uint32_t synthetic_entry(", "uint32_t predicated_executed("
         )
-        harness = "\n".join((skipped, executed)) + """
+        harness = chr(10).join((skipped, executed)) + chr(10) + """
 int main(void) {
     uint8_t skipped_flags = 0;
     uint8_t executed_flags = 0;
@@ -443,7 +443,7 @@ int main(void) {
         executed = poc.translate([0x13500000, 0xE12FFF1E], initial_nzcv=0x8).replace(
             "uint32_t synthetic_entry(", "uint32_t conditional_cmp_executed("
         )
-        harness = "\n".join((skipped, executed)) + """
+        harness = chr(10).join((skipped, executed)) + chr(10) + """
 int main(void) {
     uint8_t skipped_flags = 0;
     uint8_t executed_flags = 0;
