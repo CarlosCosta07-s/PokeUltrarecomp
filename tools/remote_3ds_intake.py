@@ -117,6 +117,36 @@ def google_drive_file_details(source_url: str) -> tuple[str, str] | None:
     return file_id, resource_key
 
 
+def classify_google_drive_download_failure(exc: Exception) -> str:
+    """Classify Google Drive failures safely, without returning raw response text or URLs."""
+    message = str(exc).casefold()
+    quota_markers = (
+        "too many users", "many accesses", "download quota", "quota exceeded",
+        "quota has been exceeded", "rate limit", "rate-limited", "too many requests",
+        "download limit", "try again later",
+    )
+    if any(marker in message for marker in quota_markers):
+        return (
+            "Google Drive appears to be rate-limiting this file's download; "
+            "wait before retrying or use another authorized download host"
+        )
+    if any(marker in message for marker in (
+        "cannot retrieve the public link", "permission", "request access",
+        "not accessible", "file not found", "404",
+    )):
+        return (
+            "Google Drive did not provide a public download link; verify that "
+            "sharing allows anyone with the link and that any resource key is included"
+        )
+    exception_type = type(exc).__name__.casefold()
+    if "timeout" in exception_type or "timed out" in message or "connection reset" in message:
+        return "Google Drive download timed out or hit a network error; retry when the connection is stable"
+    return (
+        "Google Drive download failed; verify link access and check for temporary download "
+        "quotas or provider/network restrictions"
+    )
+
+
 def _download_google_drive(source_url: str, destination: Path) -> int:
     """Download a public Google Drive share link while handling large-file confirmation."""
     try:
@@ -155,13 +185,10 @@ def _download_google_drive(source_url: str, destination: Path) -> int:
     except IntakeError:
         destination.unlink(missing_ok=True)
         raise
-    except Exception:
-        # Deliberately suppress the underlying exception: third-party errors may
-        # include the secret URL or other private request details.
+    except Exception as exc:
+        # Third-party error text may contain the secret URL or private response details.
         destination.unlink(missing_ok=True)
-        raise IntakeError(
-            "Google Drive download failed; set access to Anyone with the link and check whether Drive is blocking or quota-limiting downloads"
-        ) from None
+        raise IntakeError(classify_google_drive_download_failure(exc)) from None
 
 
 def download(source_url: str, destination: Path) -> int:

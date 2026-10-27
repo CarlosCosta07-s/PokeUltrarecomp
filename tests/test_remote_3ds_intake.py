@@ -432,6 +432,37 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertNotIn("never-log-this", str(raised.exception))
         self.assertFalse(destination.exists())
 
+    def test_google_drive_failure_classifier_reports_quota_without_leaking_url(self):
+        secret_url = "https://drive.google.com/file/d/SecretIdentifier123456/view?private=never-echo"
+        message = (
+            "Too many users have viewed or downloaded this file recently. "
+            "Please try again later. " + secret_url
+        )
+        classified = intake.classify_google_drive_download_failure(RuntimeError(message))
+        self.assertIn("rate-limiting", classified)
+        self.assertNotIn("SecretIdentifier123456", classified)
+        self.assertNotIn("never-echo", classified)
+        self.assertNotIn(secret_url, classified)
+
+    def test_google_drive_failure_classifier_reports_sharing_problem_safely(self):
+        secret_url = "https://drive.google.com/file/d/SecretIdentifier123456/view?private=never-echo"
+        message = (
+            "Cannot retrieve the public link of the file. Change permission to "
+            "'Anyone with the link'. " + secret_url
+        )
+        classified = intake.classify_google_drive_download_failure(RuntimeError(message))
+        self.assertIn("public download link", classified)
+        self.assertIn("sharing allows anyone with the link", classified)
+        self.assertNotIn("SecretIdentifier123456", classified)
+        self.assertNotIn("never-echo", classified)
+
+    def test_google_drive_failure_classifier_reports_timeout_without_leaking_details(self):
+        classified = intake.classify_google_drive_download_failure(
+            TimeoutError("timed out accessing https://drive.google.com/private-secret")
+        )
+        self.assertIn("timed out", classified)
+        self.assertNotIn("private-secret", classified)
+
     def test_google_drive_download_enforces_size_limit(self):
         from types import SimpleNamespace
         from unittest.mock import patch
