@@ -33,6 +33,9 @@ THUMB_LITERAL_MEMORY_HALFWORDS = (0x2000, 0x4901, 0x4770)
 THUMB_SP_MEMORY_HALFWORDS = (0x9101, 0x9A01, 0x4770)
 THUMB_STACK_MEMORY_HALFWORDS = (0xB503, 0xBC0C, 0x4770)
 THUMB_STACK_POP_OVERFLOW_HALFWORDS = (0xBC0C, 0x4770)
+THUMB_STACK_ADJUST_HALFWORDS = (0xB082, 0xB002, 0x4770)
+THUMB_SP_SUB_UNDERFLOW_HALFWORDS = (0xB082, 0x4770)
+THUMB_SP_ADD_OVERFLOW_HALFWORDS = (0xB001, 0x4770)
 
 A32_ADAPTER = r"""
 #include <stddef.h>
@@ -353,6 +356,39 @@ int poke_native_execute_thumb_stack_pop_overflow_memory(
         call, memory, result, poke_thumb_stack_pop_overflow_generated_entry
     );
 }
+
+int poke_native_execute_thumb_stack_adjust_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_stack_memory_with_entry(
+        call, memory, result, poke_thumb_stack_adjust_generated_entry
+    );
+}
+
+int poke_native_execute_thumb_sp_sub_underflow_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_stack_memory_with_entry(
+        call, memory, result, poke_thumb_sp_sub_underflow_generated_entry
+    );
+}
+
+int poke_native_execute_thumb_sp_add_overflow_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_stack_memory_with_entry(
+        call, memory, result, poke_thumb_sp_add_overflow_generated_entry
+    );
+}
 """
 
 
@@ -393,6 +429,9 @@ def generate_thumb_memory() -> str:
         _generate_memory_entry(THUMB_SP_MEMORY_HALFWORDS, "poke_thumb_sp_memory_generated_entry"),
         _generate_stack_entry(THUMB_STACK_MEMORY_HALFWORDS, "poke_thumb_stack_memory_generated_entry"),
         _generate_stack_entry(THUMB_STACK_POP_OVERFLOW_HALFWORDS, "poke_thumb_stack_pop_overflow_generated_entry"),
+        _generate_stack_entry(THUMB_STACK_ADJUST_HALFWORDS, "poke_thumb_stack_adjust_generated_entry"),
+        _generate_stack_entry(THUMB_SP_SUB_UNDERFLOW_HALFWORDS, "poke_thumb_sp_sub_underflow_generated_entry"),
+        _generate_stack_entry(THUMB_SP_ADD_OVERFLOW_HALFWORDS, "poke_thumb_sp_add_overflow_generated_entry"),
         THUMB_MEMORY_ADAPTER,
     )
     return "\n".join(sources)

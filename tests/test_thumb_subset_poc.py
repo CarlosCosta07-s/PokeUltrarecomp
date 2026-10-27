@@ -730,6 +730,77 @@ class ThumbStackTransferTests(unittest.TestCase):
                 with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "stack transfer"):
                     poc.translate(words)
 
+    def test_translator_refuses_sp_adjustments_without_stack_state_model(self):
+        for words in ([0xB002, 0x4770], [0xB082, 0x4770]):
+            with self.subTest(words=[hex(w) for w in words]), self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "PC/SP address arithmetic"):
+                poc.translate(words)
+
+    def test_native_sp_adjustments_update_sp_and_preserve_state_on_faults(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native ADD/SUB SP proof requires cc, gcc, or clang")
+        adjust_source = poc.translate(
+            [0xB082, 0xB002, 0x4770],
+            max_execution_steps=3,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_stack_memory_bounded(", "uint32_t thumb_sp_adjust(")
+        underflow_source = poc.translate(
+            [0xB082, 0x4770],
+            max_execution_steps=2,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_stack_memory_bounded(", "uint32_t thumb_sp_sub_underflow(")
+        overflow_source = poc.translate(
+            [0xB001, 0x4770],
+            max_execution_steps=2,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_stack_memory_bounded(", "uint32_t thumb_sp_add_overflow(")
+        harness = adjust_source + "\n" + underflow_source + "\n" + overflow_source + r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {UINT32_C(0x1234),2U,3U,4U,5U,6U,7U,8U};
+    uint32_t output[8] = {0U};
+    uint8_t memory[16]; memset(memory, UINT8_C(0xA5), sizeof(memory));
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U, final_sp = 0U;
+    const uint32_t returned = thumb_sp_adjust(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(16), UINT32_C(0), UINT32_C(0x1018),
+        UINT32_C(0), &final_sp
+    );
+    if (returned != input[0] || status != UINT8_C(0) || steps != UINT32_C(3)
+        || final_sp != UINT32_C(0x1018) || nzcv != UINT8_C(0x9)) return 1;
+    for (unsigned i = 0; i < sizeof(memory); ++i) if (memory[i] != UINT8_C(0xA5)) return 2;
+    status = UINT8_C(0xAA); steps = 99U; final_sp = 0U;
+    (void)thumb_sp_sub_underflow(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(16), UINT32_C(0), UINT32_C(4),
+        UINT32_C(0), &final_sp
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(1) || final_sp != UINT32_C(4)) return 3;
+    status = UINT8_C(0xAA); steps = 99U; final_sp = 0U;
+    (void)thumb_sp_add_overflow(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(16), UINT32_C(0), UINT32_C(0xFFFFFFFC),
+        UINT32_C(0), &final_sp
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(1)
+        || final_sp != UINT32_C(0xFFFFFFFC)) return 4;
+    for (unsigned i = 0; i < sizeof(memory); ++i) if (memory[i] != UINT8_C(0xA5)) return 5;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_sp_adjust.c"
+            exe = Path(directory) / ("thumb_sp_adjust.exe" if os.name == "nt" else "thumb_sp_adjust")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"native Thumb ADD/SUB SP semantics failed with {run.returncode}")
+
     def test_native_push_pop_update_sp_and_preserve_state_on_faults(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:

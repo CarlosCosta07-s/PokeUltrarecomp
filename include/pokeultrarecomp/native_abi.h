@@ -91,6 +91,21 @@ int poke_native_execute_thumb_stack_pop_overflow_memory(
     const PokeNativeMemory *memory,
     PokeNativeResult *result
 );
+int poke_native_execute_thumb_stack_adjust_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
+int poke_native_execute_thumb_sp_sub_underflow_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
+int poke_native_execute_thumb_sp_add_overflow_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
 
 #ifdef __cplusplus
 }

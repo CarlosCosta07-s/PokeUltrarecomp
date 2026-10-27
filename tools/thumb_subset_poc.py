@@ -35,6 +35,8 @@ CONDITION_C = {
 
 INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
 STACK_OPS = ("push", "pop")
+SP_ADJUST_OPS = ("add_sp", "sub_sp")
+STACK_STATE_OPS = STACK_OPS + SP_ADJUST_OPS
 LITERAL_OPS = ("ldr_literal",)
 MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg", "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm", "str_sp", "ldr_sp", "stmia", "ldmia")
 SUPPORTED_NATIVE_MEMORY_OPS = frozenset((
@@ -359,15 +361,15 @@ def translate(
     decoded = [decode_halfword(word) for word in halfwords]
     contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
     contains_sp_memory = any(inst[0] in ("str_sp", "ldr_sp") for inst in decoded)
-    contains_stack_ops = any(inst[0] in STACK_OPS for inst in decoded)
-    contains_invalid_state_access = contains_literal_load or contains_sp_memory or contains_stack_ops
+    contains_stack_state_ops = any(inst[0] in STACK_STATE_OPS for inst in decoded)
+    contains_guest_state_access = contains_literal_load or contains_sp_memory or contains_stack_state_ops
     contains_alignment_sensitive_memory = any(
         (inst[0] in MEMORY_ACCESS_WIDTHS and MEMORY_ACCESS_WIDTHS[inst[0]] > 1)
         or inst[0] in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS
         or inst[0] in STACK_OPS
         for inst in decoded
     )
-    supported_memory_found = False
+    supported_memory_or_stack_state_found = False
     for inst in decoded:
         if inst[0] in LITERAL_OPS:
             if not runtime_memory_io:
@@ -375,7 +377,7 @@ def translate(
                     "PC-relative literal load is decoded for inspection only; "
                     "set runtime_memory_io=True to use the bounded native memory model"
                 )
-            supported_memory_found = True
+            supported_memory_or_stack_state_found = True
             continue
         if inst[0] in MEMORY_OPS:
             if not runtime_memory_io:
@@ -393,26 +395,29 @@ def translate(
                     raise UnsupportedThumbInstruction(
                         "STMIA base register in the register list is unsupported by the conservative native memory model"
                     )
-            supported_memory_found = True
+            supported_memory_or_stack_state_found = True
         if inst[0] in ADDRESS_OPS:
-            raise UnsupportedThumbInstruction(
-                f"PC/SP address arithmetic ({inst[0]}) is decoded for inspection only; "
-                "the synthetic translator does not model PC or SP"
-            )
+            if inst[0] in SP_ADJUST_OPS and runtime_memory_io:
+                supported_memory_or_stack_state_found = True
+            else:
+                raise UnsupportedThumbInstruction(
+                    f"PC/SP address arithmetic ({inst[0]}) is decoded for inspection only; "
+                    "the synthetic translator models ADD/SUB SP only through the bounded stack-state interface"
+                )
         if inst[0] in STACK_OPS:
             if not runtime_memory_io:
                 raise UnsupportedThumbInstruction(
                     f"stack transfer ({inst[0]}) is decoded for inspection only; "
                     "set runtime_memory_io=True to use the bounded native memory model"
                 )
-            supported_memory_found = True
+            supported_memory_or_stack_state_found = True
         if inst[0] in INDIRECT_FLOW_OPS:
             raise UnsupportedThumbInstruction(
                 f"register-indirect control flow ({inst[0]}) is decoded for inspection only; "
                 "the synthetic translator does not model it"
             )
-    if runtime_memory_io and not supported_memory_found:
-        raise UnsupportedThumbInstruction("runtime_memory_io requires at least one supported memory instruction")
+    if runtime_memory_io and not supported_memory_or_stack_state_found:
+        raise UnsupportedThumbInstruction("runtime_memory_io requires a supported memory or stack-state instruction")
 
     if any(inst == ("return",) for inst in decoded[:-1]):
         raise UnsupportedThumbInstruction("instructions after BX LR are unsupported")
@@ -452,7 +457,7 @@ def translate(
     if runtime_state_io:
         used_registers = set(range(8))
     bounded = max_execution_steps is not None
-    if runtime_memory_io and contains_stack_ops:
+    if runtime_memory_io and contains_stack_state_ops:
         signature = (
             "uint32_t thumb_entry_stack_memory_bounded(const uint32_t *registers_in, "
             "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
@@ -504,7 +509,7 @@ def translate(
     if runtime_memory_io:
         lines.append("    (void)guest_entry_address;")
         lines.append("    (void)guest_sp;")
-        if contains_stack_ops:
+        if contains_stack_state_ops:
             lines.extend((
                 "    uint32_t current_sp = guest_sp;",
                 "    if (guest_sp_out != 0) *guest_sp_out = current_sp;",
@@ -513,7 +518,7 @@ def translate(
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory_bytes == 0 || guest_memory_size == 0U || "
             "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))" +
-            (" || guest_sp_out == 0" if contains_stack_ops else "") + ") {",
+            (" || guest_sp_out == 0" if contains_stack_state_ops else "") + ") {",
             "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
             "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
             "        return 0U;",
@@ -835,7 +840,7 @@ def translate(
                 lines.append("    {")
                 if address_expression is None:
                     address_wide = f"thumb_sp_address_wide_{suffix}"
-                    sp_value = "current_sp" if contains_stack_ops else "guest_sp"
+                    sp_value = "current_sp" if contains_stack_state_ops else "guest_sp"
                     lines.append(
                         f"        const uint64_t {address_wide} = (uint64_t){sp_value} + UINT64_C({immediate_offset});"
                     )
@@ -866,7 +871,7 @@ def translate(
                 lines.append("    {")
                 if address_expression is None:
                     address_wide = f"thumb_sp_address_wide_{suffix}"
-                    sp_value = "current_sp" if contains_stack_ops else "guest_sp"
+                    sp_value = "current_sp" if contains_stack_state_ops else "guest_sp"
                     lines.append(
                         f"        const uint64_t {address_wide} = (uint64_t){sp_value} + UINT64_C({immediate_offset});"
                     )
@@ -962,6 +967,19 @@ def translate(
                 if not (register_mask & (1 << rn)):
                     lines.append(f"        r{rn} = (uint32_t)({address} + UINT32_C({transfer_bytes}));")
             lines.append("    }")
+        elif op in SP_ADJUST_OPS:
+            _, adjustment = inst
+            suffix = str(index)
+            lines.append("    {")
+            if op == "add_sp":
+                wide = f"thumb_add_sp_wide_{suffix}"
+                lines.append(f"        const uint64_t {wide} = (uint64_t)current_sp + UINT64_C({adjustment});")
+                lines.append(f"        if ({wide} > UINT64_C(0xFFFFFFFF)) goto thumb_invalid_state;")
+                lines.append(f"        current_sp = (uint32_t){wide};")
+            else:
+                lines.append(f"        if (current_sp < UINT32_C({adjustment})) goto thumb_invalid_state;")
+                lines.append(f"        current_sp -= UINT32_C({adjustment});")
+            lines.append("    }")
         elif op in STACK_OPS:
             suffix = str(index)
             if op == "push":
@@ -1055,7 +1073,7 @@ def translate(
                     "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
                     "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
                 ))
-            if contains_invalid_state_access:
+            if contains_guest_state_access:
                 lines.extend((
                     "    goto thumb_exit;",
                     "thumb_invalid_state: ;",
@@ -1063,7 +1081,7 @@ def translate(
                     "    if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
                 ))
         lines.append("thumb_exit: ;")
-        if contains_stack_ops:
+        if contains_stack_state_ops:
             lines.append("    if (guest_sp_out != 0) *guest_sp_out = current_sp;")
     # Read each guest register in the epilogue so strict C compilers do not
     # reject valid fixtures that write a register whose value is not returned.

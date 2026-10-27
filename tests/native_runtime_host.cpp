@@ -387,6 +387,36 @@ int main()
         return fail("Thumb POP SP overflow changed SP or guest memory");
     }
 
+    stack_call.guest_sp = UINT32_C(0x1018);
+    set_sentinel(stack_result);
+    if (poke_native_execute_thumb_stack_adjust_memory(&stack_call, &stack_memory, &stack_result)
+        != POKE_NATIVE_ABI_OK || stack_result.guest_sp != UINT32_C(0x1018)
+        || stack_result.steps_executed != UINT32_C(3)
+        || stack_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || stack_result.return_value != stack_call.registers[0]
+        || stack_result.nzcv != stack_call.initial_nzcv
+        || stack_bytes != stack_bytes_before_fault) {
+        return fail("Thumb ADD/SUB SP did not restore SP or preserve flags/memory through the C ABI");
+    }
+    stack_call.guest_sp = UINT32_C(4);
+    set_sentinel(stack_result);
+    if (poke_native_execute_thumb_sp_sub_underflow_memory(&stack_call, &stack_memory, &stack_result)
+        != POKE_NATIVE_ABI_OK || stack_result.guest_sp != UINT32_C(4)
+        || stack_result.steps_executed != UINT32_C(1)
+        || stack_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || stack_bytes != stack_bytes_before_fault) {
+        return fail("Thumb SUB SP underflow changed SP or guest memory");
+    }
+    stack_call.guest_sp = UINT32_C(0xFFFFFFFC);
+    set_sentinel(stack_result);
+    if (poke_native_execute_thumb_sp_add_overflow_memory(&stack_call, &stack_memory, &stack_result)
+        != POKE_NATIVE_ABI_OK || stack_result.guest_sp != UINT32_C(0xFFFFFFFC)
+        || stack_result.steps_executed != UINT32_C(1)
+        || stack_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || stack_bytes != stack_bytes_before_fault) {
+        return fail("Thumb ADD SP overflow changed SP or guest memory");
+    }
+
     guest_bytes.fill(UINT8_C(0xEE));
     PokeNativeCall multiple_call{};
     multiple_call.abi_version = POKE_NATIVE_ABI_VERSION;
