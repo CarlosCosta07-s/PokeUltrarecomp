@@ -320,8 +320,8 @@ def translate(
     original synthetic POC API. With ``runtime_state_io=True``, bounded C accepts
     entry r0-r3 and NZCV at runtime and returns all four registers plus NZCV,
     step count and execution status. ``runtime_memory_io=True`` adds an explicit,
-    bounded byte-region for the supported pre-indexed immediate word LDR/STR forms.
-    Unsupported addresses and misaligned accesses fail explicitly; no interpreter
+    bounded byte-region for pre-indexed immediate word and byte LDR/STR forms.
+    Unsupported addresses and misaligned word accesses fail explicitly; no interpreter
     or memory fallback is generated. This remains a synthetic candidate model, not
     the original ARM ABI or proof of equivalence.
     """
