@@ -409,6 +409,7 @@ def run_ghidra_function_census(
     from wrap_retail_code import build_analysis_elf, RetailCodeWrapError
     elf_path = work / "private-analysis.elf"
     project_path = work / "ghidra-project"
+    project_path.mkdir(parents=True, exist_ok=True)
     summary_path = work / "private-ghidra-summary.json"
     log_path = work / "private-ghidra.log"
     try:
