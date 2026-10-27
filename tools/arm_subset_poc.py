@@ -877,7 +877,7 @@ def translate(
             elif operation_name == "rsb":
                 expression = f"(uint64_t)({rhs_expr}) - (uint64_t)r{rn}"
             else:
-                expression = f"(uint64_t)({rhs_expr}) - ((uint64_t)r{rn} + (uint64_t)(1U - {carry_in}))
+                expression = f"(uint64_t)({rhs_expr}) - ((uint64_t)r{rn} + (uint64_t)(1U - {carry_in}))"
             lines.append(f"    r{rd} = (uint32_t)({expression});")
         elif instruction[0] in ("adds", "subs", "rsbs", "cmn", "cmp", "adcs", "sbcs", "rscs", "adds_reg", "subs_reg", "rsbs_reg", "cmn_reg", "cmp_reg", "adcs_reg", "sbcs_reg", "rscs_reg"):
             operation = str(instruction[0]).removesuffix("_reg")
