@@ -112,7 +112,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertNotIn("0x00101234", intake.classify_ghidra_failure(log_path))
 
     def test_runs_ghidra_in_precreated_private_project_directory(self):
-        fake_headless = self.work / "fake_analyzeHeadless"
+        fake_headless = self.work / "fake_analyzeHeadless.py"
         safe_fixture = self._valid_ghidra_summary()
         fake_headless.write_text(
             "#!/usr/bin/env python3\n"
@@ -128,7 +128,6 @@ class Remote3DSIntakeTests(unittest.TestCase):
             "summary.write_text(json.dumps(data), encoding='utf-8')\n",
             encoding="utf-8",
         )
-        fake_headless.chmod(0o755)
         text_segment = {"virtual_address": 0x00100000, "declared_size_bytes": 128}
         result = intake.run_ghidra_function_census(
             fake_headless, "ultra-sun", self.header_fixture, self.code_fixture,
