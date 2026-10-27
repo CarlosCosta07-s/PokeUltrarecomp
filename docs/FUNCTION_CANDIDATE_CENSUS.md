@@ -11,6 +11,9 @@
 
 ## Triagem privada do Ghidra contra o tradutor ARM atual
 
+O tradutor ARM A32 agora inclui também formas simples de `Operand2` em registrador sem deslocamento: `MOV/MVN`, operações lógicas sem S-bit, aritmética e comparações `ADD/SUB/ADDS/SUBS/CMN/CMP`, limitadas a `r0-r3`. Os deslocamentos não zero, acessos à memória e outras formas de operandos permanecem bloqueados. A nova matriz diferencial sintética passou em 192/192 casos contra o modelo NZCV separado do projeto; isso valida a POC sintética, não código do jogo.
+
+
 O workflow remoto também importa um ELF de análise temporário no Ghidra e retém em armazenamento temporário os corpos pequenos que a análise automática identifica como candidatos A32 contínuos, sem chamadas diretas detectadas e terminados em `BX LR`. A seleção é deliberadamente restrita (8–64 bytes) e serve apenas como uma primeira triagem.
 
 Para cada candidato, `screen_private_ghidra_candidates` tenta a tradução com o subconjunto A32 existente. Os candidatos aceitos são reunidos em amostras de C e passam por uma verificação de sintaxe do compilador host (`-fsyntax-only`). Para as sequências rejeitadas, o relatório público conta apenas famílias fixas de causa, como instrução fora do modelo atual, forma de flags não suportada ou registrador fora do subconjunto. Os endereços, palavras de instrução, C gerado e mensagens completas do compilador ficam em armazenamento temporário privado e são descartados.
