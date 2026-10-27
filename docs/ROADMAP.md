@@ -78,7 +78,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 5A — Intake dos executáveis de Ultra Sun / Ultra Moon
 
-**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas. Lê o Program ID no ACI do ExHeader, confere o alvo e calcula os offsets no `.code` com o layout page-padded declarado. Os arquivos reais dos jogos não são incluídos nem processados na CI.
+**Estado:** ferramenta local de preflight implementada e coberta por fixtures sintéticas. Lê o Program ID no ACI do ExHeader, confere o alvo e calcula os offsets no `.code` com o layout page-padded declarado. Em 27/10/2026, uma imagem CCI real de Ultra Sun foi processada em armazenamento temporário no workflow [#40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483): extração/layout passaram e nenhum arquivo do jogo foi publicado como artifact. Isso confirma apenas o pré-processamento estrutural dessa entrada, não a autenticidade/revisão exata nem uma função recompilada.
 
 **Tarefas desta etapa**
 - [x] Adicionar perfis distintos de Ultra Sun e Ultra Moon, com IDs-base/atualização conhecidos e política de entradas locais.
@@ -86,9 +86,11 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Emitir JSON com SHA-256 local e metadados sem copiar bytes ou caminhos absolutos.
 - [x] Expor candidatos de variante por tamanho de `.code` a partir de referência comunitária; o resultado é explicitamente heurístico e não autentica a revisão.
 - [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.
-- [ ] Validar uma entrada local autorizada e ainda não modificada de cada jogo; registrar apenas relatório redigido.
+- [x] Executar um preflight para uma imagem CCI autorizada de Ultra Sun em runner temporário, com resultado redigido e sem artifact de jogo (workflow [#40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483)). A identidade exata da revisão ainda não foi comprovada.
+- [x] Executar uma contagem heurística agregada de padrões comuns de prólogo no segmento `.text` de Ultra Sun: 25.019 ocorrências candidatas. Isso não equivale ao número de funções e pode incluir dados/padrões coincidentes.
 - [x] Criar um inventário heurístico agregado de padrões comuns de prólogo ARM/Thumb, com saída sanitizada e testes sintéticos; isso não substitui a identificação manual de funções reais.
-- [ ] Fazer inventário de funções ARM/Thumb reais, confirmando limites/estados sem reutilizar fontes cuja licença não está confirmada.
+- [ ] Validar separadamente uma entrada autorizada de Ultra Moon.
+- [ ] Identificar e confirmar manualmente limites/estados de funções ARM/Thumb reais, sem reutilizar fontes cuja licença não está confirmada.
 
 **Critério de conclusão:** preflight reproduzível em entradas locais dos dois jogos, revisão exata identificada e nenhuma entrada/extração/saída derivada publicada. A etapa atual ainda não é desassemblagem nem recompilação.
 
