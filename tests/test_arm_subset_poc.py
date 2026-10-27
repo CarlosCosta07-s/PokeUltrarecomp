@@ -518,6 +518,8 @@ int main(void) {
             "asr32": 0xE1B00041,  # MOVS r0,r1,ASR #32
             "ror": 0xE1B000E1,  # MOVS r0,r1,ROR #1
             "rrx": 0xE1B00061,  # MOVS r0,r1,RRX
+            "adds_lsl": 0xE0920081,  # ADDS r0,r2,r1,LSL #1
+            "ands_lsl": 0xE0120081,  # ANDS r0,r2,r1,LSL #1
         }
         snippets = []
         for name, word in words_by_name.items():
@@ -536,9 +538,9 @@ int main(void) {
 static int run_case(
     uint32_t (*fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *),
     uint32_t r1, uint8_t initial_nzcv, uint32_t expected_r0,
-    uint8_t expected_nzcv
+    uint8_t expected_nzcv, uint32_t r2
 ) {
-    uint32_t input[4] = { UINT32_C(0x13579BDF), r1, UINT32_C(0x2468ACE0), UINT32_C(0xDEADBEEF) };
+    uint32_t input[4] = { UINT32_C(0x13579BDF), r1, r2, UINT32_C(0xDEADBEEF) };
     uint32_t output[4] = { 0U, 0U, 0U, 0U };
     uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
     uint32_t steps = 0U;
@@ -548,11 +550,13 @@ static int run_case(
         && flags == expected_nzcv && status == UINT8_C(0) && steps == UINT32_C(2) ? 0 : 1;
 }
 int main(void) {
-    if (run_case(shifted_lsl, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(2), UINT8_C(3)) != 0) return 1;
-    if (run_case(shifted_lsr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0), UINT8_C(7)) != 0) return 2;
-    if (run_case(shifted_asr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0xFFFFFFFF), UINT8_C(0xB)) != 0) return 3;
-    if (run_case(shifted_ror, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(0xC0000000), UINT8_C(0xB)) != 0) return 4;
-    if (run_case(shifted_rrx, UINT32_C(2), UINT8_C(3), UINT32_C(0x80000001), UINT8_C(9)) != 0) return 5;
+    if (run_case(shifted_lsl, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(2), UINT8_C(3), UINT32_C(0x2468ACE0)) != 0) return 1;
+    if (run_case(shifted_lsr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0), UINT8_C(7), UINT32_C(0x2468ACE0)) != 0) return 2;
+    if (run_case(shifted_asr32, UINT32_C(0x80000000), UINT8_C(1), UINT32_C(0xFFFFFFFF), UINT8_C(0xB), UINT32_C(0x2468ACE0)) != 0) return 3;
+    if (run_case(shifted_ror, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(0xC0000000), UINT8_C(0xB), UINT32_C(0x2468ACE0)) != 0) return 4;
+    if (run_case(shifted_rrx, UINT32_C(2), UINT8_C(3), UINT32_C(0x80000001), UINT8_C(9), UINT32_C(0x2468ACE0)) != 0) return 5;
+    if (run_case(shifted_adds_lsl, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(1), UINT8_C(2), UINT32_C(0xFFFFFFFF)) != 0) return 6;
+    if (run_case(shifted_ands_lsl, UINT32_C(0x80000001), UINT8_C(1), UINT32_C(2), UINT8_C(3), UINT32_C(0xFFFFFFFF)) != 0) return 7;
     return 0;
 }
 """
