@@ -760,6 +760,7 @@ def main() -> int:
             )
             if result["ghidra_function_census"] is not None:
                 ghidra = result["ghidra_function_census"]
+                screen = ghidra.get("candidate_translation_screen", {})
                 ghidra_lines = [
                     "",
                     "## Ghidra aggregate-only function census",
@@ -767,6 +768,10 @@ def main() -> int:
                     f"- Recognized function entries inside .text: {ghidra['functions_with_entry_inside_text']}",
                     f"- Leaf functions of at most 64 bytes: {ghidra['leaf_functions_le_64_bytes']}",
                     f"- Small leaf functions with a return-like instruction: {ghidra['leaf_functions_le_64_bytes_with_return_like_instruction']}",
+                    f"- Private candidates screened against the current ARM subset: {screen.get('private_candidates_screened', 0)}",
+                    f"- Sequences accepted by the ARM translator: {screen.get('sequences_accepted_by_current_arm_subset_translator', 0)}",
+                    f"- Sample host-C syntax check: {screen.get('native_c_syntax_check', 'not-run')}",
+                    "- Native semantic equivalence independently verified: **no**",
                     "- Function boundaries independently verified: **no**",
                     "- Addresses, names, instruction bytes or disassembly published: **no**",
                     "",
