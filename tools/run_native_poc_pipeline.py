@@ -478,6 +478,7 @@ int main(void) {
 
 
 LITERAL_MEMORY_HARNESS = r"""
+#include <string.h>
 int main(void) {
     const uint32_t input[8] = {
         UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), 2U, 3U,
