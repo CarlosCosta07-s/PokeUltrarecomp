@@ -355,13 +355,17 @@ def translate(
         raise UnsupportedThumbInstruction(f"sequence exceeds {MAX_INSTRUCTIONS} halfwords")
 
     decoded = [decode_halfword(word) for word in halfwords]
+    contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
     supported_memory_found = False
     for inst in decoded:
         if inst[0] in LITERAL_OPS:
-            raise UnsupportedThumbInstruction(
-                "PC-relative literal load is decoded for inspection only; "
-                "the limited native memory model does not model PC-relative literals"
-            )
+            if not runtime_memory_io:
+                raise UnsupportedThumbInstruction(
+                    "PC-relative literal load is decoded for inspection only; "
+                    "set runtime_memory_io=True to use the bounded native memory model"
+                )
+            supported_memory_found = True
+            continue
         if inst[0] in MEMORY_OPS:
             if not runtime_memory_io:
                 raise UnsupportedThumbInstruction(
@@ -440,7 +444,7 @@ def translate(
             "uint32_t thumb_entry_memory_bounded(const uint32_t *registers_in, "
             "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
             "uint8_t *execution_status_out, uint32_t *registers_out, uint8_t *memory_bytes, "
-            "uint32_t guest_memory_base, uint32_t guest_memory_size)"
+            "uint32_t guest_memory_base, uint32_t guest_memory_size, uint32_t guest_entry_address)"
         )
     elif runtime_state_io:
         signature = (
@@ -483,6 +487,14 @@ def translate(
             "        return 0U;",
             "    }",
         ))
+        if contains_literal_load:
+            lines.extend((
+                "    if ((guest_entry_address & UINT32_C(1)) != 0U) {",
+                "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
+                "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+                "        return 0U;",
+                "    }",
+            ))
     elif runtime_state_io:
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15)) {",
@@ -733,6 +745,44 @@ def translate(
                 lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+        elif op == "ldr_literal":
+            _, rd, immediate_offset = inst
+            suffix = str(index)
+            pc_wide = f"thumb_literal_pc_wide_{suffix}"
+            address_wide = f"thumb_literal_address_wide_{suffix}"
+            address = f"thumb_literal_address_{suffix}"
+            memory_offset = f"thumb_literal_memory_offset_{suffix}"
+            loaded = f"thumb_literal_loaded_{suffix}"
+            lines.append("    {")
+            lines.append(
+                f"        const uint64_t {pc_wide} = (uint64_t)guest_entry_address "
+                f"+ UINT64_C({index * 2 + 4});"
+            )
+            lines.append(f"        if ({pc_wide} > UINT64_C(0xFFFFFFFF)) goto thumb_invalid_state;")
+            lines.append(
+                f"        const uint64_t {address_wide} = "
+                f"({pc_wide} & ~UINT64_C(3)) + UINT64_C({immediate_offset});"
+            )
+            lines.append(
+                f"        if ({address_wide} > UINT64_C(0xFFFFFFFF) || "
+                f"{address_wide} + UINT64_C(4) > UINT64_C(0x100000000)) "
+                "goto thumb_invalid_state;"
+            )
+            lines.append(f"        const uint32_t {address} = (uint32_t){address_wide};")
+            lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
+            lines.append(f"        const uint32_t {memory_offset} = {address} - guest_memory_base;")
+            lines.append(
+                f"        if ({memory_offset} > guest_memory_size || "
+                f"UINT32_C(4) > guest_memory_size - {memory_offset}) goto thumb_memory_fault;"
+            )
+            lines.append(
+                f"        const uint32_t {loaded} = (uint32_t)memory_bytes[{memory_offset}] | "
+                f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(1)] << 8) | "
+                f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(2)] << 16) | "
+                f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(3)] << 24);"
+            )
+            lines.append(f"        r{rd} = {loaded};")
+            lines.append("    }")
         elif op in SUPPORTED_NATIVE_MEMORY_OPS:
             if op.endswith("_reg"):
                 _, rd, rn, rm = inst
@@ -887,6 +937,13 @@ def translate(
                 "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
                 "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
             ))
+            if contains_literal_load:
+                lines.extend((
+                    "    goto thumb_exit;",
+                    "thumb_invalid_state: ;",
+                    "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+                    "    if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+                ))
         lines.append("thumb_exit: ;")
     # Read each guest register in the epilogue so strict C compilers do not
     # reject valid fixtures that write a register whose value is not returned.
