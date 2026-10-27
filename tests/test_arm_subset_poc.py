@@ -230,7 +230,7 @@ class TranslationTests(unittest.TestCase):
             checks.append(
                 f"    {{ uint8_t flags = 0; if ({name}(&flags) != UINT32_C({expected}) || flags != UINT8_C(11)) return {len(checks)+1}; }}"
             )
-        harness = "\\n".join(sources) + "\\nint main(void) {\\n" + "\\n".join(checks) + "\\n    return 0;\\n}\\n"
+        harness = "\n".join(sources) + "\nint main(void) {\n" + "\n".join(checks) + "\n    return 0;\n}\n"
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "register_operations.c"
             exe = Path(directory) / ("register_operations.exe" if os.name == "nt" else "register_operations")
@@ -247,7 +247,7 @@ class TranslationTests(unittest.TestCase):
         words = [0xE3A00000, 0xE3A01009, 0x11A00001, 0xE12FFF1E]  # MOVNE r0,r1
         skipped = poc.translate(words, initial_nzcv=0x4).replace("uint32_t synthetic_entry(", "movne_skipped(")
         executed = poc.translate(words, initial_nzcv=0x0).replace("uint32_t synthetic_entry(", "movne_executed(")
-        harness = "\\n".join((skipped, executed)) + """
+        harness = "\n".join((skipped, executed)) + """
 int main(void) {
     uint8_t skipped_flags = 0, executed_flags = 0;
     return movne_skipped(&skipped_flags) == UINT32_C(0) && skipped_flags == UINT8_C(4)
