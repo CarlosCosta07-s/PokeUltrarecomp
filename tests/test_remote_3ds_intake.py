@@ -195,8 +195,8 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual("pass", result["status"])
         self.assertEqual(10, result["functions_with_entry_inside_text"])
         screen = result["candidate_translation_screen"]
-        self.assertEqual(2, screen["private_candidates_screened"])
-        self.assertEqual(1, screen["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual(3, screen["private_candidates_screened"])
+        self.assertEqual(2, screen["sequences_accepted_by_current_arm_subset_translator"])
         self.assertFalse(screen["native_semantic_equivalence_verified"])
         self.assertFalse(screen["addresses_or_instruction_words_emitted"])
         self.assertTrue((self.work / "ghidra-run" / "ghidra-project").is_dir())
@@ -335,7 +335,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
                     "entry_address": "0x00102000",
                     "body_size_bytes": 8,
                     "instruction_count": 2,
-                    "words": ["0xE5900000", "0xE12FFF1E"],
+                    "words": ["0xE5D00000", "0xE12FFF1E"],  # unsupported LDRB form
+                },
+                {
+                    "entry_address": "0x00103000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE5900000", "0xE12FFF1E"],  # supported LDR word with bounded model
                 },
             ],
         }), encoding="utf-8")
