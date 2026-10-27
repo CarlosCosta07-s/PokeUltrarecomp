@@ -464,8 +464,8 @@ def main() -> int:
                 f"- Target: {result['target']}\n"
                 f"- Format: {result['format']}\n"
                 "- Container extraction and metadata preflight: **passed**\n"
-                f"- Container title identity: {result['container_title_id_match']}\\n"
-                f"- Matched title kind: {result['container_title_kind'] or 'not confirmed'}\\n"
+                f"- Container title identity: {result['container_title_id_match']}\n"
+                f"- Matched title kind: {result['container_title_kind'] or 'not confirmed'}\n"
                 "- ROM, extracted code, hashes, and disassembly uploaded: **no**\n"
                 f"- Text segment: {result['text_size_bytes']} bytes\n"
                 f"- Heuristic prologue-like sites: {result['candidate_census']['candidate_sites_total']}\n"
@@ -500,7 +500,7 @@ def main() -> int:
                     "",
                 ]
                 with Path(summary).open("a", encoding="utf-8") as output:
-                    output.write("\\n".join(ghidra_lines))
+                    output.write("\n".join(ghidra_lines))
         print(json.dumps({
             "status": result["status"], "target": result["target"],
             "format": result["format"], "container_and_layout_validated": True,
