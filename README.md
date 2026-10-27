@@ -1,7 +1,7 @@
 # PokeUltrarecomp
 
 **Pesquisa para uma porta nativa de Pokémon Ultra Sun e Pokémon Ultra Moon para Windows/Linux.**  
-**Estado real:** ferramentas de inspeção estática e provas de conceito sintéticas estão publicadas; ainda não existe uma porta jogável nem um runtime de jogo funcional.
+**Estado real em 27/10/2026:** o preflight remoto de uma imagem `.CCI` de Ultra Sun passou no [workflow #40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483); a varredura heurística contou 25.019 padrões semelhantes a prólogos, não funções comprovadas. Ainda não há uma função real recompilada/validada, uma porta jogável ou um runtime de jogo funcional.
 
 ## Direção do projeto
 
@@ -27,7 +27,7 @@ A escolha de SDL3/Vulkan é arquitetural, ainda não uma dependência já integr
 - **Intake do alvo:** perfis de Ultra Sun/Ultra Moon e verificação de metadados/segmentos em entradas locais. [Guia](docs/GAME_TARGET_INTAKE.md).
 - **Inspeção de código:** inspeção explícita de intervalos ARM/Thumb e anotações conservadoras de fluxo de controle, memória e efeitos de registradores. [Guia](docs/CODE_RANGE_INSPECTION.md).
 - **ELF de análise local:** `tools/wrap_retail_code.py` valida o ExHeader e o `.code` local descomprimido e cria um contêiner ELF32 ARM para Ghidra/REA. Os bytes do jogo permanecem em um artefato externo ao repositório; isso não recompila nem executa o jogo. [Fluxo para código real](docs/REAL_GAME_CODE_WORKFLOW.md).
-- **Intake remoto de imagem 3DS:** o workflow manual [Remote Nintendo 3DS container intake](.github/workflows/remote-3ds-intake.yml) aceita `.3ds`, `.cci` e `.cia` por URL HTTPS guardada em Actions Secret, extrai uma partição com CTRTool e valida o layout em armazenamento temporário, sem publicar ROM ou binários derivados. `.ccd` não é um formato de jogo 3DS. Leia [como usar e os limites de privacidade](docs/REMOTE_GAME_ANALYSIS.md).
+- **Intake remoto de imagem 3DS:** o workflow manual [Remote Nintendo 3DS container intake](.github/workflows/remote-3ds-intake.yml) aceita `.3ds`, `.cci` e `.cia` por URL HTTPS guardada em Actions Secret, extrai uma partição com CTRTool e valida o layout em armazenamento temporário, sem publicar ROM ou binários derivados. Uma imagem Ultra Sun `.CCI` passou pelo fluxo real no [workflow #40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483). `.ccd` não é um formato de jogo 3DS. Leia [como usar e os limites de privacidade](docs/REMOTE_GAME_ANALYSIS.md).
 - **Inventário heurístico ARM/Thumb:** `tools/summarize_arm_function_candidates.py` conta padrões comuns de prólogo dentro de `.text`. O modo padrão publica apenas contagens agregadas e não imprime endereços nem bytes. Os padrões não comprovam função ou limite; veja [método e limitações](docs/FUNCTION_CANDIDATE_CENSUS.md).
 - **Desassemblagem local com Capstone:** `tools/disassemble_retail_range.py` decodifica apenas um intervalo cujo endereço, estado ARM/Thumb e número de bytes foram informados. O relatório contém bytes de instrução e deve permanecer fora do repositório; o decoder não comprova sozinho limites de função nem compatibilidade integral com ARM11.
 - **Contrato de função candidata:** validador estático para comparar efeitos observados com um contrato declarado. Ele não prova equivalência. [Guia](docs/FUNCTION_CONTRACT.md).
