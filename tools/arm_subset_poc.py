@@ -68,11 +68,35 @@ def ror32(value: int, amount: int) -> int:
 
 
 def _decode_register_data_processing(word: int, condition: int) -> tuple[object, ...]:
-    """Decode a register Operand2 with the only accepted shift form: no shift."""
-    if word & 0x00000FF0:
+    """Decode register Operand2 with immediate LSL/LSR/ASR/ROR/RRX shift semantics."""
+    # A32 register-specified shift amounts (bit 4=1) remain unsupported.
+    if word & 0x00000010:
         raise UnsupportedInstruction(
-            f"register Operand2 shifts are unsupported in 0x{word:08X}"
+            f"register-specified Operand2 shifts are unsupported in 0x{word:08X}"
         )
+    shift_type_code = (word >> 5) & 0b11
+    shift_amount = (word >> 7) & 0x1F
+    shift_kind: str | None = None
+    if shift_type_code == 0:
+        if shift_amount:
+            shift_kind = "lsl"
+    elif shift_type_code == 1:
+        shift_kind = "lsr"
+        shift_amount = shift_amount or 32
+    elif shift_type_code == 2:
+        shift_kind = "asr"
+        shift_amount = shift_amount or 32
+    else:
+        if shift_amount == 0:
+            shift_kind = "rrx"
+        else:
+            shift_kind = "ror"
+
+    def complete(operation: tuple[object, ...]) -> tuple[object, ...]:
+        if shift_kind is not None:
+            operation = ("shifted_operand", operation, shift_kind, shift_amount)
+        return _apply_condition(condition, operation)
+
     opcode = (word >> 21) & 0xF
     set_flags = (word >> 20) & 1
     rn = (word >> 16) & 0xF
@@ -101,7 +125,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         if rn > 3 or rm > 3:
             register = max(rn, rm)
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
-        return _apply_condition(condition, (operation, rn, rm))
+        return complete((operation, rn, rm))
 
     if rd > 3:
         raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
@@ -116,7 +140,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(f"source register r{rm} is outside r0-r3 subset")
         base = "mov" if opcode == 0b1101 else "mvn"
         operation = (base + "s" if set_flags else base) + "_reg"
-        return _apply_condition(condition, (operation, rd, rm))
+        return complete((operation, rd, rm))
 
     if opcode in (0b1000, 0b1001):  # TST/TEQ: update flags without writing Rd.
         operation = "tst_reg" if opcode == 0b1000 else "teq_reg"
@@ -129,7 +153,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         if rn > 3 or rm > 3:
             register = max(rn, rm)
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
-        return _apply_condition(condition, (operation, rn, rm))
+        return complete((operation, rn, rm))
 
     logical_operations = {
         0b0000: "and",
@@ -143,7 +167,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
         base = logical_operations[opcode]
         operation = (base + "s" if set_flags else base) + "_reg"
-        return _apply_condition(condition, (operation, rd, rn, rm))
+        return complete((operation, rd, rn, rm))
 
     if opcode in (0b0100, 0b0010):  # ADD/SUB, optionally setting arithmetic flags.
         if rn > 3 or rm > 3:
@@ -151,7 +175,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
         base = "add" if opcode == 0b0100 else "sub"
         operation = (base + "s" if set_flags else base) + "_reg"
-        return _apply_condition(condition, (operation, rd, rn, rm))
+        return complete((operation, rd, rn, rm))
 
     raise UnsupportedInstruction(
         f"unsupported register data-processing opcode {opcode:04b} in 0x{word:08X}"
@@ -412,7 +436,9 @@ def translate(
         raise UnsupportedInstruction("instructions after BX LR are unsupported")
 
     def base_instruction(instruction: tuple[object, ...]) -> tuple[object, ...]:
-        return instruction[2] if instruction[0] == "predicated" else instruction
+        while instruction[0] in ("predicated", "shifted_operand"):
+            instruction = instruction[2] if instruction[0] == "predicated" else instruction[1]
+        return instruction
 
     contains_memory_access = any(
         base_instruction(instruction)[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm", "ldrsb_imm", "ldrsh_imm")
@@ -439,8 +465,7 @@ def translate(
 
     used_registers = {0}  # r0 is the return register, even if not written.
     for instruction in decoded[:-1]:
-        if instruction[0] == "predicated":
-            instruction = instruction[2]
+        instruction = base_instruction(instruction)
         operation = str(instruction[0])
         if operation in ("mov", "mvn"):
             used_registers.add(instruction[1])
@@ -539,6 +564,70 @@ def translate(
         if instruction[0] == "predicated":
             _, condition_name, instruction = instruction
             lines.append(f"    if ({BRANCH_CONDITION_C[condition_name]}) {{")
+        shifted_operand_expr: str | None = None
+        shifted_carry_expr: str | None = None
+        if instruction[0] == "shifted_operand":
+            _, shifted_instruction, shift_kind, shift_amount = instruction
+            instruction = shifted_instruction
+            operation_name = str(instruction[0])
+            rm_index = 2 if operation_name in (
+                "mov_reg", "mvn_reg", "movs_reg", "mvns_reg",
+                "cmn_reg", "cmp_reg", "tst_reg", "teq_reg",
+            ) else 3
+            rm = int(instruction[rm_index])
+            suffix = f"{len(lines)}"
+            shifted_operand_expr = f"shifted_operand_{suffix}"
+            lines.append(f"    uint32_t {shifted_operand_expr};")
+            needs_shift_carry = operation_name in (
+                "movs_reg", "mvns_reg", "ands_reg", "orrs_reg",
+                "eors_reg", "bics_reg", "tst_reg", "teq_reg",
+            )
+            if needs_shift_carry:
+                shifted_carry_expr = f"shifted_carry_{suffix}"
+                lines.append(f"    uint32_t {shifted_carry_expr};")
+            source = f"r{rm}"
+            if shift_kind == "lsl":
+                lines.append(f"    {shifted_operand_expr} = (uint32_t)({source} << {shift_amount});")
+                if shifted_carry_expr:
+                    lines.append(f"    {shifted_carry_expr} = ({source} >> {32 - shift_amount}) & 1U;")
+            elif shift_kind == "lsr":
+                if shift_amount == 32:
+                    lines.append(f"    {shifted_operand_expr} = UINT32_C(0);")
+                    if shifted_carry_expr:
+                        lines.append(f"    {shifted_carry_expr} = ({source} >> 31) & 1U;")
+                else:
+                    lines.append(f"    {shifted_operand_expr} = {source} >> {shift_amount};")
+                    if shifted_carry_expr:
+                        lines.append(f"    {shifted_carry_expr} = ({source} >> {shift_amount - 1}) & 1U;")
+            elif shift_kind == "asr":
+                if shift_amount == 32:
+                    lines.append(
+                        f"    {shifted_operand_expr} = (({source} & UINT32_C(0x80000000)) != 0U) ? UINT32_MAX : UINT32_C(0);"
+                    )
+                    if shifted_carry_expr:
+                        lines.append(f"    {shifted_carry_expr} = ({source} >> 31) & 1U;")
+                else:
+                    lines.append(f"    {shifted_operand_expr} = {source} >> {shift_amount};")
+                    lines.append(
+                        f"    if (({source} & UINT32_C(0x80000000)) != 0U) "
+                        f"{shifted_operand_expr} |= UINT32_MAX << {32 - shift_amount};"
+                    )
+                    if shifted_carry_expr:
+                        lines.append(f"    {shifted_carry_expr} = ({source} >> {shift_amount - 1}) & 1U;")
+            elif shift_kind == "ror":
+                lines.append(
+                    f"    {shifted_operand_expr} = (uint32_t)(({source} >> {shift_amount}) | ({source} << {32 - shift_amount}));"
+                )
+                if shifted_carry_expr:
+                    lines.append(f"    {shifted_carry_expr} = ({shifted_operand_expr} >> 31) & 1U;")
+            elif shift_kind == "rrx":
+                lines.append(
+                    f"    {shifted_operand_expr} = (uint32_t)((flag_c << 31) | ({source} >> 1));"
+                )
+                if shifted_carry_expr:
+                    lines.append(f"    {shifted_carry_expr} = {source} & 1U;")
+            else:
+                raise UnsupportedInstruction(f"internal unknown Operand2 shift {shift_kind!r}")
         conditional_body_start = len(lines)
         if instruction[0] == "branch":
             condition, _offset = instruction[1], instruction[2]
@@ -558,11 +647,14 @@ def translate(
         elif instruction[0] in ("mov_reg", "mvn_reg", "movs_reg", "mvns_reg"):
             _, rd, rm = instruction
             base = instruction[0].removesuffix("_reg").removesuffix("s")
-            expression = f"r{rm}" if base == "mov" else f"(uint32_t)~r{rm}"
+            rm_expression = shifted_operand_expr or f"r{rm}"
+            expression = rm_expression if base == "mov" else f"(uint32_t)~({rm_expression})"
             lines.append(f"    r{rd} = {expression};")
             if instruction[0] in ("movs_reg", "mvns_reg"):
                 lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
                 lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+                if shifted_carry_expr:
+                    lines.append(f"    flag_c = {shifted_carry_expr};")
         elif instruction[0] in (
             "and_reg", "orr_reg", "eor_reg", "bic_reg",
             "ands_reg", "orrs_reg", "eors_reg", "bics_reg",
@@ -570,7 +662,8 @@ def translate(
             _, rd, rn, rm = instruction
             base = instruction[0].removesuffix("_reg").removesuffix("s")
             operator = {"and": "&", "orr": "|", "eor": "^", "bic": "& ~"}[base]
-            expression = f"r{rn} & ~r{rm}" if base == "bic" else f"r{rn} {operator} r{rm}"
+            rm_expression = shifted_operand_expr or f"r{rm}"
+            expression = f"r{rn} & ~({rm_expression})" if base == "bic" else f"r{rn} {operator} ({rm_expression})"
             if instruction[0] in ("ands_reg", "orrs_reg", "eors_reg", "bics_reg"):
                 suffix = f"{len(lines)}"
                 result = f"logical_result_{suffix}"
@@ -578,6 +671,8 @@ def translate(
                 lines.append(f"    r{rd} = {result};")
                 lines.append(f"    flag_n = ({result} >> 31) & 1U;")
                 lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+                if shifted_carry_expr:
+                    lines.append(f"    flag_c = {shifted_carry_expr};")
             else:
                 lines.append(f"    r{rd} = (uint32_t)({expression});")
         elif instruction[0] in ("tst_reg", "teq_reg"):
@@ -585,9 +680,12 @@ def translate(
             suffix = f"{len(lines)}"
             result = f"test_result_{suffix}"
             operator = "&" if instruction[0] == "tst_reg" else "^"
-            lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} r{rm});")
+            rm_expression = shifted_operand_expr or f"r{rm}"
+            lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} ({rm_expression}));")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+            if shifted_carry_expr:
+                lines.append(f"    flag_c = {shifted_carry_expr};")
         elif instruction[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm", "ldrsb_imm", "ldrsh_imm"):
             _, rd, rn, immediate, add_offset = instruction
             byte_access = instruction[0] in ("ldrb_imm", "strb_imm", "ldrsb_imm")
@@ -665,14 +763,15 @@ def translate(
         elif instruction[0] in ("add_reg", "sub_reg"):
             _, rd, rn, rm = instruction
             operator = "+" if instruction[0] == "add_reg" else "-"
-            lines.append(f"    r{rd} = (uint32_t)(r{rn} {operator} r{rm});")
+            rm_expression = shifted_operand_expr or f"r{rm}"
+            lines.append(f"    r{rd} = (uint32_t)(r{rn} {operator} ({rm_expression}));")
         elif instruction[0] in ("adds", "subs", "cmn", "cmp", "adds_reg", "subs_reg", "cmn_reg", "cmp_reg"):
             operation = str(instruction[0]).removesuffix("_reg")
             register_operand = str(instruction[0]).endswith("_reg")
             if operation in ("cmn", "cmp"):
                 if register_operand:
                     _, rn, rm = instruction
-                    rhs_expression = f"r{rm}"
+                    rhs_expression = shifted_operand_expr or f"r{rm}"
                 else:
                     _, rn, immediate = instruction
                     rhs_expression = f"UINT32_C({immediate})"
