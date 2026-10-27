@@ -1,5 +1,14 @@
 # Notas de build e testes reproduzíveis
 
+## ABI C para região de memória — 2026-10-27
+
+- **Contrato:** `include/pokeultrarecomp/native_abi.h` define `PokeNativeMemory` (versão da ABI, base guest, tamanho e ponteiro de bytes) e `PokeNativeExecutionStatus` para retorno, orçamento, estado guest inválido, falha de faixa e falha de alinhamento.
+- **Unidade gerada:** `tools/generate_native_abi_fixtures.py` gera `native_thumb_memory_generated.c` a partir das 14 formas de memory op aceitas pelo modo experimental e liga um adaptador C em `poke_native_execute_thumb_memory`.
+- **Host C++20:** `tests/native_runtime_host.cpp` chama a função C pela ABI, verifica registradores e bytes de memória, o status guest em falha de faixa/alinhamento, rejeição de mapa inválido e que versão de ABI incorreta ou buffer nulo deixam o resultado sentinela sem alteração.
+- **Build:** CMake compila a terceira unidade gerada como C e a liga ao host C++20; o teste de ABI executa como parte de `verify`.
+- **Validação:** [workflow nativo #40443861507](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443861507), commit `70e901523e3422a6ead0eac9d7ce51b7a64b248c`, passou os 4 testes CTest no Windows/MSVC e Linux/GCC. A suíte Python completa passou em 325 testes no [workflow #40443861475](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443861475).
+- **Limite:** o contrato e a memória continuam sendo fixtures sintéticas; isso não substitui memória, loader, ABI ou serviços reais dos jogos.
+
 ## Modelo de memória Thumb nativo limitado — 2026-10-27
 
 - **Implementação:** `tools/thumb_subset_poc.py` aceita o parâmetro de API `runtime_memory_io=True` apenas junto de `runtime_state_io=True` e um orçamento finito. Emite C nativo para um subconjunto explícito de loads/stores Thumb-1 por registrador e imediato: transferências de 8, 16 e 32 bits, incluindo LDRSB/LDRSH.
