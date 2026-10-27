@@ -99,7 +99,7 @@ def google_drive_confirmation_token(html: str, cookies=()) -> str:
                 return value
     patterns = (
         r'(?:[?&]confirm=)([A-Za-z0-9_-]{1,256})',
-        r'name=["\\']confirm["\\']\\s+value=["\\']([A-Za-z0-9_-]{1,256})["\\']',
+        r"""name=["']confirm["']\s+value=["']([A-Za-z0-9_-]{1,256})["']""",
     )
     for pattern in patterns:
         match = re.search(pattern, html, re.IGNORECASE)
