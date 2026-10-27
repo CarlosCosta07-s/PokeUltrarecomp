@@ -176,6 +176,23 @@ class DecoderTests(unittest.TestCase):
             with self.subTest(word=f"0x{word:08X}"):
                 self.assertEqual(expected, poc.decode_word(word))
 
+    def test_decodes_a32_mul_mla_and_flag_setting_variants(self):
+        cases = (
+            (0xE0000291, ("mul_reg", 0, 1, 2)),
+            (0xE0100291, ("muls_reg", 0, 1, 2)),
+            (0xE0203291, ("mla_reg", 0, 3, 1, 2)),
+            (0xE0303291, ("mlas_reg", 0, 3, 1, 2)),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:08X}"):
+                self.assertEqual(expected, poc.decode_word(word))
+
+    def test_rejects_noncanonical_or_out_of_subset_a32_multiply_registers(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "MUL encoding requires"):
+            poc.decode_word(0xE0001291)  # MUL has a reserved-zero accumulator field.
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register r4"):
+            poc.decode_word(0xE0040291)  # MUL destination r4 is outside the POC subset.
+
     def test_decodes_register_logical_flag_and_test_operations(self):
         cases = (
             (0xE1B00001, ("movs_reg", 0, 1)),
@@ -340,6 +357,35 @@ class TranslationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "register_operations.c"
             exe = Path(directory) / ("register_operations.exe" if os.name == "nt" else "register_operations")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_mul_mla_execute_natively_and_update_only_nz(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 multiply proof requires cc, gcc, or clang")
+
+        operations = (
+            ("mul", [0xE3A01004, 0xE3A02003, 0xE0000291, 0xE12FFF1E], 12, 11),
+            ("mla", [0xE3A01004, 0xE3A02003, 0xE3A03002, 0xE0203291, 0xE12FFF1E], 14, 11),
+            ("muls_zero", [0xE3A01005, 0xE3A02000, 0xE0100291, 0xE12FFF1E], 0, 7),
+            ("mlas_nonzero", [0xE3A01002, 0xE3A02003, 0xE3A03000, 0xE0303291, 0xE12FFF1E], 6, 3),
+        )
+        sources = []
+        checks = []
+        for name, words, expected, expected_flags in operations:
+            generated = poc.translate(words, initial_nzcv=0xB)
+            sources.append(generated.replace("uint32_t synthetic_entry(", f"uint32_t {name}("))
+            checks.append(
+                f"    {{ uint8_t flags = 0; if ({name}(&flags) != UINT32_C({expected}) || flags != UINT8_C({expected_flags})) return {len(checks)+1}; }}"
+            )
+        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + chr(10).join(checks) + chr(10) + "    return 0;" + chr(10) + "}" + chr(10)
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_multiply.c"
+            exe = Path(directory) / ("a32_multiply.exe" if os.name == "nt" else "a32_multiply")
             src.write_text(harness, encoding="utf-8")
             compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
