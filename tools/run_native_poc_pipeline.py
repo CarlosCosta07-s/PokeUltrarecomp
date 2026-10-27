@@ -57,6 +57,15 @@ MEMORY_HALFWORDS = (
     0x8A44,  # LDRH r4, [r0, #18]
     0x4770,  # BX lr
 )
+MULTIPLE_MEMORY_HALFWORDS = (
+    0xC006,  # STMIA r0!, {r1, r2}
+    0xCB30,  # LDMIA r3!, {r4, r5}
+    0x4770,  # BX lr
+)
+LDMIA_BASE_IN_LIST_HALFWORDS = (
+    0xC801,  # LDMIA r0, {r0}; base write-back is suppressed
+    0x4770,  # BX lr
+)
 
 
 class PipelineError(RuntimeError):
@@ -234,6 +243,32 @@ def _thumb_memory_source() -> str:
     return generated.replace(old_signature, "uint32_t native_thumb_memory_smoke(", 1)
 
 
+def _thumb_multiple_memory_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(MULTIPLE_MEMORY_HALFWORDS),
+        max_execution_steps=len(MULTIPLE_MEMORY_HALFWORDS),
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb multiple-transfer translator output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_multiple_memory_smoke(", 1)
+
+
+def _thumb_ldmia_base_list_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(LDMIA_BASE_IN_LIST_HALFWORDS),
+        max_execution_steps=len(LDMIA_BASE_IN_LIST_HALFWORDS),
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb LDMIA base-in-list output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_ldmia_base_list_smoke(", 1)
+
+
 A32_HARNESS = r"""
 int main(void) {
     const uint32_t input[4] = {
@@ -277,6 +312,78 @@ int main(void) {
     return 0;
 }
 """
+
+MULTIPLE_MEMORY_HARNESS = r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0x1010), UINT32_C(0x11223344), UINT32_C(0x55667788),
+        UINT32_C(0x1010), UINT32_C(0xAAAAAAAA), UINT32_C(0xBBBBBBBB),
+        UINT32_C(0xCCCCCCCC), UINT32_C(0xDDDDDDDD)
+    };
+    uint32_t registers_out[8] = {0U};
+    uint8_t memory[24];
+    for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U;
+    const uint32_t returned = native_thumb_multiple_memory_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+    );
+    if (returned != UINT32_C(0x1018) || status != UINT8_C(0)
+        || steps != UINT32_C(3) || nzcv != UINT8_C(0x9)) return 1;
+    if (registers_out[0] != UINT32_C(0x1018)
+        || registers_out[1] != UINT32_C(0x11223344)
+        || registers_out[2] != UINT32_C(0x55667788)
+        || registers_out[3] != UINT32_C(0x1018)
+        || registers_out[4] != UINT32_C(0x11223344)
+        || registers_out[5] != UINT32_C(0x55667788)
+        || registers_out[6] != input[6] || registers_out[7] != input[7]) return 2;
+    if (memory[16] != UINT8_C(0x44) || memory[17] != UINT8_C(0x33)
+        || memory[18] != UINT8_C(0x22) || memory[19] != UINT8_C(0x11)
+        || memory[20] != UINT8_C(0x88) || memory[21] != UINT8_C(0x77)
+        || memory[22] != UINT8_C(0x66) || memory[23] != UINT8_C(0x55)) return 3;
+
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+    uint32_t bad_input[8];
+    memcpy(bad_input, input, sizeof(input));
+    bad_input[0] = UINT32_C(0x1018);
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_multiple_memory_smoke(
+        bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+    );
+    if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 4;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 5;
+
+    bad_input[0] = UINT32_C(0x1011);
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_multiple_memory_smoke(
+        bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+    );
+    if (status != UINT8_C(4) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 6;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 7;
+
+    const uint32_t ldm_base_input[8] = {
+        UINT32_C(0x1000), UINT32_C(0xAAAAAAAA), UINT32_C(0xBBBBBBBB),
+        UINT32_C(0xCCCCCCCC), UINT32_C(0xDDDDDDDD), UINT32_C(0xEEEEEEEE),
+        UINT32_C(0xFFFFFFFF), UINT32_C(0xAAAAAAAA)
+    };
+    memory[0] = UINT8_C(0x78); memory[1] = UINT8_C(0x56);
+    memory[2] = UINT8_C(0x34); memory[3] = UINT8_C(0x12);
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    const uint32_t ldm_return = native_thumb_ldmia_base_list_smoke(
+        ldm_base_input, UINT8_C(0x5), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+    );
+    if (ldm_return != UINT32_C(0x12345678) || registers_out[0] != UINT32_C(0x12345678)
+        || status != UINT8_C(0) || steps != UINT32_C(2) || nzcv != UINT8_C(0x5)) return 8;
+    return 0;
+}
+"""
+
 
 MEMORY_HARNESS = r"""
 #include <string.h>
@@ -364,6 +471,12 @@ def run_pipeline(compiler_override: str | None = None) -> int:
         print("PASS: synthetic Thumb-16 -> C -> native executable (registers, NZCV, step budget)")
         _compile_and_run(compiler, is_msvc, "native_thumb_memory_smoke", _thumb_memory_source(), MEMORY_HARNESS, work_dir)
         print("PASS: native Thumb load/store widths, sign extension, bounds, alignment, and faults")
+        _compile_and_run(
+            compiler, is_msvc, "native_thumb_multiple_memory_smoke",
+            _thumb_multiple_memory_source() + "\\n" + _thumb_ldmia_base_list_source(),
+            MULTIPLE_MEMORY_HARNESS, work_dir
+        )
+        print("PASS: native Thumb LDMIA/STMIA order, write-back, base-in-list rule, and atomic faults")
     print("PASS: unsupported A32/Thumb instructions fail closed; no interpreter or emulator is used")
     return 0
 
