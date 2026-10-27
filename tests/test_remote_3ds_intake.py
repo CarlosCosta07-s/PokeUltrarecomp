@@ -290,6 +290,8 @@ class Remote3DSIntakeTests(unittest.TestCase):
             ("source register r9 is outside r0-r3 subset", "register-outside-r0-r3"),
             ("only the canonical MOV immediate encoding with Rn=0 is supported", "noncanonical-mov-mvn"),
             ("unclassified private decoder error 0x00123456", "other-decode-rejection"),
+            ("not a supported data-processing operand form: 0xE5900000", "unsupported-operand-class"),
+            ("register Operand2 shifts are unsupported in 0xE0800081", "register-shifted-operand"),
         )
         for message, expected in cases:
             with self.subTest(expected=expected):
@@ -347,7 +349,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual(1, result["candidate_sequences_with_instruction_decode_rejections"])
         self.assertEqual(0, result["candidate_sequences_rejected_by_sequence_constraints"])
         self.assertEqual(
-            {"non-immediate-data-processing": 1},
+            {"unsupported-operand-class": 1},
             result["unsupported_instruction_encodings_by_family"],
         )
         self.assertEqual("passed", result["native_c_syntax_check"])
