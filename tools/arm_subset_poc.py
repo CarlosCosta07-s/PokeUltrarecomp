@@ -262,6 +262,36 @@ def _decode_halfword_data_transfer(word: int, condition: int) -> tuple[object, .
     return _apply_condition(condition, (operation, rd, rn, offset, bool(up)))
 
 
+def _decode_multiply(word: int, condition: int) -> tuple[object, ...]:
+    """Decode bounded A32 MUL/MLA with optional N/Z flag updates."""
+    accumulate = (word >> 21) & 1
+    set_flags = (word >> 20) & 1
+    rd = (word >> 16) & 0xF
+    ra = (word >> 12) & 0xF
+    rs = (word >> 8) & 0xF
+    rm = word & 0xF
+
+    if not accumulate and ra != 0:
+        raise UnsupportedInstruction(
+            f"MUL encoding requires the accumulator field Rn to be zero: 0x{word:08X}"
+        )
+    registers = (rd, rm, rs, ra) if accumulate else (rd, rm, rs)
+    unsupported = [register for register in registers if register > 3]
+    if unsupported:
+        raise UnsupportedInstruction(
+            f"multiply source/destination register r{max(unsupported)} is outside r0-r3 subset"
+        )
+
+    operation = "mla" if accumulate else "mul"
+    if set_flags:
+        operation += "s"
+    if accumulate:
+        instruction = (operation + "_reg", rd, ra, rm, rs)
+    else:
+        instruction = (operation + "_reg", rd, rm, rs)
+    return _apply_condition(condition, instruction)
+
+
 def decode_word(word: int) -> tuple[object, ...]:
     """Decode one supported ARM A32 word into a small, explicit instruction tuple."""
     if not isinstance(word, int) or word < 0 or word > 0xFFFFFFFF:
@@ -289,6 +319,10 @@ def decode_word(word: int) -> tuple[object, ...]:
 
     if condition == 0xF:
         raise UnsupportedInstruction(f"condition code 0xF is unsupported in 0x{word:08X}")
+
+    # A32 MUL/MLA occupy the multiply-specific 1001 encoding in bits 7:4.
+    if (word & 0x0FC000F0) == 0x00000090:
+        return _decode_multiply(word, condition)
 
     # Extra load/store forms share some bit patterns with multiply instructions.
     # A nonzero S:H field or P/U/I addressing fields distinguishes this class.
@@ -530,6 +564,10 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("cmn_reg", "cmp_reg", "tst_reg", "teq_reg"):
             used_registers.update((instruction[1], instruction[2]))
+        elif operation in ("mul_reg", "muls_reg"):
+            used_registers.update((instruction[1], instruction[2], instruction[3]))
+        elif operation in ("mla_reg", "mlas_reg"):
+            used_registers.update((instruction[1], instruction[2], instruction[3], instruction[4]))
         elif operation in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm", "ldrsb_imm", "ldrsh_imm"):
             used_registers.update((instruction[1], instruction[2]))
 
@@ -867,6 +905,18 @@ def translate(
             else:
                 expression = f"r{rm} - r{rn}"
             lines.append(f"    r{rd} = (uint32_t)({expression});")
+        elif instruction[0] in ("mul_reg", "muls_reg"):
+            _, rd, rm, rs = instruction
+            lines.append(f"    r{rd} = (uint32_t)((uint64_t)r{rm} * (uint64_t)r{rs});")
+            if instruction[0] == "muls_reg":
+                lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
+                lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+        elif instruction[0] in ("mla_reg", "mlas_reg"):
+            _, rd, rn, rm, rs = instruction
+            lines.append(f"    r{rd} = (uint32_t)((uint64_t)r{rm} * (uint64_t)r{rs} + (uint64_t)r{rn});")
+            if instruction[0] == "mlas_reg":
+                lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
+                lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
         elif instruction[0] in ("adc", "sbc", "rsc", "rsb", "adc_reg", "sbc_reg", "rsc_reg", "rsb_reg"):
             register_operand = str(instruction[0]).endswith("_reg")
             operation_name = str(instruction[0]).removesuffix("_reg")
