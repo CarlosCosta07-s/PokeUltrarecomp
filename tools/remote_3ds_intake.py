@@ -207,6 +207,11 @@ def extract_and_inspect(
         report = inspect_target(target, exheader, code_path)
     except Exception as exc:
         raise IntakeError("target metadata/segment validation failed; check game version and decompression state") from exc
+    from summarize_arm_function_candidates import scan_candidates
+
+    candidate_census = scan_candidates(
+        target, exheader, code_path, preflight=report
+    )["summary"]
     text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
     return {
         "status": "pass",
@@ -214,6 +219,7 @@ def extract_and_inspect(
         "format": "." + fmt,
         "text_size_bytes": int(text_segment["declared_size_bytes"]),
         "decompressed_code_size_bytes": int(report["inputs"]["decompressed_code"]["size_bytes"]),
+        "candidate_census": candidate_census,
         "no_game_bytes_or_disassembly_uploaded": True,
     }
 
@@ -256,13 +262,21 @@ def main() -> int:
                 f"- Target: {result['target']}\n"
                 f"- Format: {result['format']}\n"
                 "- Container extraction and metadata preflight: **passed**\n"
-                "- ROM, extracted code, hashes, and disassembly uploaded: **no**\n\n"
-                "This validates the container/layout only; it does not prove recompilation or gameplay.\n",
+                "- ROM, extracted code, hashes, and disassembly uploaded: **no**\n"
+                f"- Text segment: {result['text_size_bytes']} bytes\n"
+                f"- Heuristic prologue-like sites: {result['candidate_census']['candidate_sites_total']}\n"
+                f"  - ARM PUSH/ STMDB SP!: {result['candidate_census']['candidate_sites_by_pattern']['arm_push_or_stmdb_sp']}\n"
+                f"  - ARM SUB SP immediate: {result['candidate_census']['candidate_sites_by_pattern']['arm_sub_sp_immediate']}\n"
+                f"  - Thumb PUSH: {result['candidate_census']['candidate_sites_by_pattern']['thumb_push']}\n"
+                f"  - Thumb SUB SP immediate: {result['candidate_census']['candidate_sites_by_pattern']['thumb_sub_sp_immediate']}\n\n"
+                "**Caution:** these are heuristic instruction sites, not verified function boundaries. No candidate addresses or instruction bytes are published.\n\n"
+                "This validates the container/layout and inventories candidate prologues; it does not prove recompilation or gameplay.\n",
                 encoding="utf-8",
             )
         print(json.dumps({
             "status": result["status"], "target": result["target"],
             "format": result["format"], "container_and_layout_validated": True,
+            "candidate_census": result["candidate_census"],
             "game_bytes_or_disassembly_uploaded": False,
         }, indent=2))
         return 0
