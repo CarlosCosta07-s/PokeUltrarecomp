@@ -210,7 +210,7 @@ def extract_and_inspect(
     from summarize_arm_function_candidates import scan_candidates
 
     candidate_census = scan_candidates(
-        target, exheader, code_path, preflight=report
+        target, exheader, code_path, preflight=report, decode_summary=True
     )["summary"]
     text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
     return {
@@ -268,8 +268,12 @@ def main() -> int:
                 f"  - ARM PUSH/ STMDB SP!: {result['candidate_census']['candidate_sites_by_pattern']['arm_push_or_stmdb_sp']}\n"
                 f"  - ARM SUB SP immediate: {result['candidate_census']['candidate_sites_by_pattern']['arm_sub_sp_immediate']}\n"
                 f"  - Thumb PUSH: {result['candidate_census']['candidate_sites_by_pattern']['thumb_push']}\n"
-                f"  - Thumb SUB SP immediate: {result['candidate_census']['candidate_sites_by_pattern']['thumb_sub_sp_immediate']}\n\n"
-                "**Caution:** these are heuristic instruction sites, not verified function boundaries. No candidate addresses or instruction bytes are published.\n\n"
+                f"  - Thumb SUB SP immediate: {result['candidate_census']['candidate_sites_by_pattern']['thumb_sub_sp_immediate']}\n"
+                f"- Candidates whose bounded Capstone scan reaches a return-like instruction: {result['candidate_census']['bounded_return_scan']['candidate_sites_with_linear_return']}\n"
+                f"  - ARM: {result['candidate_census']['bounded_return_scan']['candidate_sites_with_linear_return_by_state']['arm']}\n"
+                f"  - Thumb: {result['candidate_census']['bounded_return_scan']['candidate_sites_with_linear_return_by_state']['thumb']}\n"
+                f"  - Return within 16 instructions: {result['candidate_census']['bounded_return_scan']['candidate_sites_with_return_within_16_instructions']}\n\n"
+                "**Caution:** these are heuristic instruction sites and bounded linear decodes, not verified function boundaries or reachability proofs. No candidate addresses or instruction bytes are published.\n\n"
                 "This validates the container/layout and inventories candidate prologues; it does not prove recompilation or gameplay.\n",
                 encoding="utf-8",
             )
