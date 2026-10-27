@@ -175,6 +175,7 @@ def _locate_code_file(exefs: Path) -> Path:
 def extract_and_inspect(
     image_path: Path, target: str, format_name: str, ctrtool_command: list[str],
     work_directory: Path, *, ncch_index: int = 0,
+    candidate_decode_summary: bool = False,
 ) -> dict:
     fmt, kind = normalize_format(format_name)
     if not 0 <= ncch_index <= 65535:
@@ -210,7 +211,8 @@ def extract_and_inspect(
     from summarize_arm_function_candidates import scan_candidates
 
     candidate_census = scan_candidates(
-        target, exheader, code_path, preflight=report, decode_summary=True
+        target, exheader, code_path, preflight=report,
+        decode_summary=candidate_decode_summary,
     )["summary"]
     text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
     return {
@@ -234,7 +236,7 @@ def process(source_url: str, target: str, format_name: str, ctrtool: Path, index
         size = download(source_url, source)
         result = extract_and_inspect(
             source, target, fmt, [str(ctrtool.resolve())],
-            work / "extract", ncch_index=index,
+            work / "extract", ncch_index=index, candidate_decode_summary=True,
         )
         result["downloaded_bytes"] = size
         return result
