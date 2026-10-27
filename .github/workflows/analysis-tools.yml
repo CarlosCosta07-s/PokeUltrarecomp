@@ -11,6 +11,8 @@ on:
       - "tools/inspect_3ds_target.py"
       - "tools/requirements-analysis.txt"
       - "tools/smoke_capstone_integration.py"
+      - "tools/summarize_arm_function_candidates.py"
+      - "tools/smoke_candidate_return_analysis.py"
       - "targets/**"
 
 permissions:
@@ -31,3 +33,5 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r tools/requirements-analysis.txt
       - name: Decode synthetic Thumb bytes using real Capstone
         run: python tools/smoke_capstone_integration.py
+      - name: Verify bounded ARM/Thumb candidate return scan
+        run: python tools/smoke_candidate_return_analysis.py
