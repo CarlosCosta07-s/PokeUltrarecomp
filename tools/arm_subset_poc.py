@@ -2,12 +2,12 @@
 """Clean-room proof of concept: translate a tiny synthetic ARM A32 subset to C.
 
 This demonstrator is not a general-purpose recompiler and does not load game files.
-It supports a narrow immediate subset plus unshifted register-Operand2 operations,
-including arithmetic flags and logical N/Z updates for MOVS/MVNS, ANDS/ORRS/EORS/
-BICS and TST/TEQ. The optional bounded-memory mode handles pre-indexed immediate
-word/byte/halfword transfers and signed LDRSB/LDRSH loads without writeback.
-Operand2 shifts, logical S-bit immediate forms, other memory modes and real game
-runtime services remain outside its scope.
+It supports a narrow immediate subset plus register Operand2 forms with immediate
+LSL/LSR/ASR/ROR/RRX shifts, including the shifter carry rules needed by logical
+S-bit operations and RRX. It also handles bounded pre-indexed immediate word,
+byte and halfword transfers plus signed LDRSB/LDRSH loads without writeback.
+Register-controlled shifts, logical immediate S-bit forms, other memory modes
+and real game runtime services remain outside its scope.
 """
 from __future__ import annotations
 
