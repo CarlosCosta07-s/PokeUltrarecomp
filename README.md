@@ -1,7 +1,7 @@
 # PokeUltrarecomp
 
 **Pesquisa para uma porta nativa de Pokémon Ultra Sun e Pokémon Ultra Moon para Windows/Linux.**  
-**Estado real em 27/10/2026:** o preflight remoto de uma imagem `.CCI` de Ultra Sun passou no [workflow #40567703483](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40567703483); a varredura heurística contou 25.019 padrões semelhantes a prólogos, não funções comprovadas. Ainda não há uma função real recompilada/validada, uma porta jogável ou um runtime de jogo funcional.
+**Estado real em 27/10/2026:** o preflight remoto e o censo Ghidra de uma imagem `.CCI` base de Ultra Sun passaram no [workflow #40582007887](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40582007887). Nessa execução, a análise automática contou 17.592 entradas de função dentro de `.text` e 2.802 corpos pequenos classificados pelo Ghidra como folhas; esses números não validam limites de função. A branch `main` agora também contém uma triagem privada das candidatas contra o subconjunto ARM→C e contagem agregada de causas de rejeição; essa triagem ampliada ainda precisa ser executada contra a imagem real. Ainda não há uma função real recompilada e semanticamente validada, uma porta jogável ou um runtime completo de jogo.
 
 ## Direção do projeto
 
