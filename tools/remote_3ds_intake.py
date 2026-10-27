@@ -550,7 +550,7 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
                 decoded_word = arm_subset_poc.decode_word(word)
                 if decoded_word[0] == "predicated":
                     decoded_word = decoded_word[2]
-                if decoded_word[0] in ("ldr_imm", "str_imm"):
+                if decoded_word[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm"):
                     memory_model_needed = True
             except ValueError:
                 # The translation attempt below records fixed, sanitized failure categories.
