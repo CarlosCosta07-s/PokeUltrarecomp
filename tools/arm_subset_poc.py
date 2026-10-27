@@ -158,7 +158,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
 
 
 def _decode_single_data_transfer(word: int, condition: int) -> tuple[object, ...]:
-    """Decode conservative A32 pre-indexed immediate LDR/STR word transfers."""
+    """Decode conservative A32 pre-indexed immediate LDR/STR byte and word transfers."""
     if (word >> 25) & 1:  # I=1 means register-offset form, which needs Operand2 shifts.
         raise UnsupportedInstruction(f"register-offset memory access is unsupported: 0x{word:08X}")
     pre_index = (word >> 24) & 1
@@ -182,6 +182,38 @@ def _decode_single_data_transfer(word: int, condition: int) -> tuple[object, ...
         operation = "ldrb_imm" if load else "strb_imm"
     else:
         operation = "ldr_imm" if load else "str_imm"
+    return _apply_condition(condition, (operation, rd, rn, offset, bool(up)))
+
+
+def _decode_halfword_data_transfer(word: int, condition: int) -> tuple[object, ...]:
+    """Decode only A32 pre-indexed immediate LDRH/STRH into the bounded-memory subset."""
+    halfword_kind = (word >> 5) & 0b11
+    if halfword_kind != 0b01:
+        raise UnsupportedInstruction(
+            f"signed or doubleword A32 extra memory transfer is unsupported: 0x{word:08X}"
+        )
+    immediate_offset = (word >> 22) & 1
+    if not immediate_offset:
+        raise UnsupportedInstruction(
+            f"register-offset halfword memory access is unsupported: 0x{word:08X}"
+        )
+    pre_index = (word >> 24) & 1
+    up = (word >> 23) & 1
+    writeback = (word >> 21) & 1
+    load = (word >> 20) & 1
+    rn = (word >> 16) & 0xF
+    rd = (word >> 12) & 0xF
+    if not pre_index or writeback:
+        raise UnsupportedInstruction(
+            f"post-indexed or writeback halfword memory access is unsupported: 0x{word:08X}"
+        )
+    if rn > 3:
+        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r3 subset")
+    if rd > 3:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    # A32 extra-load/store immediate offsets use imm4H:imm4L, unlike LDR/STR imm12.
+    offset = ((word >> 4) & 0xF0) | (word & 0xF)
+    operation = "ldrh_imm" if load else "strh_imm"
     return _apply_condition(condition, (operation, rd, rn, offset, bool(up)))
 
 
@@ -213,7 +245,15 @@ def decode_word(word: int) -> tuple[object, ...]:
     if condition == 0xF:
         raise UnsupportedInstruction(f"condition code 0xF is unsupported in 0x{word:08X}")
 
-    # Single data-transfer class (LDR/STR) is decoded separately from ALU forms.
+    # Extra load/store forms share some bit patterns with multiply instructions.
+    # A nonzero S:H field or P/U/I addressing fields distinguishes this class.
+    if (
+        (word & 0x0E000090) == 0x00000090
+        and (((word >> 5) & 0b11) != 0 or ((word >> 22) & 0b111) != 0)
+    ):
+        return _decode_halfword_data_transfer(word, condition)
+
+    # Single data-transfer class (LDR/STR byte/word) is decoded separately from ALU forms.
     if ((word >> 26) & 0b11) == 0b01:
         return _decode_single_data_transfer(word, condition)
 
@@ -358,7 +398,7 @@ def translate(
         return instruction[2] if instruction[0] == "predicated" else instruction
 
     contains_memory_access = any(
-        base_instruction(instruction)[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm")
+        base_instruction(instruction)[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm")
         for instruction in decoded[:-1]
     )
     if contains_memory_access and not runtime_memory_io:
@@ -401,7 +441,7 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("cmn_reg", "cmp_reg", "tst_reg", "teq_reg"):
             used_registers.update((instruction[1], instruction[2]))
-        elif operation in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm"):
+        elif operation in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm"):
             used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
@@ -531,10 +571,12 @@ def translate(
             lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} r{rm});")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
-        elif instruction[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm"):
+        elif instruction[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm", "ldrh_imm", "strh_imm"):
             _, rd, rn, immediate, add_offset = instruction
             byte_access = instruction[0] in ("ldrb_imm", "strb_imm")
-            access_size = 1 if byte_access else 4
+            halfword_access = instruction[0] in ("ldrh_imm", "strh_imm")
+            access_size = 1 if byte_access else (2 if halfword_access else 4)
+            alignment_mask = 0 if byte_access else (1 if halfword_access else 3)
             suffix = f"{len(lines)}"
             address = f"memory_address_{suffix}"
             offset_in_region = f"memory_offset_{suffix}"
@@ -546,8 +588,8 @@ def translate(
             else:
                 lines.append(f"    if (r{rn} < UINT32_C({immediate})) {{ execution_status = UINT8_C(3); goto arm_exit; }}")
                 lines.append(f"    uint32_t {address} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
-            if not byte_access:
-                lines.append(f"    if (({address} & UINT32_C(3)) != 0U) {{ execution_status = UINT8_C(4); goto arm_exit; }}")
+            if alignment_mask:
+                lines.append(f"    if (({address} & UINT32_C({alignment_mask})) != 0U) {{ execution_status = UINT8_C(4); goto arm_exit; }}")
             lines.append(
                 f"    if ({address} < memory_base || ((uint64_t){address} + UINT64_C({access_size})) > ((uint64_t)memory_base + (uint64_t)memory_size)) {{ execution_status = UINT8_C(3); goto arm_exit; }}"
             )
@@ -556,6 +598,16 @@ def translate(
                 lines.append(f"    r{rd} = (uint32_t)memory[{offset_in_region}];")
             elif instruction[0] == "strb_imm":
                 lines.append(f"    memory[{offset_in_region}] = (uint8_t)(r{rd} & UINT32_C(0xFF));")
+            elif instruction[0] == "ldrh_imm":
+                lines.append(
+                    f"    r{rd} = (uint32_t)memory[{offset_in_region}] "
+                    f"| ((uint32_t)memory[{offset_in_region} + 1U] << 8);"
+                )
+            elif instruction[0] == "strh_imm":
+                lines.extend((
+                    f"    memory[{offset_in_region}] = (uint8_t)(r{rd} & UINT32_C(0xFF));",
+                    f"    memory[{offset_in_region} + 1U] = (uint8_t)((r{rd} >> 8) & UINT32_C(0xFF));",
+                ))
             elif instruction[0] == "ldr_imm":
                 lines.append(
                     f"    r{rd} = (uint32_t)memory[{offset_in_region}] "
