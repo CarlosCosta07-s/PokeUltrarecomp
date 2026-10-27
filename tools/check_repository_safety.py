@@ -61,6 +61,7 @@ REQUIRED_FILES = (
     "tools/disassemble_retail_range.py",
     "tools/requirements-analysis.txt",
     "tools/smoke_capstone_integration.py",
+    "tools/smoke_candidate_return_analysis.py",
     "tools/remote_3ds_intake.py",
     "tools/summarize_arm_function_candidates.py",
     "tests/test_summarize_arm_function_candidates.py",
