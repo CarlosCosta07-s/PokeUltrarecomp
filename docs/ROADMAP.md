@@ -2,6 +2,8 @@
 
 Este roadmap é um plano de trabalho, não uma declaração de funcionalidades implementadas. Nenhuma fase deve ser marcada como concluída sem evidências revisáveis. O critério de aceitação é a condição mínima para encerrar cada fase; descobertas podem exigir tarefas adicionais.
 
+A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_DIRECTION.md): runtime próprio C++20, C gerado compilado nativamente, SDL3 e Vulkan, Windows/Linux x86-64 como primeiros alvos, sem emulação, interpretação, JIT ou fallback interpretado. A arquitetura ainda não está implementada. A prioridade funcional precede otimizações de desempenho.
+
 ## Fase 1 — Organização e auditoria
 
 **Estado:** documentação, auditoria inicial e verificador local de segurança publicados; a verificação integral da árvore da `main` e a revisão final de governança continuam pendentes. A decisão sobre o LICENSE preexistente está registrada no [issue #1](https://github.com/CarlosCosta07-s/PokeUltrarecomp/issues/1).
@@ -164,60 +166,67 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 
 **Critério:** o relatório informa o que o decodificador atual permite inferir sintaticamente e identifica explicitamente onde não é seguro concluir. Não gera C nem demonstra equivalência semântica.
 
-## Fase 6 — Investigar runtime próprio para Windows
+## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Direção do projeto:** o objetivo é execução nativa no Windows, sem dependência de emulador no runtime. Se surgir uma necessidade concreta de comparar o comportamento do jogo original, o Azahar poderá ser usado apenas como referência externa opcional, sem ser incorporado ao produto.
-
-**Tarefas**
-- [ ] Inventariar chamadas de sistema, serviços do 3DS e contratos de runtime exigidos pelos caminhos de código selecionados.
-- [ ] Mapear estado da CPU, exceções, memória, sincronização, módulos dinâmicos e callbacks.
-- [ ] Definir e implementar a camada host necessária para executar código recompilado sem depender de um emulador de Nintendo 3DS.
-- [ ] Comparar alternativas de renderização e janela no Windows com uma prova isolada; não escolher API com base em suposição.
-- [ ] Documentar limites e dependências remanescentes para cada caminho exercitado.
-
-**Dependências:** fase 5.
-
-**Critério de conclusão:** um documento de viabilidade identifica a primeira parte executável de forma independente, as interfaces em falta, as dependências de terceiros e critérios para provar que não é um executável híbrido.
-
-## Fase 7 — Substituição gradual dos serviços do Nintendo 3DS
+**Estado:** direção arquitetural definida em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_DIRECTION.md). As POCs atuais geram C a partir de subconjuntos sintéticos e exercitam partes do C compilado nativamente; não existe um pipeline de runtime integrado nem suporte comprovado a código real do jogo.
 
 **Tarefas**
-- [ ] Implementar apenas uma interface host necessária a uma unidade já reconstruída e licenciada.
-- [ ] Começar por serviços isolados e testáveis, como temporizadores, entrada ou acesso abstrato a arquivos.
-- [ ] Registrar o comportamento de referência e testes diferenciais.
-- [ ] Não presumir que serviços equivalentes têm as mesmas semânticas, ordenação ou sincronização.
-- [ ] Manter todas as entradas de usuário locais fora do Git e da CI.
+- [ ] Organizar um build reproduzível com CMake + Ninja para Windows e Linux x86-64, com toolchains nativos documentados.
+- [ ] Unificar uma execução de teste de ponta a ponta: fixture ARM/Thumb declarada → decodificação/IR → C gerado → compilador nativo → execução do binário.
+- [ ] Definir uma interface de teste estável para os registradores/flags observados e para o estado de saída; validar contra oráculos independentes baseados na especificação, não contra emulador ou interpretador.
+- [ ] Fazer com que toda instrução não suportada, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução com um erro claro; não existe fallback interpretado.
+- [ ] Cobrir casos negativos, entradas malformadas, fluxo de controle, limites de orçamento e falhas do compilador.
+- [ ] Adicionar os testes nativos necessários à CI Windows/Linux sem baixar, ler ou produzir arquivos de jogo.
 
-**Dependências:** fase 6 e evidência técnica suficiente do serviço selecionado.
+**Dependências:** fases 2 e 3; as demonstrações sintéticas existentes da fase 5 são apenas o ponto de partida.
 
-**Critério de conclusão:** a interface selecionada funciona no host Windows com testes positivos, negativos e de regressão; chamadas não substituídas são listadas explicitamente.
+**Critério de conclusão:** o pipeline nativo passa em execução automatizada nas duas plataformas com resultados esperados, testes negativos e logs reproduzíveis; nenhuma instrução sem suporte é interpretada. Isso ainda não conta como execução do jogo.
 
-## Fase 8 — Validar gráficos, áudio, entrada e salvamento
+## Fase 7 — Primeiro alvo real recompilado
 
-**Tarefas**
-- [ ] Definir testes de renderização sem recursos proprietários e documentar equivalência visual mensurável.
-- [ ] Testar áudio sintético, latência e ciclo de vida do dispositivo.
-- [ ] Testar teclado, controle, foco da janela e remapeamento.
-- [ ] Testar salvamento em diretório externo com gravação atômica, corrupção simulada e recuperação.
-- [ ] Verificar resolução, proporção, temporização de quadros e sincronização entre subsistemas.
-- [ ] Separar testes de infraestrutura de qualquer execução de jogo real.
-
-**Dependências:** fases 6 e 7; cada subsistema deve ter uma interface host funcional.
-
-**Critério de conclusão:** relatórios de testes reproduzíveis cobrem cada subsistema e suas falhas, sem declarar cobertura de gameplay que não foi exercitada.
-
-## Fase 9 — Estabilidade e desempenho
+**Objetivo:** provar a transição de análise estática para execução nativa de uma função real antes de ampliar o runtime ou trabalhar em desempenho.
 
 **Tarefas**
-- [ ] Definir uma matriz de hardware/Windows/driver e uma carga de teste permitida.
-- [ ] Medir inicialização, uso de memória, CPU/GPU, tempos de quadro e falhas com ferramenta identificada.
-- [ ] Testar ciclos repetidos de inicialização/encerramento, perda de foco, dispositivo de áudio e controle desconectado.
-- [ ] Corrigir vazamentos, deadlocks, corrupção de estado e falhas de recuperação antes de ampliar escopo.
-- [ ] Publicar medições com condições de execução e limitações.
+- [ ] Em ambiente local do mantenedor, selecionar uma entrada autorizada e uma função candidata cuja identidade, limites e estado ARM/Thumb sejam confirmados.
+- [ ] Registrar o contrato da função: registradores e flags, stack, chamadas, memória, retorno, endereços e dependências.
+- [ ] Ampliar a cobertura do tradutor somente conforme as instruções realmente observadas, cada uma com testes positivos/negativos e validação independente.
+- [ ] Gerar C, compilar para código nativo e validar os efeitos observáveis da função sem emulador nem interpretador.
+- [ ] Manter o código e os relatórios derivados de entradas proprietárias fora do Git e da CI; publicar apenas resultados redigidos e reproduzíveis.
+- [ ] Registrar todo opcode, chamada, módulo, relocação ou contrato ainda não suportado; não declarar a função válida quando algum efeito relevante permanece desconhecido.
 
-**Dependências:** fase 8.
+**Dependências:** fase 6 aprovada e entrada local permitida do mantenedor.
 
-**Critério de conclusão:** o conjunto definido passa repetidamente em ambiente documentado e os problemas conhecidos estão registrados; resultados não são generalizados para hardware não testado.
+**Critério de conclusão:** pelo menos uma função real é recompilada, ligada e exercitada como código nativo com contrato e evidência revisáveis. Um resultado sintético não satisfaz este critério.
+
+## Fase 8 — Runtime nativo e serviços de PC
+
+**Tarefas**
+- [ ] Criar interfaces C++20 de runtime apenas para os serviços comprovadamente requeridos pela primeira função/caminho real.
+- [ ] Implementar memória, relógio, sincronização, arquivos e módulos conforme os contratos observados; definir a política de erro e encerramento.
+- [ ] Adotar SDL3 para janela, teclado, controles e áudio, registrando a versão e atualizando os avisos/licenças antes da incorporação.
+- [ ] Implementar o caminho gráfico nativo com Vulkan por operações de PC; não modelar uma GPU PICA200 nem interpretar listas de comandos de GPU.
+- [ ] Testar cada interface com dados sintéticos, casos de falha e recuperação; confirmar que a saída não exige intérprete/JIT/emulador.
+- [ ] Testar salvamento em diretório externo com escrita atômica, corrupção simulada, backup e recuperação.
+
+**Dependências:** fases 6 e 7; código nativo funcional e os contratos do primeiro alvo real.
+
+**Critério de conclusão:** os serviços que bloqueiam o primeiro caminho real estão implementados e testados no host Windows/Linux. Serviços ainda não implementados continuam explícitos como bloqueadores.
+
+## Fase 9 — Primeiro caminho de jogo, estabilidade e desempenho posterior
+
+**Prioridade:** obter um caminho real de execução antes de medir e otimizar desempenho. Não exigir FPS alto para considerar o primeiro passo funcional, mas não confundir uma inicialização isolada com jogabilidade.
+
+**Tarefas**
+- [ ] Ligar as funções recompiladas e os serviços nativos necessários ao primeiro caminho de jogo.
+- [ ] Validar inicialização, um trecho observável de progressão, entrada, gráficos, áudio e salvamento conforme o caminho implementado.
+- [ ] Repetir ciclos de inicialização/encerramento, perda de foco, remoção de dispositivos, erro de arquivo e falhas de serviço.
+- [ ] Corrigir corrupção de estado, deadlocks, vazamentos e falhas que impeçam a execução confiável antes de ampliar a cobertura.
+- [ ] Só depois de existir execução funcional, medir CPU/GPU, memória e tempos de quadro com ambiente documentado e definir o trabalho de otimização.
+- [ ] Informar o que realmente funciona e quais caminhos continuam não suportados, sem percentuais especulativos.
+
+**Dependências:** fases 6–8 e cobertura suficiente para o caminho que será testado.
+
+**Critério de conclusão:** o caminho escolhido pode ser executado repetidamente em Windows e Linux com resultados observáveis, limitações documentadas e sem emulação/interpretação. A conclusão não se estende automaticamente ao jogo completo.
 
 ## Fase 10 — Avaliar e adaptar para Ultra Moon
 
@@ -226,8 +235,9 @@ Este roadmap é um plano de trabalho, não uma declaração de funcionalidades i
 - [ ] Repetir análise, inventário e validação de unidades no alvo Ultra Moon.
 - [ ] Verificar separadamente licenças, hashes locais e dependências; nenhum identificador local sensível deve ir para commits.
 - [ ] Adaptar módulos e dados de configuração somente quando a evidência justificar.
-- [ ] Repetir a matriz de testes do runtime e comparar diferenças conhecidas.
+- [ ] Repetir a matriz de testes do runtime e comparar diferenças conhecidas, usando referências técnicas independentes e fixtures permitidas — sem emulador ou interpretador.
 
 **Dependências:** evidência suficiente de Ultra Sun e fases 2–9 para os componentes que se pretende compartilhar.
 
-**Critério de conclusão:** o suporte a Ultra Moon tem sua própria prova reproduzível e matriz de compatibilidade. Não é declarado concluído apenas porque Ultra Sun funciona, nem porque um emulador lista o jogo como jogável.
+**Critério de conclusão:** o suporte a Ultra Moon tem sua própria prova reproduzível e matriz de compatibilidade. Não é declarado concluído apenas porque Ultra Sun executa ou porque uma ferramenta de análise compila.
+
