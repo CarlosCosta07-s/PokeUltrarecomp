@@ -1,12 +1,6 @@
 name: Remote Nintendo 3DS container intake
 
 on:
-  # Narrow, one-time trigger for the current bounded-return census; removed after it completes.
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/remote-3ds-intake.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -37,7 +31,6 @@ permissions:
 
 jobs:
   inspect-container:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run bounded Ultra Sun CCI candidate analysis' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
