@@ -3,11 +3,11 @@
 
 This demonstrator is not a general-purpose recompiler and does not load game files.
 It supports a narrow immediate subset plus register Operand2 forms with immediate
-LSL/LSR/ASR/ROR/RRX shifts and rotated-immediate logical S-bit operations, including
-the corresponding shifter-carry rules. It also handles bounded pre-indexed immediate
-word, byte and halfword transfers plus signed LDRSB/LDRSH loads without writeback.
-Register-controlled shifts, unsupported opcodes, other memory modes and real game
-runtime services remain outside its scope.
+LSL/LSR/ASR/ROR/RRX shifts, rotated-immediate logical S-bit operations, reverse
+subtraction (RSB/RSBS), and register MUL/MLA variants with optional N/Z updates.
+It also handles bounded pre-indexed immediate word, byte and halfword transfers plus
+signed LDRSB/LDRSH loads without writeback. Register-controlled shifts, unsupported
+opcodes, other memory modes and real game runtime services remain outside its scope.
 """
 from __future__ import annotations
 
