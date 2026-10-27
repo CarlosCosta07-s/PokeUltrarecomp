@@ -58,6 +58,8 @@ REQUIRED_FILES = (
     "tests/native_runtime_host.cpp",
     "tools/wrap_retail_code.py",
     "tests/test_wrap_retail_code.py",
+    "tools/disassemble_retail_range.py",
+    "tests/test_disassemble_retail_range.py",
     "docs/REAL_GAME_CODE_WORKFLOW.md",
 )
 
