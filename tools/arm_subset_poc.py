@@ -316,11 +316,16 @@ def decode_word(word: int) -> tuple[object, ...]:
     rotate = ((word >> 8) & 0xF) * 2
     imm8 = word & 0xFF
     immediate = ror32(imm8, rotate)
+    # A rotated immediate updates shifter-carry only when rotate_imm is nonzero.
+    # None means preserve the incoming C flag for rotate_imm == 0.
+    shifter_carry = ((immediate >> 31) & 1) if rotate else None
 
-    # This integration stage deliberately enables only flag-setting ADD/SUB and
-    # canonical CMN/CMP. Logical S-bit forms require shifter-carry semantics and
-    # stay unsupported until that behavior is modeled end-to-end.
-    if set_flags and opcode not in (0b0100, 0b0010, 0b1011, 0b1010):
+    # Flag-setting forms accepted here have explicit NZCV and shifter-carry rules.
+    flag_setting_opcodes = {
+        0b0000, 0b0001, 0b0010, 0b0100, 0b1000, 0b1001,
+        0b1010, 0b1011, 0b1100, 0b1101, 0b1110, 0b1111,
+    }
+    if set_flags and opcode not in flag_setting_opcodes:
         raise UnsupportedInstruction(f"flag-setting form is unsupported: 0x{word:08X}")
 
     if opcode == 0b1011:  # CMN (immediate): arithmetic flags, no destination write
@@ -341,38 +346,60 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
         return _apply_condition(condition, ("cmp", rn, immediate))
 
+    if opcode in (0b1000, 0b1001):  # TST/TEQ (immediate): logical flags only.
+        operation = "tst_imm" if opcode == 0b1000 else "teq_imm"
+        if not set_flags:
+            raise UnsupportedInstruction(f"{operation[:-4].upper()} requires the S bit to be set")
+        if rd != 0:
+            raise UnsupportedInstruction(f"only canonical {operation[:-4].upper()} encoding with Rd=0 is supported")
+        if rn > 3:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        return _apply_condition(condition, (operation, rn, immediate, shifter_carry))
+
     # Restrict this POC to r0-r3 so the generated C and tests stay auditable.
     if rd > 3:
         raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
 
-    if opcode == 0b1101:  # MOV (immediate)
+    if opcode == 0b1101:  # MOV/MOVS (immediate)
         if rn != 0:
             raise UnsupportedInstruction("only the canonical MOV immediate encoding with Rn=0 is supported")
+        if set_flags:
+            return _apply_condition(condition, ("movs_imm", rd, immediate, shifter_carry))
         return _apply_condition(condition, ("mov", rd, immediate))
 
-    if opcode == 0b1111:  # MVN (immediate)
+    if opcode == 0b1111:  # MVN/MVNS (immediate)
         if rn != 0:
             raise UnsupportedInstruction("only the canonical MVN immediate encoding with Rn=0 is supported")
+        if set_flags:
+            return _apply_condition(condition, ("mvns_imm", rd, immediate, shifter_carry))
         return _apply_condition(condition, ("mvn", rd, immediate))
 
     if opcode == 0b0000:  # AND (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if set_flags:
+            return _apply_condition(condition, ("ands_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("and", rd, rn, immediate))
 
     if opcode == 0b1100:  # ORR (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if set_flags:
+            return _apply_condition(condition, ("orrs_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("orr", rd, rn, immediate))
 
     if opcode == 0b0001:  # EOR (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if set_flags:
+            return _apply_condition(condition, ("eors_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("eor", rd, rn, immediate))
 
     if opcode == 0b1110:  # BIC (immediate)
         if rn > 3:
             raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if set_flags:
+            return _apply_condition(condition, ("bics_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("bic", rd, rn, immediate))
 
     if opcode == 0b0100:  # ADD (immediate)
@@ -470,6 +497,12 @@ def translate(
         if operation in ("mov", "mvn"):
             used_registers.add(instruction[1])
         elif operation in ("mov_reg", "mvn_reg", "movs_reg", "mvns_reg"):
+            used_registers.update((instruction[1], instruction[2]))
+        elif operation in ("movs_imm", "mvns_imm"):
+            used_registers.add(instruction[1])
+        elif operation in ("tst_imm", "teq_imm"):
+            used_registers.add(instruction[1])
+        elif operation in ("ands_imm", "orrs_imm", "eors_imm", "bics_imm"):
             used_registers.update((instruction[1], instruction[2]))
         elif operation in ("and", "orr", "eor", "bic", "add", "sub", "adds", "subs"):
             used_registers.add(instruction[1])
@@ -644,6 +677,14 @@ def translate(
         elif instruction[0] == "mvn":
             _, rd, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)~UINT32_C({immediate});")
+        elif instruction[0] in ("movs_imm", "mvns_imm"):
+            _, rd, immediate, carry_out = instruction
+            expression = f"UINT32_C({immediate})" if instruction[0] == "movs_imm" else f"(uint32_t)~UINT32_C({immediate})"
+            lines.append(f"    r{rd} = {expression};")
+            lines.append(f"    flag_n = (r{rd} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)(r{rd} == 0U);")
+            if carry_out is not None:
+                lines.append(f"    flag_c = UINT32_C({carry_out});")
         elif instruction[0] in ("mov_reg", "mvn_reg", "movs_reg", "mvns_reg"):
             _, rd, rm = instruction
             base = instruction[0].removesuffix("_reg").removesuffix("s")
@@ -763,6 +804,29 @@ def translate(
         elif instruction[0] == "bic":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} & ~UINT32_C({immediate}));")
+        elif instruction[0] in ("ands_imm", "orrs_imm", "eors_imm", "bics_imm"):
+            _, rd, rn, immediate, carry_out = instruction
+            base = {"ands_imm": "and", "orrs_imm": "orr", "eors_imm": "eor", "bics_imm": "bic"}[instruction[0]]
+            operator = {"and": "&", "orr": "|", "eor": "^", "bic": "& ~"}[base]
+            expression = f"r{rn} & ~UINT32_C({immediate})" if base == "bic" else f"r{rn} {operator} UINT32_C({immediate})"
+            suffix = f"{len(lines)}"
+            result = f"logical_imm_result_{suffix}"
+            lines.append(f"    uint32_t {result} = (uint32_t)({expression});")
+            lines.append(f"    r{rd} = {result};")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+            if carry_out is not None:
+                lines.append(f"    flag_c = UINT32_C({carry_out});")
+        elif instruction[0] in ("tst_imm", "teq_imm"):
+            _, rn, immediate, carry_out = instruction
+            suffix = f"{len(lines)}"
+            result = f"logical_imm_test_{suffix}"
+            operator = "&" if instruction[0] == "tst_imm" else "^"
+            lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} UINT32_C({immediate}));")
+            lines.append(f"    flag_n = ({result} >> 31) & 1U;")
+            lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+            if carry_out is not None:
+                lines.append(f"    flag_c = UINT32_C({carry_out});")
         elif instruction[0] == "add":
             _, rd, rn, immediate = instruction
             lines.append(f"    r{rd} = (uint32_t)(r{rn} + UINT32_C({immediate}));")
