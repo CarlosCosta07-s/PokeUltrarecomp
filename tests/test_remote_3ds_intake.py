@@ -1,4 +1,5 @@
 """Tests for the remote 3DS intake helpers using synthetic data only."""
+import json
 import sys
 import tempfile
 import unittest
