@@ -168,12 +168,15 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** pipeline sintético validado em Windows e Linux. O workflow [Native recompilation smoke tests #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) confirmou o smoke test direto e 324 testes Python por sistema. A orquestração CMake/Ninja foi então validada no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568), com os três testes CTest aprovados em Windows e Linux (`native_codegen_smoke`, `python_unit_tests`, `repository_safety`). As fixtures A32 e Thumb foram compiladas e executadas como binários nativos, com asserções de resultado, registradores, NZCV e orçamento de instruções. A evidência permanece sintética: não há ainda runtime de jogo integrado, função real recompilada ou gameplay validado.
+**Estado:** pipeline sintético e CMake/Ninja já passaram em Windows e Linux no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568), com os três testes CTest originais e 324 testes Python por job. Em seguida, foi adicionada uma fronteira C/C++20 versionada: fixtures C geradas na build são compiladas como C e chamadas por um host C++20, com validação de resultado/registradores/flags, rejeição de ABI inválida e garantia de que erros não modificam parcialmente a saída. No [workflow #40442412186](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442412186), Windows passou 4/4 testes CTest; a etapa Linux desse commit permaneceu presa na preparação de ferramentas, então a validação cruzada da ABI está pendente. Um ajuste posterior faz o runner instalar ferramentas via apt somente quando faltarem. A evidência é sintética: não há runtime de jogo, função real recompilada ou gameplay validado.
 
 **Tarefas**
 - [x] Adicionar `CMakeLists.txt` com C11/C++20, CTest e alvo `verify` para coordenar smoke test, testes Python e verificador de segurança.
 - [x] Validar a orquestração CMake + Ninja em Windows e Linux x86-64; os três testes CTest passaram em cada plataforma no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568).
 - [x] Adicionar um smoke test de ponta a ponta para fixtures sintéticas A32 e Thumb: tradutor → C gerado → compilador nativo → execução do binário.
+- [x] Adicionar uma ABI C versionada entre as funções geradas para teste e um host C++20, com rejeição de argumentos/versionamento inválidos sem alteração parcial de resultados.
+- [x] Integrar o host C++20 e as unidades C geradas ao build CMake; o job Windows aprovou os quatro testes CTest no workflow #40442412186.
+- [ ] Confirmar os quatro testes CTest da integração C/C++20 em Linux usando a configuração de toolchain corrigida.
 - [x] Validar resultados esperados, estado de registradores/flags e orçamento de instruções no processo nativo.
 - [x] Cobrir inputs negativos: registrador ARM fora do subconjunto e operação de memória Thumb sem modelo de memória devem falhar explicitamente.
 - [x] Adicionar um workflow de CI para executar o smoke test em Windows e Linux sem arquivos de jogo.

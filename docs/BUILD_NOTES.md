@@ -1,5 +1,15 @@
 # Notas de build e testes reproduzíveis
 
+## Integração sintética C/C++20 por ABI versionada — 2026-10-27
+
+- **Contrato:** `include/pokeultrarecomp/native_abi.h` define `PokeNativeCall`, `PokeNativeResult`, versão da ABI e códigos de erro. É um contrato de teste inicial, ainda não a ABI definitiva de gameplay.
+- **Fixtures:** `tools/generate_native_abi_fixtures.py` gera dois fontes C a partir dos tradutores existentes. Os adaptadores exportam funções C, preservam registradores não modificados e só escrevem o resultado quando a chamada termina corretamente.
+- **Host:** `tests/native_runtime_host.cpp` é compilado como C++20 e chama as funções C geradas. Verifica resultado/registradores/NZCV/contador de passos, preservação de registradores, versão incompatível, ponteiros nulos, NZCV inválido e que a saída permanece intacta após rejeição.
+- **Build:** CMake gera as fixtures em `build/generated`; os arquivos `.c` são compilados como C e ligados ao host C++20. `verify` depende explicitamente de `native_abi_smoke` antes de executar CTest, corrigindo o teste inicial que tentou executar um binário ainda não construído.
+- **Validação Windows:** job Windows do [workflow #40442412186](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442412186), commit `44c50a56a7b2a3e7277b171979c78c004d375d30`, passou nos 4 testes CTest: `native_codegen_smoke`, `native_cpp_abi_smoke`, `python_unit_tests` e `repository_safety`. Os logs mostram compiladores C/C++ MSVC `cl.exe`.
+- **Validação Linux:** o job correspondente daquele commit ficou preso na etapa de preparação de ferramentas e não produziu um resultado válido; não marcar como aprovado. O workflow foi atualizado no commit `97ce1812f22077d7aec4daa5e9bd99578541cb4c` para verificar se `cc`, CMake e Ninja já existem antes de chamar `apt-get`. A confirmação da ABI em Linux permanece pendente até um run concluir.
+- **Limite:** os fontes usam somente instruções sintéticas. Isso demonstra ligação C/C++ nativa e tratamento básico de erros da ABI; não demonstra execução de código real dos jogos, loader, memória do jogo, serviços de 3DS ou gameplay.
+
 ## Orquestração CMake/Ninja — 2026-10-26
 
 - **Arquivos:** `CMakeLists.txt` e atualização de `.github/workflows/native-pipeline.yml`.

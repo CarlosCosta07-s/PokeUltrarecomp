@@ -28,8 +28,10 @@ A escolha de SDL3/Vulkan é arquitetural, ainda não uma dependência já integr
 - **Inspeção de código:** inspeção explícita de intervalos ARM/Thumb e anotações conservadoras de fluxo de controle, memória e efeitos de registradores. [Guia](docs/CODE_RANGE_INSPECTION.md).
 - **Contrato de função candidata:** validador estático para comparar efeitos observados com um contrato declarado. Ele não prova equivalência. [Guia](docs/FUNCTION_CONTRACT.md).
 - **Pesquisa e auditoria de referências:** fontes consultadas e limitações de reutilização. [Pesquisa técnica](docs/CODEBASE_RESEARCH.md) e [auditoria](docs/AUDIT.md).
+- **Pipeline nativo sintético:** `tools/run_native_poc_pipeline.py` traduz fixtures A32/Thumb para C, compila os binários do host e confere resultado, registradores, flags e orçamento de execução.
+- **Fronteira C/C++ nativa:** [`native_abi.h`](include/pokeultrarecomp/native_abi.h), gerador de fixtures e [host de teste C++20](tests/native_runtime_host.cpp). O C gerado é compilado como C; um host C++ chama as funções pela ABI versionada e verifica rejeição de entradas inválidas sem modificar parcialmente a saída. Isso é uma prova de integração, não ainda a ABI final de gameplay.
 
-As POCs testam fixtures sintéticas e partes de código C gerado. Nenhum arquivo real de código de Ultra Sun/Ultra Moon foi validado pela CI descrita aqui; nenhum jogo foi iniciado pelo runtime deste projeto. Os resultados históricos publicados estão ligados a commits e workflows específicos e **não devem ser interpretados como prova de que o jogo funciona**.
+As POCs testam fixtures sintéticas e partes de código C gerado. A integração C/C++20 passou no job Windows do [workflow de ABI #40442412186](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442412186), com 4/4 testes CTest aprovados nesse runner. A validação Linux desse commit ainda não foi confirmada; o workflow foi ajustado para evitar a instalação desnecessária de ferramentas já presentes. Nenhum arquivo real de código de Ultra Sun/Ultra Moon foi validado pela CI descrita aqui; nenhum jogo foi iniciado pelo runtime deste projeto. Os resultados publicados são específicos aos commits/workflows e **não provam que o jogo funciona**.
 
 ## Próximos marcos
 
