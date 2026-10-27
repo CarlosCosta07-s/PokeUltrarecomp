@@ -100,9 +100,9 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def test_ghidra_hint_prioritizes_java_compiler_error_over_class_not_found(self):
         log_path = self.work / "private-ghidra-compiler.log"
         log_path.write_text(
-            "Caused by: java.lang.ClassNotFoundException: FunctionCensusSummary not found by <hex>\\n"
-            "FunctionCensusSummary.java:71: error: cannot find symbol\\n"
-            "  symbol: method getNumAddresses().signum()\\n",
+            "Caused by: java.lang.ClassNotFoundException: FunctionCensusSummary not found by <hex>\n"
+            "FunctionCensusSummary.java:71: error: cannot find symbol\n"
+            "  symbol: method getNumAddresses().signum()\n",
             encoding="utf-8",
         )
         hint = intake.sanitized_ghidra_failure_hint(log_path)
