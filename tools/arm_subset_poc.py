@@ -64,6 +64,77 @@ def ror32(value: int, amount: int) -> int:
     return ((value >> amount) | (value << (32 - amount))) & 0xFFFFFFFF
 
 
+def _decode_register_data_processing(word: int, condition: int) -> tuple[object, ...]:
+    """Decode a register Operand2 with the only accepted shift form: no shift."""
+    if word & 0x00000FF0:
+        raise UnsupportedInstruction(
+            f"register Operand2 shifts are unsupported in 0x{word:08X}"
+        )
+    opcode = (word >> 21) & 0xF
+    set_flags = (word >> 20) & 1
+    rn = (word >> 16) & 0xF
+    rd = (word >> 12) & 0xF
+    rm = word & 0xF
+
+    if set_flags and opcode not in (0b0100, 0b0010, 0b1011, 0b1010):
+        raise UnsupportedInstruction(
+            f"flag-setting form is unsupported for register Operand2: 0x{word:08X}"
+        )
+
+    # All values remain in a tiny, explicit r0-r3 model. PC/SP/LR operands
+    # and PC writes are excluded rather than approximated.
+    if opcode in (0b1011, 0b1010):  # CMN/CMP register: update flags only.
+        operation = "cmn_reg" if opcode == 0b1011 else "cmp_reg"
+        if not set_flags:
+            raise UnsupportedInstruction(f"{operation[:-4].upper()} requires the S bit to be set")
+        if rd != 0:
+            raise UnsupportedInstruction(
+                f"only canonical {operation[:-4].upper()} register encoding with Rd=0 is supported"
+            )
+        if rn > 3 or rm > 3:
+            register = max(rn, rm)
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+        return _apply_condition(condition, (operation, rn, rm))
+
+    if rd > 3:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+
+    if opcode in (0b1101, 0b1111):  # MOV/MVN register.
+        if rn != 0:
+            operation = "MOV" if opcode == 0b1101 else "MVN"
+            raise UnsupportedInstruction(
+                f"only the canonical {operation} register encoding with Rn=0 is supported"
+            )
+        if rm > 3:
+            raise UnsupportedInstruction(f"source register r{rm} is outside r0-r3 subset")
+        operation = "mov_reg" if opcode == 0b1101 else "mvn_reg"
+        return _apply_condition(condition, (operation, rd, rm))
+
+    logical_operations = {
+        0b0000: "and_reg",
+        0b1100: "orr_reg",
+        0b0001: "eor_reg",
+        0b1110: "bic_reg",
+    }
+    if opcode in logical_operations:
+        if rn > 3 or rm > 3:
+            register = max(rn, rm)
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+        return _apply_condition(condition, (logical_operations[opcode], rd, rn, rm))
+
+    if opcode in (0b0100, 0b0010):  # ADD/SUB, optionally setting arithmetic flags.
+        if rn > 3 or rm > 3:
+            register = max(rn, rm)
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+        base = "add" if opcode == 0b0100 else "sub"
+        operation = (base + "s" if set_flags else base) + "_reg"
+        return _apply_condition(condition, (operation, rd, rn, rm))
+
+    raise UnsupportedInstruction(
+        f"unsupported register data-processing opcode {opcode:04b} in 0x{word:08X}"
+    )
+
+
 def decode_word(word: int) -> tuple[object, ...]:
     """Decode one supported ARM A32 word into a small, explicit instruction tuple."""
     if not isinstance(word, int) or word < 0 or word > 0xFFFFFFFF:
@@ -92,9 +163,16 @@ def decode_word(word: int) -> tuple[object, ...]:
     if condition == 0xF:
         raise UnsupportedInstruction(f"condition code 0xF is unsupported in 0x{word:08X}")
 
-    # Only ARM data-processing instructions with an immediate operand.
-    if ((word >> 25) & 0b111) != 0b001:
-        raise UnsupportedInstruction(f"not a supported immediate data-processing instruction: 0x{word:08X}")
+    # A32 data-processing instructions with a plain register operand (no
+    # shifter) are a separate narrow subset. Other register-shift forms remain
+    # rejected because they require exact Operand2 carry/shift semantics.
+    operand_format = (word >> 25) & 0b111
+    if operand_format == 0b000:
+        return _decode_register_data_processing(word, condition)
+    if operand_format != 0b001:
+        raise UnsupportedInstruction(
+            f"not a supported data-processing operand form: 0x{word:08X}"
+        )
 
     opcode = (word >> 21) & 0xF
     set_flags = (word >> 20) & 1
