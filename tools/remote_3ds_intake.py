@@ -310,8 +310,8 @@ def classify_ghidra_failure(log_path: Path) -> str:
 
     if any(token in diagnostic for token in (
         "error: cannot find symbol", "compilation failed", "failed to compile",
-        "script compilation error", "javac:",
-    )):
+        "script compilation error", "javac:", "compilation errors",
+    )) or re.search(r"(?m)^.*\\.java:\\d+:\\s*error:", diagnostic):
         return "script-compilation"
     if any(token in diagnostic for token in (
         "unrecognized option", "unknown option", "invalid option", "usage:",
