@@ -40,6 +40,16 @@ ARM_WORDS = (
     0xE12FFF1E,  # BX lr
 )
 THUMB_HALFWORDS = (0x200C, 0x3808, 0x3003, 0x2807, 0x4770)
+MEMORY_HALFWORDS = (
+    0x5042,  # STR r2, [r0, r1]
+    0x5843,  # LDR r3, [r0, r1]
+    0x8102,  # STRH r2, [r0, #8]
+    0x8904,  # LDRH r4, [r0, #8]
+    0x7282,  # STRB r2, [r0, #10]
+    0x5645,  # LDRSB r5, [r0, r1]
+    0x7A86,  # LDRB r6, [r0, #10]
+    0x4770,  # BX lr
+)
 
 
 class PipelineError(RuntimeError):
@@ -204,6 +214,19 @@ def _thumb_source() -> str:
     return generated.replace(old_signature, "uint32_t native_thumb_smoke(", 1)
 
 
+def _thumb_memory_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(MEMORY_HALFWORDS),
+        max_execution_steps=len(MEMORY_HALFWORDS),
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb memory translator output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_memory_smoke(", 1)
+
+
 A32_HARNESS = r"""
 int main(void) {
     const uint32_t input[4] = {
@@ -248,6 +271,73 @@ int main(void) {
 }
 """
 
+MEMORY_HARNESS = r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0x1000), UINT32_C(4), UINT32_C(0xA1B2C380), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)
+    };
+    uint32_t registers_out[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+    uint8_t memory[16];
+    for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U;
+    const uint32_t returned = native_thumb_memory_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(16)
+    );
+    if (returned != UINT32_C(0x1000) || status != UINT8_C(0) || steps != UINT32_C(8) || nzcv != UINT8_C(0x9)) return 1;
+    if (registers_out[0] != UINT32_C(0x1000) || registers_out[1] != UINT32_C(4)
+        || registers_out[2] != UINT32_C(0xA1B2C380) || registers_out[3] != UINT32_C(0xA1B2C380)
+        || registers_out[4] != UINT32_C(0xC380) || registers_out[5] != UINT32_C(0xFFFFFF80)
+        || registers_out[6] != UINT32_C(0x80) || registers_out[7] != UINT32_C(0xAAAAAAAA)) return 2;
+    if (memory[4] != UINT8_C(0x80) || memory[5] != UINT8_C(0xC3)
+        || memory[6] != UINT8_C(0xB2) || memory[7] != UINT8_C(0xA1)
+        || memory[8] != UINT8_C(0x80) || memory[9] != UINT8_C(0xC3)
+        || memory[10] != UINT8_C(0x80) || memory[11] != UINT8_C(0xEE)) return 3;
+
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+    const uint32_t out_of_range[8] = {
+        UINT32_C(0x100C), UINT32_C(4), UINT32_C(0x11223344), 0U, 0U, 0U, 0U, 0U
+    };
+    for (unsigned int i = 0U; i < 8U; ++i) registers_out[i] = UINT32_C(0xAAAAAAAA);
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_memory_smoke(
+        out_of_range, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(16)
+    );
+    if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 4;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 5;
+
+    const uint32_t misaligned[8] = {
+        UINT32_C(0x1002), 0U, UINT32_C(0x11223344), 0U, 0U, 0U, 0U, 0U
+    };
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_memory_smoke(
+        misaligned, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0x1000), UINT32_C(16)
+    );
+    if (status != UINT8_C(4) || steps != UINT32_C(1)) return 6;
+    if (memcmp(before, memory, sizeof(memory)) != 0) return 7;
+
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_memory_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
+        0, UINT32_C(0x1000), UINT32_C(16)
+    );
+    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 8;
+
+    nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_memory_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
+        memory, UINT32_C(0xFFFFFFF8), UINT32_C(16)
+    );
+    if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 9;
+    return 0;
+}
+
 
 def run_pipeline(compiler_override: str | None = None) -> int:
     _assert_fail_closed()
@@ -260,6 +350,8 @@ def run_pipeline(compiler_override: str | None = None) -> int:
         print("PASS: synthetic ARM A32 -> C -> native executable (registers, NZCV, step budget)")
         _compile_and_run(compiler, is_msvc, "native_thumb_smoke", _thumb_source(), THUMB_HARNESS, work_dir)
         print("PASS: synthetic Thumb-16 -> C -> native executable (registers, NZCV, step budget)")
+        _compile_and_run(compiler, is_msvc, "native_thumb_memory_smoke", _thumb_memory_source(), MEMORY_HARNESS, work_dir)
+        print("PASS: native Thumb load/store widths, sign extension, bounds, alignment, and faults")
     print("PASS: unsupported A32/Thumb instructions fail closed; no interpreter or emulator is used")
     return 0
 

@@ -937,6 +937,20 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             ):
                 poc.translate([word, 0x4770])
 
+    def test_memory_io_requires_runtime_state_and_supported_memory_instruction(self):
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "requires runtime_state_io"):
+            poc.translate([0x5800, 0x4770], max_execution_steps=2, runtime_memory_io=True)
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "requires at least one supported memory"):
+            poc.translate([0x2001, 0x4770], max_execution_steps=2, runtime_state_io=True, runtime_memory_io=True)
+        for word in (0x9000, 0x9800, 0xC001, 0xC801):
+            with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
+                poc.UnsupportedThumbInstruction, "outside the limited native memory model"
+            ):
+                poc.translate(
+                    [word, 0x4770], max_execution_steps=2,
+                    runtime_state_io=True, runtime_memory_io=True,
+                )
+
     def test_decodes_thumb_pc_sp_address_generation_and_stack_adjustments(self):
         self.assertEqual(("adr", 0, 0), poc.decode_halfword(0xA000))
         self.assertEqual(("adr", 7, 1020), poc.decode_halfword(0xA7FF))
