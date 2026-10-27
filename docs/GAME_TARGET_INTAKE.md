@@ -44,6 +44,10 @@ Por padrão, o programa imprime JSON no terminal. Para salvar um relatório, use
 
 O próximo marco é fazer um inventário de segmentos e instruções com análise específica ARM/Thumb e fixtures conhecidas, depois selecionar uma unidade pequena cuja semântica possa ser comparada de modo reproduzível. CROs e recursos de RomFS devem ser catalogados separadamente; não presumir que a análise do executável principal cobre módulos dinâmicos. Dados reais do jogo permanecem no computador do mantenedor e nunca são anexados aos testes ou commits.
 
+## ELF local para ferramentas de análise
+
+O preflight não produz um binário de análise. Para converter o `.code` descomprimido em um ELF32 ARM que preserve os endereços virtuais declarados no ExHeader, consulte [o fluxo de análise de código real](REAL_GAME_CODE_WORKFLOW.md). O ELF e o relatório contêm dados derivados do jogo e devem permanecer fora do repositório. Esta etapa apenas permite abrir a imagem em Ghidra/REA; não descobre funções, recompila o jogo ou prova funcionamento.
+
 ## Inspeção sintática de um intervalo selecionado
 
 Depois de conferir o ExHeader e o `.code` com `tools/inspect_3ds_target.py`, é possível pedir a anotação sintática de uma faixa explicitamente escolhida com `tools/inspect_3ds_code_range.py`. O endereço virtual, o estado ARM/Thumb e a quantidade são obrigatórios; a ferramenta não tenta descobrir limites de função nem adivinhar o estado de instrução. Consulte [CODE_RANGE_INSPECTION.md](CODE_RANGE_INSPECTION.md).
