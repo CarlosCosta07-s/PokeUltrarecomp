@@ -86,13 +86,14 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
             poc.decode_word(0xE3711001)
 
-    def test_decodes_preindexed_immediate_word_ldr_str(self):
+    def test_decodes_preindexed_immediate_word_and_byte_ldr_str(self):
         self.assertEqual(("ldr_imm", 0, 1, 4, True), poc.decode_word(0xE5910004))
         self.assertEqual(("str_imm", 2, 3, 8, False), poc.decode_word(0xE5032008))
+        self.assertEqual(("ldrb_imm", 0, 1, 4, True), poc.decode_word(0xE5D10004))
+        self.assertEqual(("strb_imm", 2, 3, 8, True), poc.decode_word(0xE5C32008))
 
     def test_rejects_unsupported_a32_single_data_transfer_forms(self):
         cases = (
-            (0xE5D10004, "byte memory access"),  # LDRB
             (0xE7910004, "register-offset memory access"),
             (0xE4910004, "post-indexed or writeback memory access"),
             (0xE5B10004, "post-indexed or writeback memory access"),
@@ -346,6 +347,43 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "a32_bounded_memory.c"
             exe = Path(directory) / ("a32_bounded_memory.exe" if os.name == "nt" else "a32_bounded_memory")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_ldrb_strb_use_unaligned_byte_access_and_zero_extend(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 byte-memory proof requires cc, gcc, or clang")
+        generated = poc.translate(
+            [0xE5C02005, 0xE5D03005, 0xE12FFF1E],  # STRB r2,[r0,#5]; LDRB r3,[r0,#5]; BX LR
+            max_execution_steps=8,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        )
+        harness = generated + chr(10) + """
+#include <stddef.h>
+int main(void) {
+    uint32_t registers[4] = { UINT32_C(0x1001), 0U, UINT32_C(0xA1B2C3D4), 0U };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t memory[16];
+    for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t flags = 0U, status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = synthetic_entry_bounded(registers, UINT8_C(0xB), &flags, &steps, &status,
+        output, memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)));
+    return result == UINT32_C(0x1001) && flags == UINT8_C(0xB)
+        && status == UINT8_C(0) && steps == UINT32_C(3)
+        && output[0] == UINT32_C(0x1001) && output[3] == UINT32_C(0xD4)
+        && memory[6] == UINT8_C(0xD4) && memory[5] == UINT8_C(0xEE)
+        ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_bounded_byte_memory.c"
+            exe = Path(directory) / ("a32_bounded_byte_memory.exe" if os.name == "nt" else "a32_bounded_byte_memory")
             src.write_text(harness, encoding="utf-8")
             compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
