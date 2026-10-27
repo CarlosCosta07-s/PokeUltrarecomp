@@ -90,6 +90,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Executar uma contagem heurística agregada de padrões comuns de prólogo no segmento `.text` de Ultra Sun: 25.019 ocorrências candidatas. Isso não equivale ao número de funções e pode incluir dados/padrões coincidentes.
 - [x] Refinar a triagem com Capstone: 12.752 candidatos alcançaram linearmente um retorno comum dentro de 512 bytes/96 instruções; 3.803 chegaram ao retorno em até 16 instruções. A leitura não segue o grafo de controle e esses totais não representam funções validadas.
 - [x] Criar um inventário heurístico agregado de padrões comuns de prólogo ARM/Thumb, com saída sanitizada e testes sintéticos; isso não substitui a identificação manual de funções reais.
+- [x] Implementar a leitura do Program ID no cabeçalho NCCH da partição selecionada em contêineres NCSD (.3ds/.cci), com validação de limites, magia e partição; comparar o Title ID encontrado ao perfil conhecido, sem publicar o identificador literal. A validação com CCI real está em execução; .cia/TMD permanece pendente.
 - [ ] Validar separadamente uma entrada autorizada de Ultra Moon.
 - [ ] Identificar e confirmar manualmente limites/estados de funções ARM/Thumb reais, sem reutilizar fontes cuja licença não está confirmada.
 
