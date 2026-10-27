@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare generated ARM A32 C fixtures against the separate NZCV reference model.
 
-This bounded experiment only exercises synthetic register values and immediate
-ADDS, SUBS, and CMN instructions. It is not a comparison against an emulator.
+This bounded experiment exercises synthetic immediates and plain register
+Operand2 forms of ADDS, SUBS, CMN and CMP. It is not an emulator comparison.
 """
 from __future__ import annotations
 
@@ -69,6 +69,26 @@ def build_cases() -> tuple[DifferentialCase, ...]:
                 expected_arithmetic_result, expected_flags = reference(lhs, rhs)
                 expected_result = expected_arithmetic_result if writes_result else lhs
                 words = (*prefix, base_word | encoded_immediate, RETURN_WORD)
+                cases.append(DifferentialCase(
+                    name=f"{operation_name}-{lhs_name}-{immediate_name}",
+                    words=words,
+                    initial_value=lhs,
+                    expected_result=expected_result,
+                    expected_nzcv=expected_flags.nibble,
+                ))
+    register_operations = (
+        ("adds-reg", arm_flags.add_with_flags, 0xE0900000, True),
+        ("subs-reg", arm_flags.sub_with_flags, 0xE0500000, True),
+        ("cmn-reg", arm_flags.add_with_flags, 0xE1700000, False),
+        ("cmp-reg", arm_flags.sub_with_flags, 0xE1500000, False),
+    )
+    for lhs_name, lhs, prefix in _initial_register_prefixes():
+        for immediate_name, rhs, encoded_immediate in _IMMEDIATES:
+            mov_r1 = 0xE3A01000 | encoded_immediate
+            for operation_name, reference, base_word, writes_result in register_operations:
+                expected_arithmetic_result, expected_flags = reference(lhs, rhs)
+                expected_result = expected_arithmetic_result if writes_result else lhs
+                words = (*prefix, mov_r1, base_word | 1, RETURN_WORD)
                 cases.append(DifferentialCase(
                     name=f"{operation_name}-{lhs_name}-{immediate_name}",
                     words=words,
@@ -177,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    print(f"PASS: {count} synthetic ADDS/SUBS/CMN/CMP native results and NZCV values matched tools/arm_flags.py.")
+    print(f"PASS: {count} synthetic immediate/register ADDS/SUBS/CMN/CMP native results and NZCV values matched tools/arm_flags.py.")
     print(f"Compiler: {compiler}; C11; -Wall -Wextra -Werror.")
     print("Scope: generated C vs the project's separate NZCV model; not an external emulator or game test.")
     return 0
