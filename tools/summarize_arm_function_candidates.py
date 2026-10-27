@@ -267,6 +267,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exheader", required=True, type=Path)
     parser.add_argument("--code", required=True, type=Path)
     parser.add_argument(
+        "--decode-summary",
+        action="store_true",
+        help="use Capstone to count heuristic candidates that linearly reach a return-like instruction",
+    )
+    parser.add_argument(
         "--private-report",
         type=Path,
         help="optional address-level JSON output; must be outside the repository",
@@ -274,7 +279,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        result = scan_candidates(args.target, args.exheader, args.code)
+        result = scan_candidates(
+            args.target, args.exheader, args.code,
+            decode_summary=args.decode_summary,
+        )
         if args.private_report:
             destination = _outside_project(args.private_report)
             if destination in (args.exheader.expanduser().resolve(), args.code.expanduser().resolve()):
