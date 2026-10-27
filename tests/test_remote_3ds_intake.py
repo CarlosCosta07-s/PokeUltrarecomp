@@ -111,6 +111,33 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual("headless-analysis", intake.classify_ghidra_failure(log_path))
         self.assertNotIn("0x00101234", intake.classify_ghidra_failure(log_path))
 
+    def test_runs_ghidra_in_precreated_private_project_directory(self):
+        fake_headless = self.work / "fake_analyzeHeadless"
+        safe_fixture = self._valid_ghidra_summary()
+        fake_headless.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\nfrom pathlib import Path\n"
+            "args=sys.argv[1:]\n"
+            "project=Path(args[0])\n"
+            "if not project.is_dir(): raise SystemExit(23)\n"
+            "post=args.index('-postScript')\n"
+            "summary=Path(args[post+2])\n"
+            "size=int(args[post+4])\n"
+            f"data={safe_fixture!r}\n"
+            "data['text_size_bytes']=size\n"
+            "summary.write_text(json.dumps(data), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        fake_headless.chmod(0o755)
+        text_segment = {"virtual_address": 0x00100000, "declared_size_bytes": 128}
+        result = intake.run_ghidra_function_census(
+            fake_headless, "ultra-sun", self.header_fixture, self.code_fixture,
+            text_segment, self.work / "ghidra-run",
+        )
+        self.assertEqual("pass", result["status"])
+        self.assertEqual(10, result["functions_with_entry_inside_text"])
+        self.assertTrue((self.work / "ghidra-run" / "ghidra-project").is_dir())
+
     def test_sanitizes_aggregate_ghidra_summary(self):
         summary_path = self.work / "ghidra-summary.json"
         summary_path.write_text(json.dumps(self._valid_ghidra_summary()), encoding="utf-8")
