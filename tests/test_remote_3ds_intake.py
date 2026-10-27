@@ -97,6 +97,18 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertNotIn("0x00101234", hint)
         self.assertNotIn("E92D4010", hint)
 
+    def test_ghidra_hint_prioritizes_java_compiler_error_over_class_not_found(self):
+        log_path = self.work / "private-ghidra-compiler.log"
+        log_path.write_text(
+            "Caused by: java.lang.ClassNotFoundException: FunctionCensusSummary not found by <hex>\\n"
+            "FunctionCensusSummary.java:71: error: cannot find symbol\\n"
+            "  symbol: method getNumAddresses().signum()\\n",
+            encoding="utf-8",
+        )
+        hint = intake.sanitized_ghidra_failure_hint(log_path)
+        self.assertIn("FunctionCensusSummary.java:71: error:", hint)
+        self.assertNotIn("ClassNotFoundException", hint)
+
     def test_classifies_ghidra_errors_without_returning_raw_logs(self):
         log_path = self.work / "private-ghidra.log"
         log_path.write_text("ERROR: compilation failed at private-address 0x00101234", encoding="utf-8")
