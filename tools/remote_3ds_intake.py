@@ -447,7 +447,19 @@ def run_ghidra_function_census(
         raise IntakeError(
             f"Ghidra headless census failed (category: {category}; diagnostic: {hint}); raw diagnostics were discarded"
         )
-    return sanitize_ghidra_summary(summary_path, text_size)
+    try:
+        return sanitize_ghidra_summary(summary_path, text_size)
+    except IntakeError as exc:
+        if "did not produce a readable summary" not in str(exc):
+            raise
+        # A zero process exit code is not sufficient: Ghidra may finish without
+        # executing the post-script. Report only an allowlisted, redacted hint.
+        category = classify_ghidra_failure(log_path)
+        hint = sanitized_ghidra_failure_hint(log_path)
+        raise IntakeError(
+            f"Ghidra headless census produced no readable summary "
+            f"(category: {category}; diagnostic: {hint}); raw diagnostics were discarded"
+        ) from None
 
 
 def extract_and_inspect(
