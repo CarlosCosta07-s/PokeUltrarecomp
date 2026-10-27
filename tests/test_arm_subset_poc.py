@@ -223,7 +223,7 @@ class TranslationTests(unittest.TestCase):
         cmn = poc.translate([
             0xE3E00000, 0xE3A01001, 0xE1700001, 0xE12FFF1E,
         ]).replace("uint32_t synthetic_entry(", "uint32_t cmn_register(")
-        harness = "\\n".join((add, sub, cmp, cmn)) + """
+        harness = "\n".join((add, sub, cmp, cmn)) + """
 int main(void) {
     uint8_t add_flags = 255, sub_flags = 255, cmp_flags = 255, cmn_flags = 255;
     return adds_register(&add_flags) == UINT32_C(12) && add_flags == UINT8_C(0)
