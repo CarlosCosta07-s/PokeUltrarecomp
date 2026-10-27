@@ -328,7 +328,7 @@ int main(void) {
     uint32_t steps = 0U;
     const uint32_t returned = native_thumb_multiple_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
     );
     if (returned != UINT32_C(0x1018) || status != UINT8_C(0)
         || steps != UINT32_C(3) || nzcv != UINT8_C(0x9)) return 1;
@@ -352,7 +352,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_multiple_memory_smoke(
         bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
     );
     if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 4;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 5;
@@ -361,7 +361,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_multiple_memory_smoke(
         bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
     );
     if (status != UINT8_C(4) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 6;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 7;
@@ -376,7 +376,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     const uint32_t ldm_return = native_thumb_ldmia_base_list_smoke(
         ldm_base_input, UINT8_C(0x5), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
     );
     if (ldm_return != UINT32_C(0x12345678) || registers_out[0] != UINT32_C(0x12345678)
         || status != UINT8_C(0) || steps != UINT32_C(2) || nzcv != UINT8_C(0x5)) return 8;
@@ -473,7 +473,7 @@ def run_pipeline(compiler_override: str | None = None) -> int:
         print("PASS: native Thumb load/store widths, sign extension, bounds, alignment, and faults")
         _compile_and_run(
             compiler, is_msvc, "native_thumb_multiple_memory_smoke",
-            _thumb_multiple_memory_source() + "\\n" + _thumb_ldmia_base_list_source(),
+            _thumb_multiple_memory_source() + "\n" + _thumb_ldmia_base_list_source(),
             MULTIPLE_MEMORY_HARNESS, work_dir
         )
         print("PASS: native Thumb LDMIA/STMIA order, write-back, base-in-list rule, and atomic faults")
