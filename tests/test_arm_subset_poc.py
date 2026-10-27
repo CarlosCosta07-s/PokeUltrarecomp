@@ -40,6 +40,10 @@ class DecoderTests(unittest.TestCase):
     def test_decodes_adds_with_flags(self):
         self.assertEqual(("adds", 0, 0, 1), poc.decode_word(0xE2900001))
 
+    def test_decodes_reverse_subtract_immediate_and_flags(self):
+        self.assertEqual(("rsb", 0, 0, 1), poc.decode_word(0xE2600001))
+        self.assertEqual(("rsbs", 0, 0, 1), poc.decode_word(0xE2700001))
+
     def test_decodes_subs_with_flags(self):
         self.assertEqual(("subs", 0, 0, 1), poc.decode_word(0xE2500001))
 
@@ -84,9 +88,7 @@ class DecoderTests(unittest.TestCase):
             with self.subTest(word=f"0x{word:08X}"):
                 self.assertEqual(expected, poc.decode_word(word))
 
-    def test_rejects_unsupported_flag_setting_instruction(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE2700001)  # RSBS immediate remains outside this subset
+    def test_rejects_non_flag_setting_tst(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "TST requires the S bit"):
             poc.decode_word(0xE3000001)  # TST with the S bit cleared is rejected
 
@@ -157,6 +159,8 @@ class DecoderTests(unittest.TestCase):
             (0xE1C00001, ("bic_reg", 0, 0, 1)),
             (0xE0800001, ("add_reg", 0, 0, 1)),
             (0xE0900001, ("adds_reg", 0, 0, 1)),
+            (0xE0600001, ("rsb_reg", 0, 0, 1)),
+            (0xE0700001, ("rsbs_reg", 0, 0, 1)),
             (0xE0A10002, ("adc_reg", 0, 1, 2)),
             (0xE0B10002, ("adcs_reg", 0, 1, 2)),
             (0xE0C10002, ("sbc_reg", 0, 1, 2)),
