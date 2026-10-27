@@ -60,6 +60,8 @@ REQUIRED_FILES = (
     "tests/test_wrap_retail_code.py",
     "tools/disassemble_retail_range.py",
     "tools/requirements-analysis.txt",
+    "tools/smoke_capstone_integration.py",
+    ".github/workflows/analysis-tools.yml",
     "tests/test_disassemble_retail_range.py",
     "docs/REAL_GAME_CODE_WORKFLOW.md",
 )
