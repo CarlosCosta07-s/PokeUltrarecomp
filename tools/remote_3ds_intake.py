@@ -478,7 +478,7 @@ def classify_arm_decode_rejection(message: str) -> str:
         )
     ):
         return "unsupported-operand-class"
-    if "register operand2 shifts are unsupported" in lowered:
+    if "register operand2 shifts are unsupported" in lowered or "register-specified operand2 shifts are unsupported" in lowered:
         return "register-shifted-operand"
     if "flag-setting form is unsupported" in lowered:
         return "unsupported-flag-setting-form"
