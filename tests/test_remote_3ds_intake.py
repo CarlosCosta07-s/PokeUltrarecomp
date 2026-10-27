@@ -114,8 +114,8 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def test_ghidra_missing_summary_emits_only_redacted_diagnostic(self):
         fake_headless = self.work / "fake_no_summary.py"
         fake_headless.write_text(
-            "import sys\\n"
-            "print('Ghidra failed while reading /tmp/private-analysis.elf at 0x00123456')\\n",
+            "import sys\n"
+            "print('Ghidra failed while reading /tmp/private-analysis.elf at 0x00123456')\n",
             encoding="utf-8",
         )
         text_segment = {"virtual_address": 0x00100000, "declared_size_bytes": 128}
