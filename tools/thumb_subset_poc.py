@@ -326,10 +326,11 @@ def translate(
 
     ``runtime_state_io=True`` exposes r0-r7 and NZCV at runtime.
     ``runtime_memory_io=True`` adds a bounded guest-memory byte region and
-    emits native C loads/stores for a conservative Thumb-1 subset, including
-    PC-literal and SP-relative word accesses with explicit host entry-PC/SP
-    inputs. Unsupported memory forms, invalid addresses, misaligned multi-byte
-    accesses and invalid entry state fail explicitly; no interpreter or fallback exists.
+    emits native C loads/stores and bounded PUSH/POP transfers for a conservative
+    Thumb-1 subset. Stack transfers return the updated SP through an explicit
+    output pointer and validate each complete transfer before modifying state.
+    Unsupported memory forms, invalid addresses, misaligned accesses and invalid
+    entry state fail explicitly; no interpreter or fallback exists.
     This is a synthetic candidate model, not a general ARM ABI proof.
     """
     if not isinstance(runtime_state_io, bool):
@@ -358,10 +359,12 @@ def translate(
     decoded = [decode_halfword(word) for word in halfwords]
     contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
     contains_sp_memory = any(inst[0] in ("str_sp", "ldr_sp") for inst in decoded)
-    contains_invalid_state_access = contains_literal_load or contains_sp_memory
+    contains_stack_ops = any(inst[0] in STACK_OPS for inst in decoded)
+    contains_invalid_state_access = contains_literal_load or contains_sp_memory or contains_stack_ops
     contains_alignment_sensitive_memory = any(
         (inst[0] in MEMORY_ACCESS_WIDTHS and MEMORY_ACCESS_WIDTHS[inst[0]] > 1)
         or inst[0] in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS
+        or inst[0] in STACK_OPS
         for inst in decoded
     )
     supported_memory_found = False
@@ -397,10 +400,12 @@ def translate(
                 "the synthetic translator does not model PC or SP"
             )
         if inst[0] in STACK_OPS:
-            raise UnsupportedThumbInstruction(
-                f"stack transfer ({inst[0]}) is decoded for inspection only; "
-                "the synthetic translator has no memory model"
-            )
+            if not runtime_memory_io:
+                raise UnsupportedThumbInstruction(
+                    f"stack transfer ({inst[0]}) is decoded for inspection only; "
+                    "set runtime_memory_io=True to use the bounded native memory model"
+                )
+            supported_memory_found = True
         if inst[0] in INDIRECT_FLOW_OPS:
             raise UnsupportedThumbInstruction(
                 f"register-indirect control flow ({inst[0]}) is decoded for inspection only; "
@@ -447,7 +452,16 @@ def translate(
     if runtime_state_io:
         used_registers = set(range(8))
     bounded = max_execution_steps is not None
-    if runtime_memory_io:
+    if runtime_memory_io and contains_stack_ops:
+        signature = (
+            "uint32_t thumb_entry_stack_memory_bounded(const uint32_t *registers_in, "
+            "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+            "uint8_t *execution_status_out, uint32_t *registers_out, uint8_t *memory_bytes, "
+            "uint32_t guest_memory_base, uint32_t guest_memory_size, "
+            "uint32_t guest_entry_address, uint32_t guest_sp, uint32_t guest_lr, "
+            "uint32_t *guest_sp_out)"
+        )
+    elif runtime_memory_io:
         signature = (
             "uint32_t thumb_entry_memory_bounded(const uint32_t *registers_in, "
             "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
@@ -490,9 +504,16 @@ def translate(
     if runtime_memory_io:
         lines.append("    (void)guest_entry_address;")
         lines.append("    (void)guest_sp;")
+        if contains_stack_ops:
+            lines.extend((
+                "    uint32_t current_sp = guest_sp;",
+                "    if (guest_sp_out != 0) *guest_sp_out = current_sp;",
+                "    (void)guest_lr;",
+            ))
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory_bytes == 0 || guest_memory_size == 0U || "
-            "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))) {",
+            "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))" +
+            (" || guest_sp_out == 0" if contains_stack_ops else "") + ") {",
             "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
             "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
             "        return 0U;",
@@ -814,8 +835,9 @@ def translate(
                 lines.append("    {")
                 if address_expression is None:
                     address_wide = f"thumb_sp_address_wide_{suffix}"
+                    sp_value = "current_sp" if contains_stack_ops else "guest_sp"
                     lines.append(
-                        f"        const uint64_t {address_wide} = (uint64_t)guest_sp + UINT64_C({immediate_offset});"
+                        f"        const uint64_t {address_wide} = (uint64_t){sp_value} + UINT64_C({immediate_offset});"
                     )
                     lines.append(
                         f"        if ({address_wide} > UINT64_C(0xFFFFFFFF) || "
@@ -844,8 +866,9 @@ def translate(
                 lines.append("    {")
                 if address_expression is None:
                     address_wide = f"thumb_sp_address_wide_{suffix}"
+                    sp_value = "current_sp" if contains_stack_ops else "guest_sp"
                     lines.append(
-                        f"        const uint64_t {address_wide} = (uint64_t)guest_sp + UINT64_C({immediate_offset});"
+                        f"        const uint64_t {address_wide} = (uint64_t){sp_value} + UINT64_C({immediate_offset});"
                     )
                     lines.append(
                         f"        if ({address_wide} > UINT64_C(0xFFFFFFFF) || "
@@ -939,6 +962,62 @@ def translate(
                 if not (register_mask & (1 << rn)):
                     lines.append(f"        r{rn} = (uint32_t)({address} + UINT32_C({transfer_bytes}));")
             lines.append("    }")
+        elif op in STACK_OPS:
+            suffix = str(index)
+            if op == "push":
+                _, register_mask, include_lr = inst
+                transfer_registers = [("r", reg) for reg in range(8) if register_mask & (1 << reg)]
+                if include_lr:
+                    transfer_registers.append(("lr", 14))
+            else:
+                _, register_mask = inst
+                transfer_registers = [("r", reg) for reg in range(8) if register_mask & (1 << reg)]
+            transfer_bytes = len(transfer_registers) * 4
+            address = f"thumb_stack_address_{suffix}"
+            offset = f"thumb_stack_offset_{suffix}"
+            lines.append("    {")
+            lines.append(f"        if ((current_sp & UINT32_C(3)) != 0U) goto thumb_alignment_fault;")
+            if op == "push":
+                lines.append(f"        if (current_sp < UINT32_C({transfer_bytes})) goto thumb_invalid_state;")
+                lines.append(f"        const uint32_t {address} = current_sp - UINT32_C({transfer_bytes});")
+            else:
+                post_sp = f"thumb_pop_post_sp_wide_{suffix}"
+                lines.append(f"        const uint64_t {post_sp} = (uint64_t)current_sp + UINT64_C({transfer_bytes});")
+                lines.append(f"        if ({post_sp} > UINT64_C(0xFFFFFFFF)) goto thumb_invalid_state;")
+                lines.append(f"        const uint32_t {address} = current_sp;")
+            lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
+            lines.append(f"        const uint32_t {offset} = {address} - guest_memory_base;")
+            lines.append(
+                f"        if ({offset} > guest_memory_size || UINT32_C({transfer_bytes}) > guest_memory_size - {offset}) goto thumb_memory_fault;"
+            )
+            if op == "push":
+                for item_index, (kind, register) in enumerate(transfer_registers):
+                    source = "guest_lr" if kind == "lr" else f"r{register}"
+                    lines.append(f"        const uint32_t thumb_push_value_{item_index}_{suffix} = {source};")
+                for item_index, (_kind, _register) in enumerate(transfer_registers):
+                    for byte_index in range(4):
+                        byte_offset = item_index * 4 + byte_index
+                        shift = byte_index * 8
+                        value = f"thumb_push_value_{item_index}_{suffix}"
+                        lines.append(
+                            f"        memory_bytes[{offset} + UINT32_C({byte_offset})] = "
+                            f"(uint8_t)(({value} >> {shift}) & UINT32_C(0xFF));"
+                        )
+                lines.append(f"        current_sp = {address};")
+            else:
+                for item_index, (_kind, _register) in enumerate(transfer_registers):
+                    base_offset = item_index * 4
+                    bytes_expr = [
+                        f"(uint32_t)memory_bytes[{offset} + UINT32_C({base_offset})]",
+                        f"((uint32_t)memory_bytes[{offset} + UINT32_C({base_offset + 1})] << 8)",
+                        f"((uint32_t)memory_bytes[{offset} + UINT32_C({base_offset + 2})] << 16)",
+                        f"((uint32_t)memory_bytes[{offset} + UINT32_C({base_offset + 3})] << 24)",
+                    ]
+                    lines.append(f"        const uint32_t thumb_pop_value_{item_index}_{suffix} = " + " | ".join(bytes_expr) + ";")
+                for item_index, (_kind, register) in enumerate(transfer_registers):
+                    lines.append(f"        r{register} = thumb_pop_value_{item_index}_{suffix};")
+                lines.append(f"        current_sp = (uint32_t){post_sp};")
+            lines.append("    }")
         elif op == "branch":
             condition = inst[1]
             target = branch_targets[index]
@@ -984,6 +1063,8 @@ def translate(
                     "    if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
                 ))
         lines.append("thumb_exit: ;")
+        if contains_stack_ops:
+            lines.append("    if (guest_sp_out != 0) *guest_sp_out = current_sp;")
     # Read each guest register in the epilogue so strict C compilers do not
     # reject valid fixtures that write a register whose value is not returned.
     lines.extend(f"    (void)r{reg};" for reg in sorted(used_registers))

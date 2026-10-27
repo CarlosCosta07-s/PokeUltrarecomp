@@ -76,6 +76,15 @@ SP_MEMORY_HALFWORDS = (
     0x9A01,  # LDR r2, [SP, #4]
     0x4770,  # BX lr
 )
+STACK_MEMORY_HALFWORDS = (
+    0xB503,  # PUSH {r0, r1, LR}
+    0xBC0C,  # POP {r2, r3}
+    0x4770,  # BX lr
+)
+STACK_POP_OVERFLOW_HALFWORDS = (
+    0xBC0C,  # POP {r2, r3}; test post-increment overflow independently
+    0x4770,  # BX lr
+)
 
 
 class PipelineError(RuntimeError):
@@ -305,6 +314,34 @@ def _thumb_sp_memory_source() -> str:
     if old_signature not in generated:
         raise PipelineError("Thumb SP-relative output does not match its bounded memory interface")
     return generated.replace(old_signature, "uint32_t native_thumb_sp_memory_smoke(", 1)
+
+
+def _thumb_stack_memory_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(STACK_MEMORY_HALFWORDS),
+        max_execution_steps=len(STACK_MEMORY_HALFWORDS),
+        initial_nzcv=0x9,
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_stack_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb stack output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_stack_memory_smoke(", 1)
+
+
+def _thumb_stack_pop_overflow_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(STACK_POP_OVERFLOW_HALFWORDS),
+        max_execution_steps=len(STACK_POP_OVERFLOW_HALFWORDS),
+        initial_nzcv=0x9,
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_stack_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb POP-overflow output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_stack_pop_overflow_smoke(", 1)
 
 
 A32_HARNESS = r"""
@@ -601,6 +638,59 @@ int main(void) {
 """
 
 
+STACK_MEMORY_HARNESS = r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0x11223344), UINT32_C(0x55667788), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xBBBBBBBB), 4U, 5U, 6U, 7U
+    };
+    uint32_t output[8] = {0U};
+    uint8_t memory[24];
+    for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U, final_sp = 0U;
+    const uint32_t returned = native_thumb_stack_memory_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0x1018),
+        UINT32_C(0xAABBCCDD), &final_sp
+    );
+    if (returned != UINT32_C(0x11223344) || status != UINT8_C(0)
+        || steps != UINT32_C(3) || nzcv != UINT8_C(0x9) || final_sp != UINT32_C(0x1014)
+        || output[2] != input[0] || output[3] != input[1]) return 1;
+    const uint8_t expected[12] = {
+        0x44,0x33,0x22,0x11,0x88,0x77,0x66,0x55,0xDD,0xCC,0xBB,0xAA
+    };
+    if (memcmp(memory + 12, expected, sizeof(expected)) != 0) return 2;
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+
+    const uint32_t bad_sp_values[] = {UINT32_C(8), UINT32_C(0x1019), UINT32_C(0x1008)};
+    const uint8_t bad_status[] = {UINT8_C(2), UINT8_C(4), UINT8_C(3)};
+    for (unsigned int i = 0; i < 3U; ++i) {
+        final_sp = 0U; status = UINT8_C(0xAA); steps = 99U;
+        (void)native_thumb_stack_memory_smoke(
+            input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+            UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), bad_sp_values[i],
+            UINT32_C(0xAABBCCDD), &final_sp
+        );
+        if (status != bad_status[i] || steps != UINT32_C(1)
+            || final_sp != bad_sp_values[i] || memcmp(before, memory, sizeof(memory)) != 0) return 3;
+    }
+
+    final_sp = 0U; status = UINT8_C(0xAA); steps = 99U;
+    (void)native_thumb_stack_pop_overflow_smoke(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0xFFFFFFFC),
+        UINT32_C(0xAABBCCDD), &final_sp
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(1)
+        || final_sp != UINT32_C(0xFFFFFFFC) || memcmp(before, memory, sizeof(memory)) != 0) return 4;
+    return 0;
+}
+"""
+
+
 def run_pipeline(compiler_override: str | None = None) -> int:
     _assert_fail_closed()
     compiler, is_msvc = _compiler_command(compiler_override)
@@ -624,6 +714,12 @@ def run_pipeline(compiler_override: str | None = None) -> int:
             _thumb_sp_memory_source(), SP_MEMORY_HARNESS, work_dir
         )
         print("PASS: native Thumb SP-relative STR/LDR, range, alignment, and overflow")
+        _compile_and_run(
+            compiler, is_msvc, "native_thumb_stack_memory_smoke",
+            _thumb_stack_memory_source() + "\n" + _thumb_stack_pop_overflow_source(),
+            STACK_MEMORY_HARNESS, work_dir
+        )
+        print("PASS: native Thumb PUSH/POP order, LR, SP updates and atomic stack faults")
         _compile_and_run(
             compiler, is_msvc, "native_thumb_multiple_memory_smoke",
             _thumb_multiple_memory_source() + "\n" + _thumb_ldmia_base_list_source(),

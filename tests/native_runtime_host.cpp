@@ -23,6 +23,7 @@ bool equals_sentinel(const PokeNativeResult &result)
     if (result.abi_version != UINT32_C(0xAAAAAAAA)
         || result.return_value != UINT32_C(0xAAAAAAAA)
         || result.steps_executed != UINT32_C(0xAAAAAAAA)
+        || result.guest_sp != UINT32_C(0xAAAAAAAA)
         || result.nzcv != UINT8_C(0xAA)
         || result.execution_status != UINT8_C(0xAA)) {
         return false;
@@ -39,6 +40,7 @@ void set_sentinel(PokeNativeResult &result)
     for (uint32_t &value : result.registers) value = UINT32_C(0xAAAAAAAA);
     result.return_value = UINT32_C(0xAAAAAAAA);
     result.steps_executed = UINT32_C(0xAAAAAAAA);
+    result.guest_sp = UINT32_C(0xAAAAAAAA);
     result.nzcv = UINT8_C(0xAA);
     result.execution_status = UINT8_C(0xAA);
 }
@@ -324,6 +326,65 @@ int main()
         != POKE_NATIVE_ABI_OK || sp_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
         || sp_result.steps_executed != UINT32_C(1) || sp_bytes != sp_bytes_before_fault) {
         return fail("SP-relative 32-bit address overflow was not rejected atomically");
+    }
+
+    std::array<uint8_t, 24> stack_bytes{};
+    stack_bytes.fill(UINT8_C(0xEE));
+    PokeNativeMemory stack_memory{};
+    stack_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+    stack_memory.guest_base = UINT32_C(0x1000);
+    stack_memory.size = static_cast<uint32_t>(stack_bytes.size());
+    stack_memory.bytes = stack_bytes.data();
+    PokeNativeCall stack_call{};
+    stack_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    stack_call.guest_sp = UINT32_C(0x1018);
+    stack_call.guest_lr = UINT32_C(0xAABBCCDD);
+    stack_call.registers[0] = UINT32_C(0x11223344);
+    stack_call.registers[1] = UINT32_C(0x55667788);
+    stack_call.registers[2] = UINT32_C(0xAAAAAAAA);
+    stack_call.registers[3] = UINT32_C(0xBBBBBBBB);
+    stack_call.initial_nzcv = UINT8_C(0x9);
+    PokeNativeResult stack_result{};
+    if (poke_native_execute_thumb_stack_memory(&stack_call, &stack_memory, &stack_result)
+        != POKE_NATIVE_ABI_OK
+        || stack_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || stack_result.return_value != UINT32_C(0x11223344)
+        || stack_result.steps_executed != UINT32_C(3)
+        || stack_result.guest_sp != UINT32_C(0x1014)
+        || stack_result.registers[2] != UINT32_C(0x11223344)
+        || stack_result.registers[3] != UINT32_C(0x55667788)
+        || stack_bytes[12] != UINT8_C(0x44) || stack_bytes[13] != UINT8_C(0x33)
+        || stack_bytes[14] != UINT8_C(0x22) || stack_bytes[15] != UINT8_C(0x11)
+        || stack_bytes[16] != UINT8_C(0x88) || stack_bytes[17] != UINT8_C(0x77)
+        || stack_bytes[18] != UINT8_C(0x66) || stack_bytes[19] != UINT8_C(0x55)
+        || stack_bytes[20] != UINT8_C(0xDD) || stack_bytes[21] != UINT8_C(0xCC)
+        || stack_bytes[22] != UINT8_C(0xBB) || stack_bytes[23] != UINT8_C(0xAA)) {
+        return fail("Thumb PUSH/POP did not preserve order, LR or final SP through the C ABI");
+    }
+    std::cout << "PASS: C++20 host calls Thumb PUSH/POP through the versioned C ABI\n";
+    const auto stack_bytes_before_fault = stack_bytes;
+    for (uint32_t bad_sp : {UINT32_C(8), UINT32_C(0x1019), UINT32_C(0x1008)}) {
+        stack_call.guest_sp = bad_sp;
+        set_sentinel(stack_result);
+        if (poke_native_execute_thumb_stack_memory(&stack_call, &stack_memory, &stack_result)
+            != POKE_NATIVE_ABI_OK || stack_result.guest_sp != bad_sp
+            || stack_result.steps_executed != UINT32_C(1)
+            || stack_result.execution_status != (bad_sp == UINT32_C(8)
+                ? POKE_NATIVE_EXECUTION_INVALID_STATE
+                : bad_sp == UINT32_C(0x1019) ? POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
+                : POKE_NATIVE_EXECUTION_MEMORY_FAULT)
+            || stack_bytes != stack_bytes_before_fault) {
+            return fail("failed Thumb PUSH changed SP or guest memory");
+        }
+    }
+    stack_call.guest_sp = UINT32_C(0xFFFFFFFC);
+    set_sentinel(stack_result);
+    if (poke_native_execute_thumb_stack_pop_overflow_memory(&stack_call, &stack_memory, &stack_result)
+        != POKE_NATIVE_ABI_OK || stack_result.guest_sp != UINT32_C(0xFFFFFFFC)
+        || stack_result.steps_executed != UINT32_C(1)
+        || stack_result.execution_status != POKE_NATIVE_EXECUTION_INVALID_STATE
+        || stack_bytes != stack_bytes_before_fault) {
+        return fail("Thumb POP SP overflow changed SP or guest memory");
     }
 
     guest_bytes.fill(UINT8_C(0xEE));

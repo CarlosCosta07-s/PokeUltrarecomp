@@ -724,11 +724,87 @@ class ThumbStackTransferTests(unittest.TestCase):
             with self.subTest(word=hex(word)), self.assertRaises(poc.UnsupportedThumbInstruction):
                 poc.decode_halfword(word)
 
-    def test_synthetic_translator_refuses_stack_transfers(self):
+    def test_synthetic_translator_refuses_stack_transfers_without_memory_model(self):
         for words in ([0xB510, 0x4770], [0x2001, 0xBC10, 0x4770]):
             with self.subTest(words=[hex(w) for w in words]):
                 with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "stack transfer"):
                     poc.translate(words)
+
+    def test_native_push_pop_update_sp_and_preserve_state_on_faults(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; native PUSH/POP proof requires cc, gcc, or clang")
+        source = poc.translate(
+            [0xB503, 0xBC0C, 0x4770],
+            max_execution_steps=3,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_stack_memory_bounded(", "uint32_t thumb_stack_memory(")
+        overflow_source = poc.translate(
+            [0xBC0C, 0x4770],
+            max_execution_steps=2,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        ).replace("uint32_t thumb_entry_stack_memory_bounded(", "uint32_t thumb_stack_pop_overflow(")
+        harness = source + "\n" + overflow_source + r"""
+#include <string.h>
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0x11223344), UINT32_C(0x55667788), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xBBBBBBBB), 4U, 5U, 6U, 7U
+    };
+    uint32_t output[8] = {0U};
+    uint8_t memory[24];
+    for (unsigned int i = 0U; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U, final_sp = 0U;
+    const uint32_t returned = thumb_stack_memory(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0x1018),
+        UINT32_C(0xAABBCCDD), &final_sp
+    );
+    if (returned != UINT32_C(0x11223344) || status != UINT8_C(0)
+        || steps != UINT32_C(3) || nzcv != UINT8_C(0x9) || final_sp != UINT32_C(0x1014)
+        || output[2] != input[0] || output[3] != input[1]) return 1;
+    const uint8_t expected[12] = {
+        0x44,0x33,0x22,0x11,0x88,0x77,0x66,0x55,0xDD,0xCC,0xBB,0xAA
+    };
+    if (memcmp(memory + 12, expected, sizeof(expected)) != 0) return 2;
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+
+    const uint32_t bad_sp_values[] = {UINT32_C(8), UINT32_C(0x1019), UINT32_C(0x1008)};
+    const uint8_t bad_status[] = {UINT8_C(2), UINT8_C(4), UINT8_C(3)};
+    for (unsigned int i = 0; i < 3U; ++i) {
+        final_sp = 0U; status = UINT8_C(0xAA); steps = 99U;
+        (void)thumb_stack_memory(
+            input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+            UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), bad_sp_values[i],
+            UINT32_C(0xAABBCCDD), &final_sp
+        );
+        if (status != bad_status[i] || steps != UINT32_C(1)
+            || final_sp != bad_sp_values[i] || memcmp(before, memory, sizeof(memory)) != 0) return 3;
+    }
+
+    final_sp = 0U; status = UINT8_C(0xAA); steps = 99U;
+    (void)thumb_stack_pop_overflow(
+        input, UINT8_C(0x9), &nzcv, &steps, &status, output, memory,
+        UINT32_C(0x1000), UINT32_C(24), UINT32_C(0), UINT32_C(0xFFFFFFFC),
+        UINT32_C(0xAABBCCDD), &final_sp
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(1)
+        || final_sp != UINT32_C(0xFFFFFFFC) || memcmp(before, memory, sizeof(memory)) != 0) return 4;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "thumb_stack.c"
+            exe = Path(directory) / ("thumb_stack.exe" if os.name == "nt" else "thumb_stack")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=f"native PUSH/POP or stack fault checks failed: {run.stdout}{run.stderr}")
 
 
 class ThumbLiteralLoadTests(unittest.TestCase):

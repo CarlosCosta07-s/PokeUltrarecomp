@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define POKE_NATIVE_ABI_VERSION UINT32_C(3)
+#define POKE_NATIVE_ABI_VERSION UINT32_C(4)
 #define POKE_NATIVE_REGISTER_COUNT 8U
 
 typedef enum PokeNativeAbiStatus {
@@ -29,13 +29,15 @@ typedef enum PokeNativeExecutionStatus {
 typedef struct PokeNativeCall {
     uint32_t abi_version;
     uint32_t entry_address; /* Guest Thumb entry address; used by PC-relative literal loads. */
-    uint32_t guest_sp; /* Guest stack pointer; used by SP-relative memory operations. */
+    uint32_t guest_sp; /* Guest stack pointer; used by SP-relative and stack operations. */
+    uint32_t guest_lr; /* Guest link-register value for PUSH {.., LR}. */
     uint32_t registers[POKE_NATIVE_REGISTER_COUNT];
     uint8_t initial_nzcv;
 } PokeNativeCall;
 
 typedef struct PokeNativeResult {
     uint32_t abi_version;
+    uint32_t guest_sp; /* Final SP; unchanged when a stack instruction faults. */
     uint32_t registers[POKE_NATIVE_REGISTER_COUNT];
     uint32_t return_value;
     uint32_t steps_executed;
@@ -75,6 +77,16 @@ int poke_native_execute_thumb_literal_memory(
     PokeNativeResult *result
 );
 int poke_native_execute_thumb_sp_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
+int poke_native_execute_thumb_stack_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+);
+int poke_native_execute_thumb_stack_pop_overflow_memory(
     const PokeNativeCall *call,
     const PokeNativeMemory *memory,
     PokeNativeResult *result
