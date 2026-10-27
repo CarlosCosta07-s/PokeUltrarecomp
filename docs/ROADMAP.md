@@ -168,11 +168,11 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** pipeline sintético validado em Windows e Linux. O workflow [Native recompilation smoke tests #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) passou nos dois jobs em 27/10/2026 UTC. Em ambos, ARM A32 e Thumb-16 foram traduzidos para C, compilados com GCC/cc ou MSVC, executados como binários nativos e verificados quanto ao resultado, registradores, NZCV e orçamento de instruções. A suíte completa passou em 324 testes em cada sistema e o verificador do repositório passou. A evidência permanece sintética: não há ainda runtime de jogo integrado, função real recompilada ou gameplay validado.
+**Estado:** pipeline sintético validado em Windows e Linux. O workflow [Native recompilation smoke tests #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) confirmou o smoke test direto e 324 testes Python por sistema. A orquestração CMake/Ninja foi então validada no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568), com os três testes CTest aprovados em Windows e Linux (`native_codegen_smoke`, `python_unit_tests`, `repository_safety`). As fixtures A32 e Thumb foram compiladas e executadas como binários nativos, com asserções de resultado, registradores, NZCV e orçamento de instruções. A evidência permanece sintética: não há ainda runtime de jogo integrado, função real recompilada ou gameplay validado.
 
 **Tarefas**
 - [x] Adicionar `CMakeLists.txt` com C11/C++20, CTest e alvo `verify` para coordenar smoke test, testes Python e verificador de segurança.
-- [ ] Validar a nova orquestração CMake + Ninja em Windows e Linux x86-64; registrar os resultados do workflow após a mudança do build.
+- [x] Validar a orquestração CMake + Ninja em Windows e Linux x86-64; os três testes CTest passaram em cada plataforma no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568).
 - [x] Adicionar um smoke test de ponta a ponta para fixtures sintéticas A32 e Thumb: tradutor → C gerado → compilador nativo → execução do binário.
 - [x] Validar resultados esperados, estado de registradores/flags e orçamento de instruções no processo nativo.
 - [x] Cobrir inputs negativos: registrador ARM fora do subconjunto e operação de memória Thumb sem modelo de memória devem falhar explicitamente.

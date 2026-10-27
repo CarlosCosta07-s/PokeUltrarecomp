@@ -6,7 +6,7 @@
 - **Configuração:** CMake exige C11/C++20, encontra Python 3.10+ e define três testes CTest: recompilação/execução nativa sintética, suíte `unittest` e verificador de segurança.
 - **Alvo:** `cmake --build build --target verify` executa os testes registrados por CTest. O diretório `build/` já é ignorado pelo Git.
 - **Dependências externas:** nenhuma biblioteca de runtime SDL3/Vulkan é baixada ou ligada nesta etapa. A configuração apenas valida os toolchains C/C++ e orquestra testes existentes; não existe ainda binário do jogo nem runtime C++ do jogo.
-- **Estado:** implementação no repositório; validação do novo caminho CMake+Ninja pendente de conclusão do [workflow nativo](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/workflows/native-pipeline.yml) em ambos os sistemas. Os resultados anteriores do smoke test direto (run [40441067580](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580)) não são evidência da nova orquestração CMake.
+- **Validação confirmada:** [workflow CMake/Ninja #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568), commit `75d63c093c5e1da593467c539b1277f0fedb2f96`, conclusão `success` nos jobs Windows e Linux. Em cada sistema, CMake configurou C/C++, Ninja construiu o alvo `verify` e CTest aprovou `native_codegen_smoke`, `python_unit_tests` e `repository_safety` (3/3). Toolchains observados: GCC/cc no Ubuntu e MSVC `cl.exe` no Windows. A suíte completa de 324 testes Python também passou na execução do smoke workflow direto anterior [40441067580](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580). O resultado não valida código real de jogo nem uma porta jogável.
 
 ## Pipeline de recompilação nativa sintética — 2026-10-26
 
