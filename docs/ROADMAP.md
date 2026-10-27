@@ -168,7 +168,7 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** pipeline sintético e CMake/Ninja já passaram em Windows e Linux no [workflow #40441326568](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441326568), com os três testes CTest originais e 324 testes Python por job. Em seguida, foi adicionada uma fronteira C/C++20 versionada: fixtures C geradas na build são compiladas como C e chamadas por um host C++20, com validação de resultado/registradores/flags, rejeição de ABI inválida e garantia de que erros não modificam parcialmente a saída. No [workflow #40442412186](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442412186), Windows passou 4/4 testes CTest; a etapa Linux desse commit permaneceu presa na preparação de ferramentas, então a validação cruzada da ABI está pendente. Um ajuste posterior faz o runner instalar ferramentas via apt somente quando faltarem. A evidência é sintética: não há runtime de jogo, função real recompilada ou gameplay validado.
+**Estado:** pipeline sintético e ABI C/C++20 validados em Windows e Linux no [workflow #40442604997](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442604997), commit `97ce1812f22077d7aec4daa5e9bd99578541cb4c`. Ambos os jobs aprovaram 4/4 testes CTest (`native_codegen_smoke`, `native_cpp_abi_smoke`, `python_unit_tests`, `repository_safety`), usando GCC/cc no Linux e MSVC `cl.exe` no Windows. O host C++20 chama as unidades C geradas através de uma ABI versionada e testa estado de saída, preservação de registradores e rejeição de argumentos/versões inválidos sem escrita parcial. A evidência ainda é sintética: não há runtime de jogo integrado, função real recompilada ou gameplay validado.
 
 **Tarefas**
 - [x] Adicionar `CMakeLists.txt` com C11/C++20, CTest e alvo `verify` para coordenar smoke test, testes Python e verificador de segurança.
@@ -176,12 +176,13 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Adicionar um smoke test de ponta a ponta para fixtures sintéticas A32 e Thumb: tradutor → C gerado → compilador nativo → execução do binário.
 - [x] Adicionar uma ABI C versionada entre as funções geradas para teste e um host C++20, com rejeição de argumentos/versionamento inválidos sem alteração parcial de resultados.
 - [x] Integrar o host C++20 e as unidades C geradas ao build CMake; o job Windows aprovou os quatro testes CTest no workflow #40442412186.
-- [ ] Confirmar os quatro testes CTest da integração C/C++20 em Linux usando a configuração de toolchain corrigida.
+- [x] Confirmar os quatro testes CTest da integração C/C++20 tanto em Windows quanto em Linux: [workflow #40442604997](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40442604997).
 - [x] Validar resultados esperados, estado de registradores/flags e orçamento de instruções no processo nativo.
 - [x] Cobrir inputs negativos: registrador ARM fora do subconjunto e operação de memória Thumb sem modelo de memória devem falhar explicitamente.
 - [x] Adicionar um workflow de CI para executar o smoke test em Windows e Linux sem arquivos de jogo.
 - [x] Confirmar execuções aprovadas do workflow em ambos os sistemas; corrigir qualquer falha antes de prosseguir.
 - [ ] Unificar/estender a interface para cobrir regressões de decodificação, fluxo de controle, limites, contratos e falhas do compilador, mantendo um oráculo independente baseado na especificação.
+- [ ] Expandir o modelo de memória de teste para uma região guest limitada e validar loads/stores nativos com checagem de endereços, limites, alinhamento e ausência de escrita parcial em erro; manter operações sem suporte rejeitadas e sem fallback interpretado.
 - [ ] Fazer com que toda instrução sem suporte, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução; nunca usar fallback interpretado.
 
 **Dependências:** fases 2 e 3; as demonstrações sintéticas existentes da fase 5 são o ponto de partida.
