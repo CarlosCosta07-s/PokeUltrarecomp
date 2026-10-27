@@ -942,7 +942,7 @@ class ThumbLiteralLoadTests(unittest.TestCase):
             poc.translate([0x5800, 0x4770], max_execution_steps=2, runtime_memory_io=True)
         with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "requires at least one supported memory"):
             poc.translate([0x2001, 0x4770], max_execution_steps=2, runtime_state_io=True, runtime_memory_io=True)
-        for word in (0x9000, 0x9800, 0xC001, 0xC801):
+        for word in (0x9000, 0x9800):
             with self.subTest(word=f"0x{word:04X}"), self.assertRaisesRegex(
                 poc.UnsupportedThumbInstruction, "outside the limited native memory model"
             ):
@@ -950,6 +950,21 @@ class ThumbLiteralLoadTests(unittest.TestCase):
                     [word, 0x4770], max_execution_steps=2,
                     runtime_state_io=True, runtime_memory_io=True,
                 )
+
+    def test_stmia_base_register_in_register_list_is_rejected_conservatively(self):
+        with self.assertRaisesRegex(poc.UnsupportedThumbInstruction, "STMIA base register"):
+            poc.translate(
+                [0xC001, 0x4770], max_execution_steps=2,
+                runtime_state_io=True, runtime_memory_io=True,
+            )
+
+    def test_ldmia_base_register_in_register_list_is_supported_without_writeback(self):
+        source = poc.translate(
+            [0xC801, 0x4770], max_execution_steps=2,
+            runtime_state_io=True, runtime_memory_io=True,
+        )
+        self.assertIn("thumb_ldmia_r0_0", source)
+        self.assertNotIn("r0 = (uint32_t)(thumb_multiple_address_0 + UINT32_C(4));", source)
 
     def test_decodes_thumb_pc_sp_address_generation_and_stack_adjustments(self):
         self.assertEqual(("adr", 0, 0), poc.decode_halfword(0xA000))
