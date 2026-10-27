@@ -29,6 +29,7 @@ THUMB_MEMORY_HALFWORDS = (
 )
 THUMB_MULTIPLE_MEMORY_HALFWORDS = (0xC006, 0xCB30, 0x4770)
 THUMB_LDMIA_BASE_LIST_HALFWORDS = (0xC801, 0x4770)
+THUMB_LITERAL_MEMORY_HALFWORDS = (0x2000, 0x4901, 0x4770)
 
 A32_ADAPTER = r"""
 #include <stddef.h>
@@ -164,7 +165,8 @@ typedef uint32_t (*PokeNativeMemoryEntry)(
     uint32_t *registers_out,
     uint8_t *memory_bytes,
     uint32_t guest_memory_base,
-    uint32_t guest_memory_size
+    uint32_t guest_memory_size,
+    uint32_t guest_entry_address
 );
 
 static int poke_native_execute_thumb_memory_with_entry(
@@ -194,7 +196,7 @@ static int poke_native_execute_thumb_memory_with_entry(
     const uint32_t return_value = entry(
         call->registers, call->initial_nzcv, &nzcv_out, &steps_executed,
         &execution_status, registers_out, memory->bytes,
-        memory->guest_base, memory->size
+        memory->guest_base, memory->size, call->entry_address
     );
 
     completed.abi_version = POKE_NATIVE_ABI_VERSION;
@@ -241,6 +243,17 @@ int poke_native_execute_thumb_ldmia_base_list(
         call, memory, result, poke_thumb_ldmia_base_list_generated_entry
     );
 }
+
+int poke_native_execute_thumb_literal_memory(
+    const PokeNativeCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeResult *result
+)
+{
+    return poke_native_execute_thumb_memory_with_entry(
+        call, memory, result, poke_thumb_literal_memory_generated_entry
+    );
+}
 """
 
 
@@ -263,6 +276,7 @@ def generate_thumb_memory() -> str:
         _generate_memory_entry(THUMB_MEMORY_HALFWORDS, "poke_thumb_memory_generated_entry"),
         _generate_memory_entry(THUMB_MULTIPLE_MEMORY_HALFWORDS, "poke_thumb_multiple_memory_generated_entry"),
         _generate_memory_entry(THUMB_LDMIA_BASE_LIST_HALFWORDS, "poke_thumb_ldmia_base_list_generated_entry"),
+        _generate_memory_entry(THUMB_LITERAL_MEMORY_HALFWORDS, "poke_thumb_literal_memory_generated_entry"),
         THUMB_MEMORY_ADAPTER,
     )
     return "\n".join(sources)
