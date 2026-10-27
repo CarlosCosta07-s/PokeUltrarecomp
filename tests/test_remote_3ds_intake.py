@@ -84,6 +84,16 @@ class Remote3DSIntakeTests(unittest.TestCase):
         summary.update(overrides)
         return summary
 
+    def test_classifies_ghidra_errors_without_returning_raw_logs(self):
+        log_path = self.work / "private-ghidra.log"
+        log_path.write_text("ERROR: compilation failed at private-address 0x00101234", encoding="utf-8")
+        self.assertEqual("script-compilation", intake.classify_ghidra_failure(log_path))
+        log_path.write_text("Script terminated with an exception: private path and address", encoding="utf-8")
+        self.assertEqual("script-execution", intake.classify_ghidra_failure(log_path))
+        log_path.write_text("unexpected diagnostic", encoding="utf-8")
+        self.assertEqual("headless-analysis", intake.classify_ghidra_failure(log_path))
+        self.assertNotIn("0x00101234", intake.classify_ghidra_failure(log_path))
+
     def test_sanitizes_aggregate_ghidra_summary(self):
         summary_path = self.work / "ghidra-summary.json"
         summary_path.write_text(json.dumps(self._valid_ghidra_summary()), encoding="utf-8")
