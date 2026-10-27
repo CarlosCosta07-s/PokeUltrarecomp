@@ -376,13 +376,24 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
         lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return "private-log-unavailable"
-    candidates = [
+    # Prefer actual compiler diagnostics over the later ClassNotFoundException
+    # emitted when Ghidra tries to load a script whose compilation failed.
+    compiler_errors = [
+        line for line in lines
+        if re.search(
+            r"(?:\\.java:\\d+:\\s*error:|error:\\s*cannot find symbol|"
+            r"cannot find symbol|script compilation error|failed to compile|"
+            r"compilation failed|javac:)",
+            line, re.IGNORECASE,
+        )
+    ]
+    candidates = compiler_errors or [
         line for line in lines
         if re.search(r"(error|exception|failed|cannot|unable|invalid|not found)", line, re.IGNORECASE)
     ]
     if not candidates:
         return "no-matching-diagnostic"
-    line = candidates[-1]
+    line = candidates[0]
     # Redact addresses, long hexadecimal values, file paths, and filenames from
     # the private import before allowing a short diagnostic through.
     line = re.sub(r"(?i)0x[0-9a-f]{1,16}", "<address>", line)
@@ -412,6 +423,8 @@ def run_ghidra_function_census(
     project_path.mkdir(parents=True, exist_ok=True)
     summary_path = work / "private-ghidra-summary.json"
     log_path = work / "private-ghidra.log"
+    script_log_path = work / "private-ghidra-script.log"
+    app_log_path = work / "private-ghidra-app.log"
     try:
         build_analysis_elf(target, exheader_path, code_path, elf_path, confirm_decompressed=True)
     except (RetailCodeWrapError, OSError) as exc:
@@ -427,6 +440,8 @@ def run_ghidra_function_census(
         "ultra-sun-private-census" if target == "ultra-sun" else "ultra-moon-private-census",
         "-import", str(elf_path), "-overwrite",
         "-scriptPath", str(ROOT / ".github" / "ghidra_scripts"),
+        "-log", str(app_log_path),
+        "-scriptlog", str(script_log_path),
         "-postScript", "FunctionCensusSummary.java",
         str(summary_path), f"0x{text_start:08X}", str(text_size),
         "-deleteProject",
@@ -441,6 +456,18 @@ def run_ghidra_function_census(
         raise IntakeError("Ghidra headless census timed out; private output was discarded") from exc
     except Exception as exc:
         raise IntakeError("Ghidra headless census could not be launched; private output was discarded") from exc
+
+    # Ghidra writes important compiler and script exceptions to separated logs;
+    # combine them only in private temporary storage for classification/redaction.
+    try:
+        with log_path.open("ab") as combined:
+            for extra_log in (app_log_path, script_log_path):
+                if extra_log.is_file():
+                    combined.write(b"\\n--- private Ghidra diagnostic log ---\\n")
+                    combined.write(extra_log.read_bytes())
+    except OSError:
+        pass
+
     if completed.returncode != 0:
         category = classify_ghidra_failure(log_path)
         hint = sanitized_ghidra_failure_hint(log_path)
