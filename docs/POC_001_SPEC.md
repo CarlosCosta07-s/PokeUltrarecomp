@@ -30,7 +30,9 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 ## Subconjunto implementado
 
 - ARM A32: as instruções de processamento de dados suportadas aceitam condições AL e EQ..LE; a condição `0xF` é recusada. `B` aceita AL e as 14 condições padrão EQ..LE.
-- `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` imediatos sem atualização de flags; as formas sem AL são executadas somente quando sua condição EQ..LE é verdadeira.
+- Formas imediatas de `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` sem atualização de flags; as formas sem AL são executadas somente quando sua condição EQ..LE é verdadeira.
+- Formas de operando em registrador sem deslocamento (`Operand2` com shift zero): `MOV/MVN`, `AND/ORR/EOR/BIC` sem S-bit, `ADD/SUB`, `ADDS/SUBS`, `CMN/CMP`. As formas predicadas seguem a condição A32 selecionada; `CMN/CMP` não escrevem no registrador de resultado.
+- Formas de registrador que codificam deslocamento não zero, shifts por registrador, barrel shifter e carry derivado do shifter continuam recusadas explicitamente. O suporte de registradores continua limitado a `r0-r3` e não inclui PC/SP/LR como operandos normais.
 - `B` incondicional e com as 14 condições padrão (EQ, NE, CS, CC, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE), com destinos à frente dentro da própria fixture; os saltos preservam NZCV.
 - Formas aritméticas imediatas com flags: `ADDS`, `SUBS`, `CMN` e `CMP`, com flags NZCV expostas em parâmetro de saída.
 - Imediatos com rotação ARM de 32 bits.
@@ -38,7 +40,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 - `BX LR` como terminador único no final da sequência.
 - Limite de 256 palavras de instrução por sequência.
 
-BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas com S-bit, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Saltos para trás ou para a própria instrução são rejeitados por padrão e só podem ser traduzidos quando é fornecido um orçamento explícito de execução. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas/MOVS/MVNS com S-bit, shifts não zero do Operand2, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Saltos para trás ou para a própria instrução são rejeitados por padrão e só podem ser traduzidos quando é fornecido um orçamento explícito de execução. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
 
 ## Modelo NZCV e integração restrita do tradutor
 
@@ -73,11 +75,11 @@ Se um dia for necessário observar o comportamento do jogo original para compara
 
 ## Matriz diferencial sintética
 
-A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 96 fixtures aritméticas, combinando oito valores de r0, três imediatos e ADDS/SUBS/CMN/CMP. Ela compila o C emitido e compara o valor retornado e NZCV com o modelo separado `tools/arm_flags.py`. Os desvios têm testes nativos específicos adicionais para destinos, condição EQ/NE e caminhos tomados/não tomados. Execute com:
+A ferramenta [tools/arm_differential_poc.py](../tools/arm_differential_poc.py) monta 192 fixtures aritméticas, combinando oito valores de r0, três valores de operando e as formas imediatas e com operando em registrador de ADDS/SUBS/CMN/CMP. Ela compila o C emitido e compara o valor retornado e NZCV com o modelo separado `tools/arm_flags.py`. Os desvios têm testes nativos específicos adicionais para destinos, condição EQ/NE e caminhos tomados/não tomados. Execute com:
 
     python tools/arm_differential_poc.py
 
-O teste compara o C gerado com o modelo NZCV separado do projeto; **não é validação contra um emulador independente** e não prova compatibilidade com o jogo. A matriz executou **96/96 correspondências** com C11, `-Wall -Wextra -Werror`. Os testes nativos específicos de `B`, `BEQ` e `BNE` também passaram. Os hashes Git da implementação, testes, modelo de flags e matriz foram conferidos com os blobs correspondentes de `main`. Isso valida o conjunto Python verificado, não um checkout integral recém-clonado nem o jogo.
+O teste compara o C gerado com o modelo NZCV separado do projeto; **não é validação contra um emulador independente** e não prova compatibilidade com o jogo. A matriz executou **192/192 correspondências** com C11, `-Wall -Wextra -Werror`, incluindo as formas recém-adicionadas de operando em registrador. Os testes nativos específicos de `B`, `BEQ` e `BNE` também passaram. Os hashes Git da implementação, testes, modelo de flags e matriz foram conferidos com os blobs correspondentes de `main`. Isso valida o conjunto Python verificado, não um checkout integral recém-clonado nem o jogo.
 
 ## Como reproduzir
 
