@@ -613,6 +613,9 @@ def translate(
             lines.append(f"    uint32_t {offset_in_region} = {address} - memory_base;")
             if instruction[0] == "ldrb_imm":
                 lines.append(f"    r{rd} = (uint32_t)memory[{offset_in_region}];")
+            elif instruction[0] == "ldrsb_imm":
+                lines.append(f"    r{rd} = (uint32_t)memory[{offset_in_region}];")
+                lines.append(f"    if ((r{rd} & UINT32_C(0x80)) != 0U) r{rd} |= UINT32_C(0xFFFFFF00);")
             elif instruction[0] == "strb_imm":
                 lines.append(f"    memory[{offset_in_region}] = (uint8_t)(r{rd} & UINT32_C(0xFF));")
             elif instruction[0] in ("ldrh_imm", "ldrsh_imm"):
