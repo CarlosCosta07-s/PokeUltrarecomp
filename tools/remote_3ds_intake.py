@@ -2,9 +2,11 @@
 """Remote 3DS image intake using a secret HTTPS source URL and ephemeral storage."""
 from __future__ import annotations
 import argparse
+import http.cookiejar
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -58,15 +60,109 @@ class HTTPSRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def google_drive_file_details(source_url: str) -> tuple[str, str] | None:
+    """Extract a public Google Drive file ID and optional resource key from a share URL."""
+    parsed = urllib.parse.urlsplit(source_url.strip())
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    if host not in {"drive.google.com", "docs.google.com", "drive.usercontent.google.com"}:
+        return None
+    query = urllib.parse.parse_qs(parsed.query)
+    file_id = query.get("id", [""])[0]
+    if not file_id:
+        match = re.search(r"/file/d/([A-Za-z0-9_-]+)", parsed.path)
+        if match:
+            file_id = match.group(1)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", file_id or ""):
+        return None
+    resource_key = query.get("resourcekey", query.get("resourceKey", [""]))[0]
+    if resource_key and not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", resource_key):
+        raise IntakeError("Google Drive resource key contains unsupported characters")
+    return file_id, resource_key
+
+
+def google_drive_download_url(file_id: str, resource_key: str = "", confirm: str = "") -> str:
+    """Construct a Google Drive download endpoint without exposing its URL to logs."""
+    params = {"export": "download", "id": file_id}
+    if resource_key:
+        params["resourcekey"] = resource_key
+    if confirm:
+        params["confirm"] = confirm
+    return "https://drive.google.com/uc?" + urllib.parse.urlencode(params)
+
+
+def google_drive_confirmation_token(html: str, cookies=()) -> str:
+    """Read Drive's large-file confirmation token from a cookie or confirmation page."""
+    for cookie in cookies:
+        if str(getattr(cookie, "name", "")).startswith("download_warning"):
+            value = str(getattr(cookie, "value", ""))
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,256}", value):
+                return value
+    patterns = (
+        r'(?:[?&]confirm=)([A-Za-z0-9_-]{1,256})',
+        r'name=["\\']confirm["\\']\\s+value=["\\']([A-Za-z0-9_-]{1,256})["\\']',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, html, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _open_file_response(opener, url: str, drive_details: tuple[str, str] | None):
+    request = urllib.request.Request(url, headers={"User-Agent": "PokeUltrarecomp/1.0"})
+    response = opener.open(request, timeout=60)
+    if urllib.parse.urlsplit(response.geturl()).scheme.lower() != "https":
+        response.close()
+        raise IntakeError("download redirected away from HTTPS")
+    content_type = response.headers.get_content_type().casefold()
+    if content_type not in {"text/html", "application/xhtml+xml"}:
+        return response
+
+    # A normal Google Drive share page is HTML; only follow a recognised
+    # confirmation token. Never accidentally save the HTML page as a game image.
+    html = response.read(512 * 1024).decode("utf-8", errors="replace")
+    cookie_handler = next((h for h in opener.handlers if isinstance(h, urllib.request.HTTPCookieProcessor)), None)
+    cookies = cookie_handler.cookiejar if cookie_handler else ()
+    token = google_drive_confirmation_token(html, cookies)
+    response.close()
+    if drive_details and token:
+        file_id, resource_key = drive_details
+        retry_url = google_drive_download_url(file_id, resource_key, token)
+        retry = opener.open(
+            urllib.request.Request(retry_url, headers={"User-Agent": "PokeUltrarecomp/1.0"}),
+            timeout=60,
+        )
+        if urllib.parse.urlsplit(retry.geturl()).scheme.lower() != "https":
+            retry.close()
+            raise IntakeError("download redirected away from HTTPS")
+        retry_type = retry.headers.get_content_type().casefold()
+        if retry_type in {"text/html", "application/xhtml+xml"}:
+            retry.close()
+            raise IntakeError(
+                "Google Drive returned a web page instead of the file; verify link access and that the file can be downloaded"
+            )
+        return retry
+    raise IntakeError(
+        "source returned a web page instead of a file; for Google Drive, use a share link accessible to anyone with the link"
+    )
+
+
 def download(source_url: str, destination: Path) -> int:
     validate_url(source_url)
-    opener = urllib.request.build_opener(HTTPSRedirect())
-    request = urllib.request.Request(source_url, headers={"User-Agent": "PokeUltrarecomp/1.0"})
+    drive_details = google_drive_file_details(source_url)
+    effective_url = (
+        google_drive_download_url(*drive_details) if drive_details else source_url.strip()
+    )
+    cookie_jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(
+        HTTPSRedirect(), urllib.request.HTTPCookieProcessor(cookie_jar)
+    )
+    # Keep the cookie jar private to this request; do not print URLs or response bodies.
+    opener.drive_cookie_jar = cookie_jar
     size = 0
     try:
-        with opener.open(request, timeout=60) as response:
-            if urllib.parse.urlsplit(response.geturl()).scheme.lower() != "https":
-                raise IntakeError("download redirected away from HTTPS")
+        response = _open_file_response(opener, effective_url, drive_details)
+        with response:
             declared = response.headers.get("Content-Length")
             if declared and declared.isdigit() and int(declared) > MAX_BYTES:
                 raise IntakeError("download exceeds 8 GiB limit")
@@ -85,7 +181,7 @@ def download(source_url: str, destination: Path) -> int:
         raise
     except Exception as exc:
         destination.unlink(missing_ok=True)
-        raise IntakeError("download failed; check that the secret is an accessible direct HTTPS link") from exc
+        raise IntakeError("download failed; check that the secret is an accessible HTTPS download link") from exc
     if size == 0:
         destination.unlink(missing_ok=True)
         raise IntakeError("downloaded image is empty")
