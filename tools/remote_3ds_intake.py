@@ -411,6 +411,8 @@ ARM_DECODE_REJECTION_FAMILIES = (
     "unsupported-branch-condition",
     "unsupported-condition-code",
     "non-immediate-data-processing",
+    "unsupported-operand-class",
+    "register-shifted-operand",
     "unsupported-flag-setting-form",
     "noncanonical-cmn-cmp",
     "register-outside-r0-r3",
@@ -429,8 +431,15 @@ def classify_arm_decode_rejection(message: str) -> str:
         return "unsupported-branch-condition"
     if "condition code" in lowered and "unsupported" in lowered:
         return "unsupported-condition-code"
-    if "not a supported immediate data-processing instruction" in lowered:
+    if (
+        "not a supported immediate data-processing instruction" in lowered
+        or "register operand is unsupported" in lowered
+    ):
         return "non-immediate-data-processing"
+    if "not a supported data-processing operand form" in lowered:
+        return "unsupported-operand-class"
+    if "register operand2 shifts are unsupported" in lowered:
+        return "register-shifted-operand"
     if "flag-setting form is unsupported" in lowered:
         return "unsupported-flag-setting-form"
     if "canonical cmn" in lowered or "canonical cmp" in lowered or "cmn requires" in lowered or "cmp requires" in lowered:
