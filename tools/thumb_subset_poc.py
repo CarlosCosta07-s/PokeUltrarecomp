@@ -37,6 +37,18 @@ INDIRECT_FLOW_OPS = ("bx", "blx_reg", "pop_pc")
 STACK_OPS = ("push", "pop")
 LITERAL_OPS = ("ldr_literal",)
 MEMORY_OPS = ("str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg", "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm", "strh_imm", "ldrh_imm", "str_sp", "ldr_sp", "stmia", "ldmia")
+SUPPORTED_NATIVE_MEMORY_OPS = frozenset((
+    "str_reg", "strh_reg", "strb_reg", "ldrsb_reg", "ldr_reg", "ldrh_reg",
+    "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm",
+    "strh_imm", "ldrh_imm",
+))
+MEMORY_ACCESS_WIDTHS = {
+    "str_reg": 4, "ldr_reg": 4, "str_imm": 4, "ldr_imm": 4,
+    "strh_reg": 2, "ldrh_reg": 2, "strh_imm": 2, "ldrh_imm": 2,
+    "strb_reg": 1, "ldrsb_reg": 1, "ldrb_reg": 1, "ldrsh_reg": 2,
+    "strb_imm": 1, "ldrb_imm": 1,
+}
+MEMORY_STORE_OPS = frozenset(("str_reg", "strh_reg", "strb_reg", "str_imm", "strb_imm", "strh_imm"))
 ADDRESS_OPS = ("adr", "add_sp_imm", "add_sp", "sub_sp")
 
 
@@ -307,16 +319,23 @@ def translate(
     initial_nzcv: int = 0,
     max_execution_steps: int | None = None,
     runtime_state_io: bool = False,
+    runtime_memory_io: bool = False,
 ) -> str:
-    """Translate a list of Thumb-16 halfwords to host C.
+    """Translate a bounded Thumb-16 sequence to host C.
 
-    The default interface keeps fixed zero-initialized registers and translation-
-    time NZCV. With ``runtime_state_io=True``, bounded C accepts r0-r7 and NZCV
-    at runtime, returning all registers, NZCV, step count and execution status.
-    This is an explicit-range candidate interface, not a native ARM ABI proof.
+    ``runtime_state_io=True`` exposes r0-r7 and NZCV at runtime.
+    ``runtime_memory_io=True`` adds a bounded guest-memory byte region and
+    emits native C loads/stores for a conservative Thumb-1 subset. Unsupported
+    memory forms, invalid addresses, misaligned multi-byte accesses and invalid
+    entry state fail explicitly; no interpreter or fallback exists.
+    This is a synthetic candidate model, not a general ARM ABI proof.
     """
     if not isinstance(runtime_state_io, bool):
         raise UnsupportedThumbInstruction("runtime_state_io must be a bool")
+    if not isinstance(runtime_memory_io, bool):
+        raise UnsupportedThumbInstruction("runtime_memory_io must be a bool")
+    if runtime_memory_io and not runtime_state_io:
+        raise UnsupportedThumbInstruction("runtime_memory_io requires runtime_state_io=True")
     if runtime_state_io and max_execution_steps is None:
         raise UnsupportedThumbInstruction("runtime_state_io requires an explicit execution budget")
     if isinstance(initial_nzcv, bool) or not isinstance(initial_nzcv, int) or not 0 <= initial_nzcv <= 0xF:
@@ -335,17 +354,24 @@ def translate(
         raise UnsupportedThumbInstruction(f"sequence exceeds {MAX_INSTRUCTIONS} halfwords")
 
     decoded = [decode_halfword(word) for word in halfwords]
+    supported_memory_found = False
     for inst in decoded:
         if inst[0] in LITERAL_OPS:
             raise UnsupportedThumbInstruction(
                 "PC-relative literal load is decoded for inspection only; "
-                "the synthetic translator has no memory model"
+                "the limited native memory model does not model PC-relative literals"
             )
         if inst[0] in MEMORY_OPS:
-            raise UnsupportedThumbInstruction(
-                f"memory access ({inst[0]}) is decoded for inspection only; "
-                "the synthetic translator has no memory model"
-            )
+            if not runtime_memory_io:
+                raise UnsupportedThumbInstruction(
+                    f"memory access ({inst[0]}) is decoded for inspection only; "
+                    "the synthetic translator has no memory model"
+                )
+            if inst[0] not in SUPPORTED_NATIVE_MEMORY_OPS:
+                raise UnsupportedThumbInstruction(
+                    f"memory access ({inst[0]}) is outside the limited native memory model"
+                )
+            supported_memory_found = True
         if inst[0] in ADDRESS_OPS:
             raise UnsupportedThumbInstruction(
                 f"PC/SP address arithmetic ({inst[0]}) is decoded for inspection only; "
@@ -361,6 +387,9 @@ def translate(
                 f"register-indirect control flow ({inst[0]}) is decoded for inspection only; "
                 "the synthetic translator does not model it"
             )
+    if runtime_memory_io and not supported_memory_found:
+        raise UnsupportedThumbInstruction("runtime_memory_io requires at least one supported memory instruction")
+
     if any(inst == ("return",) for inst in decoded[:-1]):
         raise UnsupportedThumbInstruction("instructions after BX LR are unsupported")
     if decoded[-1] != ("return",):
@@ -399,16 +428,23 @@ def translate(
     if runtime_state_io:
         used_registers = set(range(8))
     bounded = max_execution_steps is not None
-    signature = (
-        "uint32_t thumb_entry_bounded(const uint32_t *registers_in, "
-        "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
-        "uint8_t *execution_status_out, uint32_t *registers_out)"
-        if runtime_state_io else (
-            "uint32_t thumb_entry_bounded(uint8_t *nzcv_out, "
-            "uint32_t *steps_executed_out, uint8_t *execution_status_out)"
-            if bounded else "uint32_t thumb_entry(uint8_t *nzcv_out)"
+    if runtime_memory_io:
+        signature = (
+            "uint32_t thumb_entry_memory_bounded(const uint32_t *registers_in, "
+            "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+            "uint8_t *execution_status_out, uint32_t *registers_out, uint8_t *memory_bytes, "
+            "uint32_t guest_memory_base, uint32_t guest_memory_size)"
         )
-    )
+    elif runtime_state_io:
+        signature = (
+            "uint32_t thumb_entry_bounded(const uint32_t *registers_in, "
+            "uint8_t initial_nzcv, uint8_t *nzcv_out, uint32_t *steps_executed_out, "
+            "uint8_t *execution_status_out, uint32_t *registers_out)"
+        )
+    elif bounded:
+        signature = "uint32_t thumb_entry_bounded(uint8_t *nzcv_out, uint32_t *steps_executed_out, uint8_t *execution_status_out)"
+    else:
+        signature = "uint32_t thumb_entry(uint8_t *nzcv_out)"
     flag_initializers = (
         [
             "    uint32_t flag_n = (uint32_t)((initial_nzcv >> 3) & 1U);",
@@ -431,14 +467,23 @@ def translate(
         signature,
         "{",
     ]
-    if runtime_state_io:
+    if runtime_memory_io:
+        lines.extend((
+            "    if (registers_in == 0 || initial_nzcv > UINT8_C(15) || memory_bytes == 0 || guest_memory_size == 0U || "
+            "((uint64_t)guest_memory_base + (uint64_t)guest_memory_size > UINT64_C(0x100000000))) {",
+            "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
+            "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
+            "        return 0U;",
+            "    }",
+        ))
+    elif runtime_state_io:
         lines.extend((
             "    if (registers_in == 0 || initial_nzcv > UINT8_C(15)) {",
             "        if (steps_executed_out != 0) *steps_executed_out = 0U;",
             "        if (execution_status_out != 0) *execution_status_out = UINT8_C(2);",
             "        return 0U;",
             "    }",
-    ))
+        ))
     lines.extend(flag_initializers)
     if bounded:
         lines.append("    uint32_t execution_steps = 0U;")
@@ -681,6 +726,75 @@ def translate(
                 lines.append(f"    r{rd} = {result};")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
+        elif op in SUPPORTED_NATIVE_MEMORY_OPS:
+            if op.endswith("_reg"):
+                _, rd, rn, rm = inst
+                address_expression = f"(uint32_t)(r{rn} + r{rm})"
+            else:
+                _, rd, rn, immediate_offset = inst
+                address_expression = f"(uint32_t)(r{rn} + UINT32_C({immediate_offset}))"
+
+            width = MEMORY_ACCESS_WIDTHS[op]
+            suffix = str(index)
+            address = f"thumb_memory_address_{suffix}"
+            memory_offset = f"thumb_memory_offset_{suffix}"
+            if op in MEMORY_STORE_OPS:
+                value = f"thumb_memory_store_value_{suffix}"
+                lines.append("    {")
+                lines.append(f"        const uint32_t {address} = {address_expression};")
+                if width > 1:
+                    lines.append(f"        if (({address} & UINT32_C({width - 1})) != 0U) goto thumb_alignment_fault;")
+                lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
+                lines.append(f"        const uint32_t {memory_offset} = {address} - guest_memory_base;")
+                lines.append(
+                    f"        if ({memory_offset} > guest_memory_size || UINT32_C({width}) > guest_memory_size - {memory_offset}) goto thumb_memory_fault;"
+                )
+                lines.append(f"        const uint32_t {value} = r{rd};")
+                for byte_index in range(width):
+                    shift = byte_index * 8
+                    lines.append(
+                        f"        memory_bytes[{memory_offset} + UINT32_C({byte_index})] = "
+                        f"(uint8_t)(({value} >> {shift}) & UINT32_C(0xFF));"
+                    )
+                lines.append("    }")
+            else:
+                loaded = f"thumb_memory_loaded_{suffix}"
+                lines.append("    {")
+                lines.append(f"        const uint32_t {address} = {address_expression};")
+                if width > 1:
+                    lines.append(f"        if (({address} & UINT32_C({width - 1})) != 0U) goto thumb_alignment_fault;")
+                lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
+                lines.append(f"        const uint32_t {memory_offset} = {address} - guest_memory_base;")
+                lines.append(
+                    f"        if ({memory_offset} > guest_memory_size || UINT32_C({width}) > guest_memory_size - {memory_offset}) goto thumb_memory_fault;"
+                )
+                if width == 1:
+                    lines.append(f"        uint32_t {loaded} = (uint32_t)memory_bytes[{memory_offset}];")
+                elif width == 2:
+                    lines.append(
+                        f"        uint32_t {loaded} = (uint32_t)memory_bytes[{memory_offset}] | "
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(1)] << 8);"
+                    )
+                else:
+                    lines.append(
+                        f"        uint32_t {loaded} = (uint32_t)memory_bytes[{memory_offset}] | "
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(1)] << 8) | "
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(2)] << 16) | "
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C(3)] << 24);"
+                    )
+                if op == "ldrsb_reg":
+                    lines.append(
+                        f"        r{rd} = ({loaded} & UINT32_C(0x80)) != 0U ? "
+                        f"({loaded} | UINT32_C(0xFFFFFF00)) : {loaded};"
+                    )
+                elif op == "ldrsh_reg":
+                    lines.append(
+                        f"        r{rd} = ({loaded} & UINT32_C(0x8000)) != 0U ? "
+                        f"({loaded} | UINT32_C(0xFFFF0000)) : {loaded};"
+                    )
+                else:
+                    lines.append(f"        r{rd} = {loaded};")
+                lines.append("    }")
         elif op == "branch":
             condition = inst[1]
             target = branch_targets[index]
@@ -703,8 +817,19 @@ def translate(
             "thumb_budget_exhausted: ;",
             "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
             "    if (execution_status_out != 0) *execution_status_out = UINT8_C(1);",
-            "thumb_exit: ;",
         ))
+        if runtime_memory_io:
+            lines.extend((
+                "    goto thumb_exit;",
+                "thumb_memory_fault: ;",
+                "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+                "    if (execution_status_out != 0) *execution_status_out = UINT8_C(3);",
+                "    goto thumb_exit;",
+                "thumb_alignment_fault: ;",
+                "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+                "    if (execution_status_out != 0) *execution_status_out = UINT8_C(4);",
+            ))
+        lines.append("thumb_exit: ;")
     # Read each guest register in the epilogue so strict C compilers do not
     # reject valid fixtures that write a register whose value is not returned.
     lines.extend(f"    (void)r{reg};" for reg in sorted(used_registers))
