@@ -1,0 +1,79 @@
+name: Remote Nintendo 3DS container intake
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Game version represented by the source image
+        type: choice
+        options:
+          - ultra-sun
+          - ultra-moon
+        required: true
+        default: ultra-sun
+      format:
+        description: Source format (.ccd is not a 3DS format)
+        type: choice
+        options:
+          - 3ds
+          - cci
+          - cia
+        required: true
+        default: 3ds
+      ncch_index:
+        description: App partition/content index, usually 0
+        type: string
+        required: true
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download CTRTool release v1.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ctrtool-v1.3.0.zip"
+          destination="$RUNNER_TEMP/ctrtool-release"
+          mkdir -p "$destination"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            'https://github.com/3DSGuy/Project_CTR/releases/download/ctrtool-v1.3.0/ctrtool-v1.3.0-ubuntu_x86_64.zip' \
+            --output "$archive"
+          unzip -q "$archive" -d "$destination"
+          ctrtool="$(find "$destination" -type f -name ctrtool -print -quit)"
+          if [ -z "$ctrtool" ]; then
+            echo "::error::CTRTool executable was not found in the release archive"
+            exit 1
+          fi
+          chmod +x "$ctrtool"
+          echo "CTRTOOL_PATH=$ctrtool" >> "$GITHUB_ENV"
+      - name: Inspect user-provided image in temporary storage
+        env:
+          POKEULTRARECOMP_SOURCE_URL: ${{ secrets.POKEULTRARECOMP_SOURCE_URL }}
+          TARGET: ${{ inputs.target }}
+          IMAGE_FORMAT: ${{ inputs.format }}
+          NCCH_INDEX: ${{ inputs.ncch_index }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$NCCH_INDEX" =~ ^[0-9]{1,5}$ ]] || [ "$NCCH_INDEX" -gt 65535 ]; then
+            echo "::error::ncch_index must be an integer from 0 to 65535"
+            exit 2
+          fi
+          python tools/remote_3ds_intake.py \
+            --target "$TARGET" \
+            --format "$IMAGE_FORMAT" \
+            --ncch-index "$NCCH_INDEX" \
+            --ctrtool "$CTRTOOL_PATH"

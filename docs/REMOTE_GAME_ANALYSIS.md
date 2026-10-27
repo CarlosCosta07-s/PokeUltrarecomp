@@ -1,0 +1,28 @@
+# Analisar uma imagem de Nintendo 3DS sem anexá-la ao chat
+
+## Formatos aceitos
+
+O workflow remoto aceita .3ds, .cci e .cia. CTRTool documenta .3ds/.cci como variantes da imagem de cartucho NCSD e .cia como arquivo de instalação. .ccd não é um formato de imagem de jogo Nintendo 3DS; confira a extensão real do arquivo se esse era o formato pretendido. Este workflow não aceita .ccd.
+
+Referências técnicas:
+- CTRTool README: https://github.com/3DSGuy/Project_CTR/blob/master/ctrtool/README.md
+- CTRTool releases: https://github.com/3DSGuy/Project_CTR/releases
+
+## Executar pelo GitHub no navegador ou celular
+
+Este modo permite processar a imagem em um runner temporário do GitHub Actions sem executar as ferramentas no seu computador. Ainda é necessário ter uma URL HTTPS de download direto do arquivo, de um armazenamento que você controla e que permita download pelo link. A URL nunca deve ser colocada no código, em uma issue ou na linha de comando de um workflow.
+
+1. No repositório, abra Settings, depois Secrets and variables, depois Actions. Crie o secret POKEULTRARECOMP_SOURCE_URL com a URL HTTPS de download direto. Use um link restrito/temporário se o seu provedor permitir.
+2. Abra Actions, selecione Remote Nintendo 3DS container intake e toque em Run workflow.
+3. Escolha ultra-sun ou ultra-moon, selecione 3ds, cci ou cia e informe o índice da partição/conteúdo (normalmente 0).
+4. Consulte o resumo do job. Ele informa apenas se a extração e a validação estrutural passaram. Não publica ROM, ExHeader, arquivo .code, hashes do conteúdo ou desassembly.
+
+O workflow tem um limite de download de 8 GiB e usa CTRTool v1.3.0. Se a imagem exigir chaves que o workflow não tem ou não puder ser extraída diretamente, ele falha de forma explícita; não tenta recuperar chaves ou contornar criptografia.
+
+## Privacidade e limitações
+
+A imagem completa trafega do seu provedor para a infraestrutura de GitHub Actions. Ela não passa pelo anexo do ChatGPT e não é guardada como artifact do workflow, mas o processamento acontece em uma máquina de nuvem de terceiros. Use esse método somente se estiver confortável com isso e com as condições do seu provedor de armazenamento.
+
+O job não publica bytes do jogo, relatórios de desassembly ou arquivos derivados como artifacts. Ele apenas comprova que a ferramenta conseguiu extrair a partição indicada e validar o layout de segmentos. Isso ainda não recompila uma função, não inicia o jogo e não produz um porte jogável. O próximo estágio será uma análise de função selecionada sem gravar código derivado em logs públicos.
+
+Se você não quiser enviar a ROM a nenhum serviço de nuvem, a alternativa é processamento local. Não há como analisar bytes que não estejam disponíveis nem localmente nem em algum armazenamento acessível ao ambiente de análise.
