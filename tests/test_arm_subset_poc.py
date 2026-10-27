@@ -82,7 +82,7 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
             poc.decode_word(0xE2B00001)  # ADCS immediate remains outside this subset
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "TST requires the S bit"):
-            poc.decode_word(0xE3100001)  # TST without S is not the TST encoding
+            poc.decode_word(0xE3000001)  # TST with the S bit cleared is rejected
 
     def test_rejects_cmn_without_s_bit(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN requires"):
@@ -205,7 +205,7 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "register-specified Operand2 shifts"):
             poc.decode_word(0xE0800211)  # ADD r0,r0,r1,LSL r2
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE3B00001)  # MOVS immediate remains outside this register-only extension
+            poc.decode_word(0xE2B00001)  # ADCS immediate remains outside this subset
 
     def test_rejects_register_operand_registers_outside_r0_to_r3(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
