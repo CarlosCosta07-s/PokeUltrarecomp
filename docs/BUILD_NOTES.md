@@ -1,3 +1,10 @@
+## ARM A32 — Operand2 com shifts imediatos e carry do shifter — 2026-10-27
+
+- **Escopo adicionado:** o decodificador A32 representa operandos em registrador com LSL, LSR, ASR, ROR e RRX em uma camada explícita chamada shifted_operand; o tradutor gera C para o valor deslocado antes da operação-base.
+- **Casos de arquitetura modelados:** LSL #0 permanece sem shift e preserva C em lógica S-bit; LSR #0 e ASR #0 significam shift por 32; ROR #0 é RRX, que consome C de entrada. O carry de saída alimenta MOVS/MVNS, ANDS/ORRS/EORS/BICS e TST/TEQ; operações aritméticas ADDS/SUBS/CMN/CMP derivam NZCV do resultado aritmético depois do shift. Shifts especificados por registrador continuam recusados.
+- **Teste nativo da tradução:** fixtures geradas e compiladas em C11 exercitam LSL/LSR/ASR/ROR/RRX, os casos de 32 bits, carry-in de RRX, ADDS com carry de soma e ANDS com carry do shifter. A suíte Python completa passou em 405 testes no [workflow #40594817505](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594817505), incluindo matriz diferencial de flags e verificador de segurança.
+- **Limite:** as entradas são sintéticas. A tradução não é uma prova semântica de função real do Ultra Sun. A nova execução da triagem de candidatos em imagem real, [workflow #40594739458](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594739458), parou porque o Google Drive rate-limitou o download; nenhum byte da ROM ou desassembly foi publicado. Evitar repetir a transferência até a cota ser liberada.
+
 # Notas de build e testes reproduzíveis
 
 ## Thumb LDMIA/STMIA em C nativo e ABI C/C++20 — 2026-10-27
