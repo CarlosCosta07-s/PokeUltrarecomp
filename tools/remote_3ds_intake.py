@@ -307,21 +307,61 @@ def classify_ghidra_failure(log_path: Path) -> str:
         diagnostic = log_path.read_text(encoding="utf-8", errors="replace").casefold()
     except OSError:
         return "private-log-unavailable"
-    if "error: cannot find symbol" in diagnostic or "compilation failed" in diagnostic or "failed to compile" in diagnostic:
+
+    if any(token in diagnostic for token in (
+        "error: cannot find symbol", "compilation failed", "failed to compile",
+        "script compilation error", "javac:",
+    )):
         return "script-compilation"
+    if any(token in diagnostic for token in (
+        "unrecognized option", "unknown option", "invalid option", "usage:",
+        "unexpected argument", "too many arguments",
+    )):
+        return "headless-command-line"
     if "script not found" in diagnostic or "could not find script" in diagnostic:
         return "script-discovery"
-    if "no language" in diagnostic or "language id" in diagnostic and "not found" in diagnostic:
+    if any(token in diagnostic for token in (
+        "no language", "language id", "language not found", "processor not found",
+    )):
         return "processor-language-selection"
     if "could not open project" in diagnostic or "failed to create project" in diagnostic:
         return "project-setup"
-    if "failed to load" in diagnostic or "could not load" in diagnostic or "import failed" in diagnostic:
+    if any(token in diagnostic for token in (
+        "failed to load", "could not load", "import failed", "loader failed",
+    )):
         return "elf-import"
-    if "script terminated with an exception" in diagnostic or "script execution failed" in diagnostic:
-        return "script-execution"
     if "out of memory" in diagnostic or "java heap space" in diagnostic:
         return "memory-pressure"
+
+    # Exception type names are safe to report; raw messages and stack traces may not be.
+    exception_match = re.search(
+        r"\b([a-z_$][a-z0-9_$]*(?:exception|error))\b",
+        diagnostic,
+        re.IGNORECASE,
+    )
+    if exception_match:
+        name = exception_match.group(1).casefold()
+        safe_names = {
+            "illegalargumentexception": "illegal-argument",
+            "nullpointerexception": "null-pointer",
+            "nosuchmethoderror": "missing-method",
+            "noclassdeffounderror": "missing-class",
+            "classnotfoundexception": "missing-class",
+            "nosuchfileexception": "missing-file",
+            "filenotfoundexception": "missing-file",
+            "ioexception": "io-error",
+            "outofmemoryerror": "memory-pressure",
+            "stackoverflowerror": "stack-overflow",
+            "headlessscriptexception": "script-exception",
+            "ghidraexception": "ghidra-exception",
+        }
+        return "java-" + safe_names.get(name, "exception")
+    if "script" in diagnostic and "error" in diagnostic:
+        return "script-error"
+    if "analysis failed" in diagnostic or "analysis error" in diagnostic:
+        return "analysis-error"
     return "headless-analysis"
+
 
 
 def run_ghidra_function_census(
