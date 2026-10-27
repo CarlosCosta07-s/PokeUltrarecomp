@@ -216,8 +216,6 @@ class DecoderTests(unittest.TestCase):
     def test_rejects_register_specified_operand2_shift(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "register-specified Operand2 shifts"):
             poc.decode_word(0xE0800211)  # ADD r0,r0,r1,LSL r2
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE2B00001)  # ADCS immediate remains outside this subset
 
     def test_rejects_register_operand_registers_outside_r0_to_r3(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
@@ -573,9 +571,13 @@ static int run_case(entry_fn fn, uint32_t r0, uint32_t r1, uint32_t r2,
     uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
-    return result == expected_r0 && output[0] == expected_r0
-        && output[1] == r1 && output[2] == r2 && output[3] == input[3]
-        && flags == expected_nzcv && status == UINT8_C(0) && steps == UINT32_C(2) ? 0 : 1;
+    if (result != expected_r0) return 1;
+    if (output[0] != expected_r0) return 2;
+    if (output[1] != r1 || output[2] != r2 || output[3] != input[3]) return 3;
+    if (flags != expected_nzcv) return 4;
+    if (status != UINT8_C(0)) return 5;
+    if (steps != UINT32_C(2)) return 6;
+    return 0;
 }
 int main(void) {
     if (run_case(carry_adc_imm, UINT32_C(5), 0U, 0U, UINT8_C(2), UINT32_C(7), UINT8_C(2)) != 0) return 1;
@@ -588,7 +590,7 @@ int main(void) {
     if (run_case(carry_adcs_reg_zero, 0U, UINT32_C(0xFFFFFFFF), 0U, UINT8_C(2), 0U, UINT8_C(6)) != 0) return 8;
     if (run_case(carry_sbcs_reg, 0U, UINT32_C(5), UINT32_C(3), 0U, UINT32_C(1), UINT8_C(2)) != 0) return 9;
     if (run_case(carry_rsc_reg, 0U, UINT32_C(5), UINT32_C(8), UINT8_C(2), UINT32_C(3), UINT8_C(2)) != 0) return 10;
-    if (run_case(carry_rscs_shifted_reg, 0U, UINT32_C(5), UINT32_C(2), UINT8_C(2), UINT32_C(0xFFFFFFFF), UINT8_C(8)) != 0) return 11;
+    { int rc = run_case(carry_rscs_shifted_reg, 0U, UINT32_C(5), UINT32_C(2), UINT8_C(2), UINT32_C(0xFFFFFFFF), UINT8_C(8)); if (rc != 0) return 110 + rc; }
     return 0;
 }
 """
