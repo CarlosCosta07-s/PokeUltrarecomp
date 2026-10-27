@@ -325,6 +325,8 @@ class TranslationTests(unittest.TestCase):
             ("bic_register", [0xE3A0000F, 0xE3A01005, 0xE1C00001, 0xE12FFF1E], 10),
             ("add_register", [0xE3A00007, 0xE3A01005, 0xE0800001, 0xE12FFF1E], 12),
             ("sub_register", [0xE3A0000F, 0xE3A01005, 0xE0400001, 0xE12FFF1E], 10),
+            ("rsb_register", [0xE3A00005, 0xE3A0100C, 0xE0600001, 0xE12FFF1E], 7),
+            ("rsb_immediate", [0xE3A00005, 0xE260000C, 0xE12FFF1E], 7),
         )
         sources = []
         checks = []
