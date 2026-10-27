@@ -62,9 +62,27 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "branch condition"):
             poc.decode_word(0xFA000000)  # cond=0xF is not a valid A32 branch condition (BLX-immediate space)
 
+    def test_decodes_immediate_logical_s_bit_and_shifter_carry(self):
+        cases = (
+            (0xE3B00001, ("movs_imm", 0, 1, None)),  # rotate_imm=0 preserves C
+            (0xE3B00480, ("movs_imm", 0, 0x80000000, 1)),
+            (0xE3F00480, ("mvns_imm", 0, 0x80000000, 1)),
+            (0xE2110480, ("ands_imm", 0, 1, 0x80000000, 1)),
+            (0xE3910001, ("orrs_imm", 0, 1, 1, None)),
+            (0xE2310480, ("eors_imm", 0, 1, 0x80000000, 1)),
+            (0xE3D10001, ("bics_imm", 0, 1, 1, None)),
+            (0xE3110480, ("tst_imm", 1, 0x80000000, 1)),
+            (0xE3310001, ("teq_imm", 1, 1, None)),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:08X}"):
+                self.assertEqual(expected, poc.decode_word(word))
+
     def test_rejects_unsupported_flag_setting_instruction(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
-            poc.decode_word(0xE3B00001)  # MOVS remains unsupported
+            poc.decode_word(0xE2B00001)  # ADCS immediate remains outside this subset
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "TST requires the S bit"):
+            poc.decode_word(0xE3100001)  # TST without S is not the TST encoding
 
     def test_rejects_cmn_without_s_bit(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN requires"):
@@ -506,6 +524,60 @@ int main(void) {
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
             executed = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_immediate_logical_s_bit_preserves_or_updates_carry_correctly(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 logical-immediate proof requires cc, gcc, or clang")
+
+        words_by_name = {
+            "movs_rotated": 0xE3B00480,  # MOVS r0, #0x80000000, rotate_imm=4
+            "movs_unrotated": 0xE3B00001,  # MOVS r0, #1, preserving C
+            "ands_rotated": 0xE2110480,  # ANDS r0,r1,#0x80000000
+            "orrs_unrotated": 0xE3910001,  # ORRS r0,r1,#1, preserving C
+            "tst_rotated": 0xE3110480,  # TST r1,#0x80000000
+        }
+        snippets = []
+        for name, word in words_by_name.items():
+            function = poc.translate([word, 0xE12FFF1E], max_execution_steps=2, runtime_state_io=True)
+            snippets.append(function.replace(
+                "uint32_t synthetic_entry_bounded(",
+                f"uint32_t immediate_{name}(",
+                1,
+            ))
+        harness = "\\n".join(snippets) + """
+#include <stdint.h>
+static int run_case(
+    uint32_t (*fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *),
+    uint32_t r0, uint32_t r1, uint8_t initial_nzcv,
+    uint32_t expected_r0, uint8_t expected_nzcv
+) {
+    uint32_t input[4] = { r0, r1, UINT32_C(0x2468ACE0), UINT32_C(0xDEADBEEF) };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
+    return result == expected_r0 && output[0] == expected_r0
+        && output[1] == r1 && output[2] == input[2] && output[3] == input[3]
+        && flags == expected_nzcv && status == UINT8_C(0) && steps == UINT32_C(2) ? 0 : 1;
+}
+int main(void) {
+    if (run_case(immediate_movs_rotated, 0U, 0U, UINT8_C(1), UINT32_C(0x80000000), UINT8_C(0xB)) != 0) return 1;
+    if (run_case(immediate_movs_unrotated, 0U, 0U, UINT8_C(3), UINT32_C(1), UINT8_C(3)) != 0) return 2;
+    if (run_case(immediate_ands_rotated, 0U, UINT32_C(0xFFFFFFFF), UINT8_C(1), UINT32_C(0x80000000), UINT8_C(0xB)) != 0) return 3;
+    if (run_case(immediate_orrs_unrotated, 0U, UINT32_C(0x10), UINT8_C(3), UINT32_C(0x11), UINT8_C(3)) != 0) return 4;
+    if (run_case(immediate_tst_rotated, UINT32_C(0x13579BDF), UINT32_C(0xFFFFFFFF), UINT8_C(1), UINT32_C(0x13579BDF), UINT8_C(0xB)) != 0) return 5;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_logical_immediate_flags.c"
+            exe = Path(directory) / ("a32_logical_immediate_flags.exe" if os.name == "nt" else "a32_logical_immediate_flags")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=f"logical immediate flags test failed with exit {executed.returncode}")
 
     def test_a32_immediate_operand_shifts_match_expected_values_and_nzcv(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
