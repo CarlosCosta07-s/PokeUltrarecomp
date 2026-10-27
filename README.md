@@ -45,6 +45,9 @@ O roteiro detalhado e os critérios de conclusão estão em [docs/ROADMAP.md](do
 
 Requisitos atuais das ferramentas Python: Python 3.10+ e Git. Na raiz do repositório, os comandos documentados incluem:
 
+    cmake -S . -B build -G Ninja
+    cmake --build build --target verify
+
     python tools/run_native_poc_pipeline.py
     python tools/arm_subset_poc.py
     python tools/arm_differential_poc.py
@@ -53,7 +56,7 @@ Requisitos atuais das ferramentas Python: Python 3.10+ e Git. Na raiz do reposit
 
 A cobertura de cada ferramenta está descrita na respectiva documentação. O tradutor deve falhar de forma explícita para instruções não suportadas. O verificador de segurança ajuda a detectar caminhos/arquivos suspeitos e links Markdown quebrados, mas não examina o histórico inteiro, conteúdo semântico de todo binário nem questões jurídicas. O uso de .gitignore não é uma garantia.
 
-Foi adicionado um smoke test ponta a ponta em `tools/run_native_poc_pipeline.py`: ele traduz fixtures sintéticas A32 e Thumb, compila o C gerado com um compilador do host, executa os binários e verifica registradores, NZCV e limite de instruções. Também verifica que alguns inputs não suportados são rejeitados sem fallback. O workflow `.github/workflows/native-pipeline.yml` foi configurado para Windows e Linux. **Validação inicial aprovada:** [workflow nativo #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) passou em Linux e Windows. Em ambos os jobs, as fixtures A32 e Thumb foram compiladas e executadas nativamente; os 324 testes Python e o verificador de segurança também passaram. Este resultado cobre somente fixtures sintéticas: não executa Pokémon e ainda não substitui um projeto CMake/Ninja ou um runtime integrado com SDL3/Vulkan.
+Foi adicionado um smoke test ponta a ponta em `tools/run_native_poc_pipeline.py`: ele traduz fixtures sintéticas A32 e Thumb, compila o C gerado com um compilador do host, executa os binários e verifica registradores, NZCV e limite de instruções. Também verifica que alguns inputs não suportados são rejeitados sem fallback. O workflow `.github/workflows/native-pipeline.yml` foi configurado para Windows e Linux. **Validação inicial aprovada:** [workflow nativo #5](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40441067580) passou em Linux e Windows. Em ambos os jobs, as fixtures A32 e Thumb foram compiladas e executadas nativamente; os 324 testes Python e o verificador de segurança também passaram. Este resultado cobre somente fixtures sintéticas: não executa Pokémon nem comprova compatibilidade com o código real. `CMakeLists.txt` agora configura compiladores C11/C++20 e oferece o alvo `verify`, que coordena o smoke test nativo, a suíte Python e o verificador de segurança com CTest. A integração de SDL3/Vulkan ao runtime ainda não foi implementada.
 
 ## Uso de entradas locais e propriedade intelectual
 
