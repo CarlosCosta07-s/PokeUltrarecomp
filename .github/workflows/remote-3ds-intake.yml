@@ -1,12 +1,6 @@
 name: Remote Nintendo 3DS container intake
 
 on:
-  # One-time, message-gated run after moving the Ghidra script to tools/ghidra_scripts.
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/remote-3ds-intake.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -37,7 +31,6 @@ permissions:
 
 jobs:
   inspect-container:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run one-time Ultra Sun CCI census after moving Ghidra script directory' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
