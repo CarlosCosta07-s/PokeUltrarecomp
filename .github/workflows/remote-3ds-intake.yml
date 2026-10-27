@@ -1,6 +1,13 @@
 name: Remote Nintendo 3DS container intake
 
 on:
+  # Narrowly gated one-time push trigger to run the current real-image candidate
+  # screening after updating the private translation-screen diagnostics.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/remote-3ds-intake.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -31,6 +38,7 @@ permissions:
 
 jobs:
   inspect-container:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run current Ultra Sun CCI translator-candidate screen once' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
