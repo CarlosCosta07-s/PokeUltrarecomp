@@ -86,6 +86,49 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
             poc.decode_word(0xE3711001)
 
+    def test_decodes_plain_register_operand_data_processing(self):
+        cases = (
+            (0xE1A01000, ("mov_reg", 1, 0)),
+            (0xE1E01000, ("mvn_reg", 1, 0)),
+            (0xE0000001, ("and_reg", 0, 0, 1)),
+            (0xE1800001, ("orr_reg", 0, 0, 1)),
+            (0xE0200001, ("eor_reg", 0, 0, 1)),
+            (0xE1C00001, ("bic_reg", 0, 0, 1)),
+            (0xE0800001, ("add_reg", 0, 0, 1)),
+            (0xE0900001, ("adds_reg", 0, 0, 1)),
+            (0xE0400001, ("sub_reg", 0, 0, 1)),
+            (0xE0500001, ("subs_reg", 0, 0, 1)),
+            (0xE1700001, ("cmn_reg", 0, 1)),
+            (0xE1500001, ("cmp_reg", 0, 1)),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:08X}"):
+                self.assertEqual(expected, poc.decode_word(word))
+
+    def test_predicates_plain_register_operand_instructions(self):
+        self.assertEqual(
+            ("predicated", "ne", ("mov_reg", 0, 1)),
+            poc.decode_word(0x11A00001),
+        )
+
+    def test_rejects_register_operand_shifts_and_flag_setting_logic(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register Operand2 shifts"):
+            poc.decode_word(0xE0800081)  # ADD r0,r0,r1,LSL #1
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "flag-setting form"):
+            poc.decode_word(0xE1B00001)  # MOVS r0,r1
+
+    def test_rejects_register_operand_registers_outside_r0_to_r3(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
+            poc.decode_word(0xE0800004)  # ADD r0,r0,r4
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "destination register r4"):
+            poc.decode_word(0xE1A04001)  # MOV r4,r1
+
+    def test_rejects_noncanonical_register_cmp_and_mov(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMP register encoding with Rd=0"):
+            poc.decode_word(0xE1510001)
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "canonical MOV register encoding with Rn=0"):
+            poc.decode_word(0xE1A10001)
+
     def test_decodes_sub_immediate(self):
         self.assertEqual(("sub", 0, 0, 3), poc.decode_word(0xE2400003))
 
@@ -142,6 +185,62 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r1 = (uint32_t)~UINT32_C(0);", source)
         self.assertIn("r0 = (uint32_t)(r1 & UINT32_C(12));", source)
         self.assertIn("return r0;", source)
+
+    def test_emits_register_operand_c_operations(self):
+        source = poc.translate([
+            0xE1A01000,  # MOV r1,r0
+            0xE1E02001,  # MVN r2,r1
+            0xE0000001,  # AND r0,r0,r1
+            0xE1800001,  # ORR r0,r0,r1
+            0xE0200001,  # EOR r0,r0,r1
+            0xE1C00001,  # BIC r0,r0,r1
+            0xE0800001,  # ADD r0,r0,r1
+            0xE0400001,  # SUB r0,r0,r1
+            0xE12FFF1E,
+        ])
+        self.assertIn("r1 = r0;", source)
+        self.assertIn("r2 = (uint32_t)~r1;", source)
+        self.assertIn("r0 = (uint32_t)(r0 & r1);", source)
+        self.assertIn("r0 = (uint32_t)(r0 | r1);", source)
+        self.assertIn("r0 = (uint32_t)(r0 ^ r1);", source)
+        self.assertIn("r0 = (uint32_t)(r0 & ~r1);", source)
+        self.assertIn("r0 = (uint32_t)(r0 + r1);", source)
+        self.assertIn("r0 = (uint32_t)(r0 - r1);", source)
+
+    def test_register_add_sub_and_compare_flags_match_reference_when_compiler_exists(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; register-operand flag proof requires cc, gcc, or clang")
+        add = poc.translate([
+            0xE3A00007, 0xE3A01005, 0xE0900001, 0xE12FFF1E,
+        ]).replace("uint32_t synthetic_entry(", "uint32_t adds_register(")
+        sub = poc.translate([
+            0xE3A00102, 0xE3A01001, 0xE0500001, 0xE12FFF1E,
+        ]).replace("uint32_t synthetic_entry(", "uint32_t subs_register(")
+        cmp = poc.translate([
+            0xE3A00005, 0xE3A01005, 0xE1500001, 0xE12FFF1E,
+        ]).replace("uint32_t synthetic_entry(", "uint32_t cmp_register(")
+        cmn = poc.translate([
+            0xE3E00000, 0xE3A01001, 0xE1700001, 0xE12FFF1E,
+        ]).replace("uint32_t synthetic_entry(", "uint32_t cmn_register(")
+        harness = "\\n".join((add, sub, cmp, cmn)) + """
+int main(void) {
+    uint8_t add_flags = 255, sub_flags = 255, cmp_flags = 255, cmn_flags = 255;
+    return adds_register(&add_flags) == UINT32_C(12) && add_flags == UINT8_C(0)
+        && subs_register(&sub_flags) == UINT32_C(0x7fffffff) && sub_flags == UINT8_C(3)
+        && cmp_register(&cmp_flags) == UINT32_C(5) && cmp_flags == UINT8_C(6)
+        && cmn_register(&cmn_flags) == UINT32_C(0xffffffff) && cmn_flags == UINT8_C(6)
+        ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "register_arithmetic.c"
+            exe = Path(directory) / ("register_arithmetic.exe" if os.name == "nt" else "register_arithmetic")
+            src.write_text(harness, encoding="utf-8")
+            result = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, msg=result.stdout + result.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_requires_bx_lr_as_final_instruction(self):
         with self.assertRaises(poc.UnsupportedInstruction):
