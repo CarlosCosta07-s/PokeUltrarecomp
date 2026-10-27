@@ -1,117 +1,104 @@
-# Arquitetura proposta
+# Arquitetura do porte nativo
 
-**Status:** proposta conceitual. Nenhum componente descrito neste documento é declarado implementado.
+**Estado em 26/10/2026:** a direção técnica foi escolhida, mas esta arquitetura ainda não está implementada. Consulte [Direção técnica do porte nativo](NATIVE_PORT_DIRECTION.md) para as decisões e os marcos N1–N3.
 
-## Princípios
+## Requisitos não negociáveis
 
-- Separar lógica do jogo reconstruída de serviços de plataforma.
-- Desenvolver e testar uma interface host por vez, com casos sintéticos e resultados observáveis.
-- Tratar código recompilado, código semanticamente reconstruído e componentes de compatibilidade como categorias distintas.
-- Não adicionar placeholders ou stubs fictícios só para preencher diretórios.
-- Manter recursos do jogo, entradas locais, dados privados e artefatos gerados fora do Git.
-- Escolher APIs de plataforma e gráficos somente após uma prova isolada, documentada e licenciada.
+- Executar código recompilado como código de máquina nativo de PC em Windows e Linux, começando por x86-64.
+- Não incluir emulador de Nintendo 3DS, intérprete ARM/Thumb, JIT ou fallback de interpretação.
+- Não emular CPU/GPU/periféricos do 3DS. Serviços necessários serão implementados nativamente e os caminhos gráficos serão reimplementados sobre APIs de PC.
+- Rejeitar durante a tradução qualquer instrução, relocação, ABI ou serviço ainda não implementado e validado.
+- Manter ROMs, extrações, recursos, chaves, executáveis e relatórios privados fora do GitHub e de qualquer CI.
+- Provar comportamento antes de otimizar; distinguir cada estágio por resultados reproduzíveis.
 
 ## Visão em camadas
 
-~~~text
-Entradas locais autorizadas e configuração
-                  |
-                  v
-        Loader / identidade do alvo
-                  |
-                  v
-    Módulos e lógica reconstruída do jogo
-                  |
-                  v
-     Contratos/ABI e estado de execução
-                  |
-                  v
-       Camada de abstração de plataforma
-       |          |          |          |
-       v          v          v          v
-   Gráficos     Áudio     Entrada     Arquivos/
-   e janela                teclado     salvamento
-       |          |          |          |
-       +----------+----------+----------+
-                  |
-                  v
-       Serviços Windows e APIs host
+1. Entradas locais autorizadas e perfil de alvo.
+2. Intake e validação de metadados do alvo.
+3. Análise estática ARM/Thumb, limites de função e módulos.
+4. Decodificador conservador → representação intermediária (IR) → gerador de C.
+5. Compilador nativo do host, produzindo unidades de código de máquina de PC.
+6. Runtime próprio em C++20, com ABI, memória, serviços, arquivos, módulos e sincronização.
+7. SDL3 para janela, entrada e áudio; Vulkan para renderização nativa de PC.
 
-Serviços transversais: memória, temporizadores, sincronização,
-módulos dinâmicos, logging, telemetria local e testes.
-~~~
+Python é usado somente por ferramentas de desenvolvimento e validação. O C gerado deve ser compilado pelo toolchain nativo; o executável final não pode precisar de um interpretador ARM nem executar um laço que decodifique instruções do convidado.
 
-## Componentes propostos
+## 1. Recompilação estática
 
-### 1. Código recompilado ou reconstruído
+O pipeline precisa separar quatro responsabilidades:
 
-Código convertido a partir de instruções ARM/Thumb, funções reconstruídas manualmente ou lógica reescrita precisam registrar origem, endereço/identidade de referência, commit da ferramenta, método de construção, status de correspondência e testes. Uma compilação bem-sucedida só demonstra compilação. A equivalência precisa ser demonstrada separadamente por verificação diferencial ou comportamento de referência.
+1. **Descoberta/análise:** limites de função, fluxo de controle, estado ARM/Thumb, literais, tabelas, referências, chamadas, relocação, módulos dinâmicos e informações necessárias ao ABI.
+2. **Decodificação:** cada encoding é classificado como suportado, explicitamente inválido ou desconhecido. Não inventar semântica.
+3. **Representação intermediária (IR):** representar operações, predicação, flags, memória, transferências de controle e chamadas de maneira que possa ser testada isoladamente.
+4. **Emissão/compilação:** gerar código C determinístico, compilar com MSVC/GCC/Clang para código nativo e ligar a uma interface C estável do runtime.
 
-O código recompilado pode depender de convenções, estado de CPU, endereçamento, exceções, callbacks e dados específicos de 3DS. Não deve ser tratado como C/C++ portátil apenas porque o recompilador gerou código C.
+Cada unidade traduzida precisa registrar endereço de origem, estado ARM/Thumb, conjunto de instruções, dependências, interface de entrada/saída, evidência de teste e limitações. Não tratar uma função como válida apenas porque compilou. Não aceitar varredura linear indiscriminada em uma seção .text como descoberta de funções.
 
-### 2. ABI, memória e estado da CPU
+## 2. ABI, memória e estado da CPU
 
-Definir contratos explícitos para largura e alinhamento de tipos, registradores/flags ainda referenciados, endianness, limites de memória, callbacks e propagação de erros. Registrar se cada rotina depende de endereço fixo, relocação, módulo dinâmico ou estado global. Evitar fingir que um endereço ou layout foi conhecido quando não há evidência.
+A interface entre C gerado e runtime deve especificar largura/alinhamento, endianness, registradores vivos, flags, stack pointer, convenções de chamada, comportamento de retorno, exceções, callbacks e dependências de estado global. Endereços de origem não podem ser tratados como ponteiros de host sem uma decisão explícita de mapeamento.
 
-### 3. Camada de abstração de plataforma
+Memória do alvo, buffers e regiões mapeadas precisam ter propriedade, tamanho, permissões e vida útil definidos. Não representar falhas de memória como leituras inventadas. Transferências de controle indiretas só podem ser geradas quando o destino puder ser resolvido ou representado por uma interface nativa explícita.
 
-Interfaces propostas:
-- filesystem e diretórios de usuário;
-- salvamento, gravação atômica, backup e recuperação;
-- relógio, temporizadores, espera e limites de frame;
-- threads, mutexes, eventos, sincronização e ordenação;
-- entrada, foco da janela e dispositivos removíveis;
-- áudio e ciclo de vida do dispositivo;
-- janela, superfícies de apresentação e diagnóstico de GPU;
-- carregamento de módulos, símbolos, dependências e registros;
-- serviços específicos do 3DS ainda exigidos por caminhos de jogo.
+## 3. Runtime e serviços de plataforma
 
-A camada deve declarar quais comportamentos são reproduzidos, aproximados ou ainda não suportados. Não implementar interfaces sem evidência de que o alvo selecionado precisa delas.
+O runtime próprio em C++20 será responsável por ciclo de vida, módulos, memória e serviços de PC, com interfaces testáveis para:
 
-### 4. Renderização para PC
+- relógio monotônico, temporizadores e espera;
+- threads, mutexes, eventos, sincronização e encerramento;
+- diretórios de usuário, leitura e gravação, escrita atômica, backup e recuperação;
+- carregamento de módulos, relocação e resolução de imports/exports;
+- entrada, foco da janela e conexão/desconexão de dispositivos;
+- áudio, pausa, latência e perda/recuperação do dispositivo;
+- chamadas de sistema/serviços do 3DS efetivamente necessários ao caminho recompilado.
 
-Investigar primeiro um teste host sem conteúdo proprietário. Comparar opções compatíveis com Windows, por exemplo SDL2 para janela/entrada e uma API gráfica separada (OpenGL, Vulkan ou Direct3D), sem escolher uma definitivamente nesta fase. Uma API gráfica moderna não substitui automaticamente o comportamento do GPU do 3DS: registradores, comandos, shaders, render targets, depth/stencil, texturas, formatos, sincronização e temporização devem ser mapeados e testados.
+Não criar stubs ou interfaces sem comportamento para preencher diretórios. Antes de implementar cada serviço, identificar uma chamada real ou uma dependência comprovada do caminho em execução. Se o serviço ainda não estiver pronto, esse caminho não pode ser marcado como executável.
 
-### 5. Áudio
+## 4. Engine, janela, áudio e gráficos
 
-Separar geração/mixagem do áudio da saída do dispositivo. Definir taxa de amostragem, canais, formato, latência, buffers, pausa, foco, perda de dispositivo e política de encerramento. Testes devem usar tons ou buffers sintéticos.
+A camada de runtime/engine será desenvolvida em C++20; SDL3 fornece a interface multiplataforma para janela, teclado, controles e áudio. Vulkan será a API gráfica de PC, acessada diretamente, em vez do SDL_Renderer.
 
-### 6. Entrada de teclado e controle
+A seleção permite controle sobre gráficos 3D e builds Windows/Linux. A versão inicial a avaliar e fixar é SDL 3.4.18, versão identificada como estável no site oficial consultado em 26/10/2026; a licença publicada é zlib. Fontes: [documentação SDL3](https://wiki.libsdl.org/SDL3/FrontPage), [versões oficiais](https://github.com/libsdl-org/SDL/releases) e [README/licença SDL](https://github.com/libsdl-org/SDL/blob/main/docs/README.md).
 
-Traduzir teclado, teclado numérico quando aplicável, controle e touch/mouse para eventos internos. Definir repetição, zonas mortas, foco, remapeamento, estados analógicos e ordem de eventos. Testar desconexão/reconexão sem depender de jogo real.
+**Vulkan não torna automaticamente o código gráfico do 3DS compatível.** O projeto precisará entender quais operações gráficas o jogo realmente usa e reimplementar seus resultados com recursos e shaders nativos de PC. Não criar uma GPU virtual PICA200 nem um interpretador de listas de comandos de GPU. O caminho de renderização precisa ter fixtures sintéticas, critérios observáveis e testes de ciclo de vida/sincronização.
 
-### 7. Sistema de arquivos e salvamento
+Godot, Unity e Unreal não serão a engine central: não resolvem a recompilação do executável ARM original nem os serviços esperados por ele, e imporiam uma camada de integração desnecessária antes de existir código recompilado executável. SDL3 e Vulkan são bibliotecas/APIs dentro do runtime próprio, não uma alegação de que a engine já existe.
 
-Separar recursos somente de leitura, estado persistente e arquivos temporários. Não buscar arquivos em locais arbitrários nem sobrescrever dados externos. Definir formato, versão, verificação de integridade, escrita atômica, backup e tratamento de salvamento corrompido. A origem de todos os recursos deve ser permitida e documentada; conteúdo proprietário não é incluído nos commits ou artefatos distribuídos.
+## 5. Arquivos, salvamentos e conteúdo local
 
-### 8. Temporizadores, memória e sincronização
+Separar recursos locais autorizados, arquivos temporários, configuração e progresso salvo. A persistência deve oferecer formato/versionamento documentado, integridade, escrita atômica, backup e recuperação após falha. Nunca pesquisar recursos em diretórios arbitrários nem sobrescrever arquivos que não pertencem ao runtime.
 
-Especificar relógio monotônico, temporização de jogo e espera de serviço. Projetar limites para alocação e acesso à memória, alinhamento e vida útil de buffers. Testar concorrência, deadlocks, corrida, shutdown e recuperação. Não assumir que executar mais rápido ou no mesmo FPS significa equivalência temporal.
+Nenhum dado do jogo entra em commits, GitHub Pages, releases, issues, logs públicos ou CI. Relatórios compartilhados devem ser redigidos e não devem revelar caminhos do usuário, hashes privados, bytes extraídos, chaves ou conteúdo proprietário.
 
-### 9. Bibliotecas dinâmicas e módulos
+## 6. Testes e critérios de conclusão
 
-Criar um inventário de módulos e suas dependências; separar módulos estáticos de dinâmicos. Registrar carregamento, relocação, resolução de imports/exports, inicializadores, descarregamento e ciclo de vida. O contrato de um módulo deve ser testável sem empacotar arquivos do jogo.
+A validação será organizada em camadas:
 
-### 10. Testes e diagnóstico
+- testes unitários para decodificador e IR, incluindo entradas inválidas e encodings desconhecidos;
+- execução nativa de C gerado em fixtures sintéticas;
+- testes de flags, registradores, fluxo de controle, memória e ABI com oráculos independentes baseados na especificação;
+- compilação e testes multiplataforma Windows/Linux;
+- teste local de funções reais selecionadas, sem publicar entradas ou saídas proprietárias;
+- testes host de entrada, áudio, arquivos, sincronização e renderização com dados sintéticos;
+- testes de integração de caminhos do jogo, progressão e salvamento, executados localmente pelo mantenedor.
 
-Camadas de teste propostas:
-- testes unitários sintéticos;
-- testes de ABI e memória;
-- verificação diferencial de funções reconstruídas;
-- testes host de gráficos, áudio, input, arquivos e sincronização;
-- testes de integração do runtime com módulos autorizados;
-- testes de regressão e estabilidade;
-- testes de jogo local apenas em ambiente do mantenedor, sem entradas nem logs proprietários publicados.
+Nenhum emulador ou interpretador será usado como runtime ou oráculo de execução. Um teste só pode afirmar exatamente o que exercitou. A compilação de uma ferramenta, o sucesso de um subconjunto sintético e a execução de uma função não provam que o jogo inicia ou é jogável.
 
-Os logs devem omitir caminhos de usuário, hashes de dumps privados, chaves, tokens, nomes de conta e conteúdo extraído. Relatórios compartilhados devem ser redigidos.
+## Decisões registradas e itens pendentes
 
-## Decisões ainda abertas
+**Decidido**
+- Runtime próprio em C++20; código recompilado C compilado nativamente.
+- SDL3 para janela, input e áudio; Vulkan para renderização nativa de PC.
+- CMake + Ninja; compiladores MSVC no Windows e GCC/Clang no Linux.
+- Ferramentas Python fora do caminho de execução.
+- Proibição de emulação, interpretação, JIT e fallback para instruções desconhecidas.
 
-- Como gerar/organizar código reconstruído sem incorporar conteúdo de origem não licenciado.
-- Se o runtime usará código recompilado de 3dsrecomp, reconstrução própria ou abordagem mista.
-- Quais serviços mínimos substituir primeiro.
-- API gráfica final e bibliotecas de áudio/entrada.
-- ABI dos módulos, estratégia para CRO e loader.
-- Alvos mínimos de Windows, arquitetura CPU e estratégia de distribuição.
+**Ainda precisa de implementação ou evidência**
+- Descoberta de funções e cobertura semântica suficiente de ARM, Thumb, Thumb-2 e VFP.
+- Identificação de ABI, referências, tabelas, relocação, imports/exports e módulos dinâmicos reais.
+- Primeira função real recompilada e validada localmente.
+- Serviços do 3DS realmente exigidos pelos caminhos selecionados.
+- Caminho nativo de gráficos e áudio que não modele hardware 3DS.
+- Build/testes reproduzíveis em Windows e Linux e matriz de validação de jogo.
 
-Cada decisão deve citar evidência, impacto sobre licença, custo de manutenção e critério de teste antes de ser fixada.
+A adoção de SDL3/Vulkan deve ser formalizada nos arquivos de dependências e em [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) antes de incorporá-los ao build. A licença de uma biblioteca não concede direitos sobre o jogo ou seus recursos.
