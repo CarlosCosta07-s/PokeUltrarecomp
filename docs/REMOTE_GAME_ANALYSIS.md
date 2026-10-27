@@ -10,14 +10,14 @@ Referências técnicas:
 
 ## Executar pelo GitHub no navegador ou celular
 
-Este modo permite processar a imagem em um runner temporário do GitHub Actions sem executar as ferramentas no seu computador. O workflow aceita uma URL HTTPS de download direto e links de compartilhamento de arquivos do Google Drive. Para o Drive, configure o arquivo para permitir acesso a quem possui o link; o downloader converte o link de compartilhamento em uma solicitação de download e tenta tratar a confirmação de arquivo grande. A URL nunca deve ser colocada no código, em uma issue ou na linha de comando de um workflow. Links que exigem login, bloqueios de download ou confirmações que o Drive não disponibilize ao downloader ainda podem falhar.
+Este modo permite processar a imagem em um runner temporário do GitHub Actions sem executar as ferramentas no seu computador. O workflow aceita uma URL HTTPS de download direto e links de compartilhamento de arquivos do Google Drive. Para o Drive, utiliza gdown 6.4.2 para resolver as confirmações de arquivo grande e transferir a imagem; o arquivo precisa permitir acesso a quem possui o link. A URL nunca deve ser colocada no código, em uma issue ou na linha de comando de um workflow. Arquivos que exigem login, que excederam a cota de download do Drive ou que estão bloqueados pelo provedor ainda podem falhar.
 
 1. No repositório, abra Settings, depois Secrets and variables, depois Actions. Crie o secret POKEULTRARECOMP_SOURCE_URL com a URL HTTPS de download direto. Use um link restrito/temporário se o seu provedor permitir.
 2. Abra Actions, selecione Remote Nintendo 3DS container intake e toque em Run workflow.
 3. Escolha ultra-sun ou ultra-moon, selecione 3ds, cci ou cia e informe o índice da partição/conteúdo (normalmente 0).
 4. Consulte o resumo do job. Ele informa apenas se a extração e a validação estrutural passaram. Não publica ROM, ExHeader, arquivo .code, hashes do conteúdo ou desassembly.
 
-O workflow tem um limite de download de 8 GiB e usa CTRTool v1.3.0. Se a imagem exigir chaves que o workflow não tem ou não puder ser extraída diretamente, ele falha de forma explícita; não tenta recuperar chaves ou contornar criptografia.
+O workflow tem um limite de download de 8 GiB, um limite de execução de 60 minutos, usa CTRTool v1.3.0 e fixa gdown em 6.4.2 para baixar arquivos públicos do Google Drive. Se a imagem exigir chaves que o workflow não tem ou não puder ser extraída diretamente, ele falha de forma explícita; não tenta recuperar chaves ou contornar criptografia.
 
 ## Privacidade e limitações
 
