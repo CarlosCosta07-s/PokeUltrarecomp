@@ -174,13 +174,14 @@ def _decode_single_data_transfer(word: int, condition: int) -> tuple[object, ...
         raise UnsupportedInstruction(
             f"post-indexed or writeback memory access is unsupported: 0x{word:08X}"
         )
-    if byte_transfer:
-        raise UnsupportedInstruction(f"byte memory access is unsupported: 0x{word:08X}")
     if rn > 3:
         raise UnsupportedInstruction(f"base register r{rn} is outside r0-r3 subset")
     if rd > 3:
         raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
-    operation = "ldr_imm" if load else "str_imm"
+    if byte_transfer:
+        operation = "ldrb_imm" if load else "strb_imm"
+    else:
+        operation = "ldr_imm" if load else "str_imm"
     return _apply_condition(condition, (operation, rd, rn, offset, bool(up)))
 
 
@@ -357,7 +358,7 @@ def translate(
         return instruction[2] if instruction[0] == "predicated" else instruction
 
     contains_memory_access = any(
-        base_instruction(instruction)[0] in ("ldr_imm", "str_imm")
+        base_instruction(instruction)[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm")
         for instruction in decoded[:-1]
     )
     if contains_memory_access and not runtime_memory_io:
@@ -400,7 +401,7 @@ def translate(
             used_registers.add(instruction[1])
         elif operation in ("cmn_reg", "cmp_reg", "tst_reg", "teq_reg"):
             used_registers.update((instruction[1], instruction[2]))
-        elif operation in ("ldr_imm", "str_imm"):
+        elif operation in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm"):
             used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
@@ -530,8 +531,10 @@ def translate(
             lines.append(f"    uint32_t {result} = (uint32_t)(r{rn} {operator} r{rm});")
             lines.append(f"    flag_n = ({result} >> 31) & 1U;")
             lines.append(f"    flag_z = (uint32_t)({result} == 0U);")
-        elif instruction[0] in ("ldr_imm", "str_imm"):
+        elif instruction[0] in ("ldr_imm", "str_imm", "ldrb_imm", "strb_imm"):
             _, rd, rn, immediate, add_offset = instruction
+            byte_access = instruction[0] in ("ldrb_imm", "strb_imm")
+            access_size = 1 if byte_access else 4
             suffix = f"{len(lines)}"
             address = f"memory_address_{suffix}"
             offset_in_region = f"memory_offset_{suffix}"
@@ -543,12 +546,17 @@ def translate(
             else:
                 lines.append(f"    if (r{rn} < UINT32_C({immediate})) {{ execution_status = UINT8_C(3); goto arm_exit; }}")
                 lines.append(f"    uint32_t {address} = (uint32_t)(r{rn} - UINT32_C({immediate}));")
-            lines.append(f"    if (({address} & UINT32_C(3)) != 0U) {{ execution_status = UINT8_C(4); goto arm_exit; }}")
+            if not byte_access:
+                lines.append(f"    if (({address} & UINT32_C(3)) != 0U) {{ execution_status = UINT8_C(4); goto arm_exit; }}")
             lines.append(
-                f"    if ({address} < memory_base || ((uint64_t){address} + UINT64_C(4)) > ((uint64_t)memory_base + (uint64_t)memory_size)) {{ execution_status = UINT8_C(3); goto arm_exit; }}"
+                f"    if ({address} < memory_base || ((uint64_t){address} + UINT64_C({access_size})) > ((uint64_t)memory_base + (uint64_t)memory_size)) {{ execution_status = UINT8_C(3); goto arm_exit; }}"
             )
             lines.append(f"    uint32_t {offset_in_region} = {address} - memory_base;")
-            if instruction[0] == "ldr_imm":
+            if instruction[0] == "ldrb_imm":
+                lines.append(f"    r{rd} = (uint32_t)memory[{offset_in_region}];")
+            elif instruction[0] == "strb_imm":
+                lines.append(f"    memory[{offset_in_region}] = (uint8_t)(r{rd} & UINT32_C(0xFF));")
+            elif instruction[0] == "ldr_imm":
                 lines.append(
                     f"    r{rd} = (uint32_t)memory[{offset_in_region}] "
                     f"| ((uint32_t)memory[{offset_in_region} + 1U] << 8) "
