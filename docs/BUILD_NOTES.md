@@ -1,3 +1,10 @@
+## ARM A32 — lógica com imediato rotacionado e S-bit — 2026-10-27
+
+- **Escopo adicionado:** MOVS/MVNS, ANDS/ORRS/EORS/BICS e TST/TEQ com imediato rotacionado são decodificados e traduzidos para C. A geração usa a constante depois do ROR de imediato ARM; as instruções de teste atualizam flags sem escrever o registrador de destino.
+- **Carry do imediato:** com rotate_imm igual a zero, o C de entrada é preservado; com rotação diferente de zero, C recebe o bit 31 da constante rotacionada. N/Z são derivados do resultado lógico e V é preservado.
+- **Testes:** a suíte Python/C11 completa passou em **407 testes** no [workflow #40595641408](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40595641408), incluindo teste nativo de MOVS, ANDS, ORRS e TST com os dois comportamentos de carry.
+- **Limite:** isso amplia apenas o subconjunto sintético do tradutor; não comprova equivalência de uma função real do Ultra Sun. A triagem real mais recente continua bloqueada por rate-limit de downloads no Google Drive ([workflow #40594739458](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594739458)); nenhum binário da ROM foi publicado.
+
 ## ARM A32 — Operand2 com shifts imediatos e carry do shifter — 2026-10-27
 
 - **Escopo adicionado:** o decodificador A32 representa operandos em registrador com LSL, LSR, ASR, ROR e RRX em uma camada explícita chamada shifted_operand; o tradutor gera C para o valor deslocado antes da operação-base.
