@@ -207,6 +207,63 @@ class TranslationTests(unittest.TestCase):
         self.assertIn("r0 = (uint32_t)(r0 + r1);", source)
         self.assertIn("r0 = (uint32_t)(r0 - r1);", source)
 
+    def test_plain_register_operations_execute_natively_and_preserve_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; register-operation proof requires cc, gcc, or clang")
+
+        operations = (
+            ("mov_register", [0xE3A0000F, 0xE3A01005, 0xE1A00001, 0xE12FFF1E], 5),
+            ("mvn_register", [0xE3A0000F, 0xE3A01005, 0xE1E00001, 0xE12FFF1E], 0xFFFFFFFA),
+            ("and_register", [0xE3A0000F, 0xE3A01005, 0xE0000001, 0xE12FFF1E], 5),
+            ("orr_register", [0xE3A0000F, 0xE3A01005, 0xE1800001, 0xE12FFF1E], 15),
+            ("eor_register", [0xE3A0000F, 0xE3A01005, 0xE0200001, 0xE12FFF1E], 10),
+            ("bic_register", [0xE3A0000F, 0xE3A01005, 0xE1C00001, 0xE12FFF1E], 10),
+            ("add_register", [0xE3A00007, 0xE3A01005, 0xE0800001, 0xE12FFF1E], 12),
+            ("sub_register", [0xE3A0000F, 0xE3A01005, 0xE0400001, 0xE12FFF1E], 10),
+        )
+        sources = []
+        checks = []
+        for name, words, expected in operations:
+            generated = poc.translate(words, initial_nzcv=0xB)
+            sources.append(generated.replace("uint32_t synthetic_entry(", f"uint32_t {name}("))
+            checks.append(
+                f"    {{ uint8_t flags = 0; if ({name}(&flags) != UINT32_C({expected}) || flags != UINT8_C(11)) return {len(checks)+1}; }}"
+            )
+        harness = "\\n".join(sources) + "\\nint main(void) {\\n" + "\\n".join(checks) + "\\n    return 0;\\n}\\n"
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "register_operations.c"
+            exe = Path(directory) / ("register_operations.exe" if os.name == "nt" else "register_operations")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_predicated_register_operand_respects_entry_nzcv(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; predicated register proof requires cc, gcc, or clang")
+        words = [0xE3A00000, 0xE3A01009, 0x11A00001, 0xE12FFF1E]  # MOVNE r0,r1
+        skipped = poc.translate(words, initial_nzcv=0x4).replace("uint32_t synthetic_entry(", "movne_skipped(")
+        executed = poc.translate(words, initial_nzcv=0x0).replace("uint32_t synthetic_entry(", "movne_executed(")
+        harness = "\\n".join((skipped, executed)) + """
+int main(void) {
+    uint8_t skipped_flags = 0, executed_flags = 0;
+    return movne_skipped(&skipped_flags) == UINT32_C(0) && skipped_flags == UINT8_C(4)
+        && movne_executed(&executed_flags) == UINT32_C(9) && executed_flags == UINT8_C(0)
+        ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "predicated_register.c"
+            exe = Path(directory) / ("predicated_register.exe" if os.name == "nt" else "predicated_register")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed_run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed_run.returncode, msg=executed_run.stdout + executed_run.stderr)
+
     def test_register_add_sub_and_compare_flags_match_reference_when_compiler_exists(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
