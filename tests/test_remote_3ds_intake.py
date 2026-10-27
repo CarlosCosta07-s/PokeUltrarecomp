@@ -298,6 +298,9 @@ class Remote3DSIntakeTests(unittest.TestCase):
             ("unclassified private decoder error 0x00123456", "other-decode-rejection"),
             ("not a supported data-processing operand form: 0xE5900000", "unsupported-operand-class"),
             ("register Operand2 shifts are unsupported in 0xE0800081", "register-shifted-operand"),
+            ("register-offset halfword/signed memory access is unsupported: 0xE19100F2", "unsupported-operand-class"),
+            ("post-indexed or writeback halfword/signed memory access is unsupported: 0xE0D100B4", "unsupported-operand-class"),
+            ("signed-byte store encoding is reserved and unsupported: 0xE1C100D4", "unsupported-operand-class"),
         )
         for message, expected in cases:
             with self.subTest(expected=expected):
