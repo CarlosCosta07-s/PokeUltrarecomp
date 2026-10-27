@@ -57,7 +57,7 @@ def _compiler_command(requested: str | None) -> tuple[list[str], bool]:
         candidates.append(parsed)
     else:
         defaults = ("cl", "clang-cl", "cc", "gcc", "clang") if os.name == "nt" else ("cc", "gcc", "clang")
-        candidates.extend([[name] for name in defaults)
+        candidates.extend([[name] for name in defaults])
 
     for command in candidates:
         resolved = shutil.which(command[0])
