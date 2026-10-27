@@ -439,7 +439,7 @@ def run_ghidra_function_census(
         *launcher, str(project_path),
         "ultra-sun-private-census" if target == "ultra-sun" else "ultra-moon-private-census",
         "-import", str(elf_path), "-overwrite",
-        "-scriptPath", str(ROOT / ".github" / "ghidra_scripts"),
+        "-scriptPath", str(ROOT / "tools" / "ghidra_scripts"),
         "-log", str(app_log_path),
         "-scriptlog", str(script_log_path),
         "-postScript", "FunctionCensusSummary.java",
