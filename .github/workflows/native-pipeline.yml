@@ -1,0 +1,63 @@
+name: Native recompilation smoke tests
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-recompilation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-smoke:
+    name: Native pipeline (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install native compiler (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential
+
+      - name: Compile and execute native pipeline (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          python tools/run_native_poc_pipeline.py
+          python -m unittest discover -s tests -v
+          python tools/check_repository_safety.py
+
+      - name: Initialize MSVC and validate native pipeline (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          @echo off
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
+          if not defined VSCMD_VER exit /b 1
+          set CC=cl
+          python tools\run_native_poc_pipeline.py
+          if errorlevel 1 exit /b 1
+          set CC=
+          python -m unittest discover -s tests -v
+          if errorlevel 1 exit /b 1
+          python tools\check_repository_safety.py
