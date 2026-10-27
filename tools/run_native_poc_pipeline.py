@@ -51,7 +51,14 @@ def _compiler_command(requested: str | None) -> tuple[list[str], bool]:
     raw = requested or os.environ.get("CC", "").strip()
     candidates: list[list[str]] = []
     if raw:
-        parsed = [token.strip('"') for token in shlex.split(raw, posix=(os.name != "nt"))]
+        # CMake may pass an absolute compiler path containing spaces as a single
+        # argument. Prefer that exact file before splitting shell-style commands
+        # such as "ccache gcc".
+        path_candidate = raw.strip().strip('"')
+        if Path(path_candidate).is_file():
+            parsed = [path_candidate]
+        else:
+            parsed = [token.strip('"') for token in shlex.split(raw, posix=(os.name != "nt"))]
         if not parsed:
             raise PipelineError("CC/--cc was provided but contains no compiler command")
         candidates.append(parsed)
