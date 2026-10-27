@@ -66,6 +66,11 @@ LDMIA_BASE_IN_LIST_HALFWORDS = (
     0xC801,  # LDMIA r0, {r0}; base write-back is suppressed
     0x4770,  # BX lr
 )
+LITERAL_MEMORY_HALFWORDS = (
+    0x2000,  # MOVS r0, #0
+    0x4901,  # LDR r1, [PC, #4]
+    0x4770,  # BX lr
+)
 
 
 class PipelineError(RuntimeError):
@@ -269,6 +274,20 @@ def _thumb_ldmia_base_list_source() -> str:
     return generated.replace(old_signature, "uint32_t native_thumb_ldmia_base_list_smoke(", 1)
 
 
+def _thumb_literal_memory_source() -> str:
+    generated = thumb_subset_poc.translate(
+        list(LITERAL_MEMORY_HALFWORDS),
+        max_execution_steps=len(LITERAL_MEMORY_HALFWORDS),
+        initial_nzcv=0xB,
+        runtime_state_io=True,
+        runtime_memory_io=True,
+    )
+    old_signature = "uint32_t thumb_entry_memory_bounded("
+    if old_signature not in generated:
+        raise PipelineError("Thumb literal-load output does not match its bounded memory interface")
+    return generated.replace(old_signature, "uint32_t native_thumb_literal_memory_smoke(", 1)
+
+
 A32_HARNESS = r"""
 int main(void) {
     const uint32_t input[4] = {
@@ -328,7 +347,7 @@ int main(void) {
     uint32_t steps = 0U;
     const uint32_t returned = native_thumb_multiple_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)), UINT32_C(0)
     );
     if (returned != UINT32_C(0x1018) || status != UINT8_C(0)
         || steps != UINT32_C(3) || nzcv != UINT8_C(0x9)) return 1;
@@ -352,7 +371,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_multiple_memory_smoke(
         bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)), UINT32_C(0)
     );
     if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 4;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 5;
@@ -361,7 +380,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_multiple_memory_smoke(
         bad_input, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)), UINT32_C(0)
     );
     if (status != UINT8_C(4) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 6;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 7;
@@ -376,7 +395,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     const uint32_t ldm_return = native_thumb_ldmia_base_list_smoke(
         ldm_base_input, UINT8_C(0x5), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory))
+        memory, UINT32_C(0x1000), ((uint32_t)sizeof(memory)), UINT32_C(0)
     );
     if (ldm_return != UINT32_C(0x12345678) || registers_out[0] != UINT32_C(0x12345678)
         || status != UINT8_C(0) || steps != UINT32_C(2) || nzcv != UINT8_C(0x5)) return 8;
@@ -399,7 +418,7 @@ int main(void) {
     uint32_t steps = 0U;
     const uint32_t returned = native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(24)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0)
     );
     if (returned != UINT32_C(0x1000) || status != UINT8_C(0) || steps != UINT32_C(15) || nzcv != UINT8_C(0x9)) return 1;
     if (registers_out[0] != UINT32_C(0x1000) || registers_out[1] != UINT32_C(4)
@@ -424,7 +443,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         out_of_range, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(24)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0)
     );
     if (status != UINT8_C(3) || steps != UINT32_C(1) || nzcv != UINT8_C(0x6)) return 5;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 6;
@@ -435,7 +454,7 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         misaligned, UINT8_C(0x6), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0x1000), UINT32_C(24)
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0)
     );
     if (status != UINT8_C(4) || steps != UINT32_C(1)) return 7;
     if (memcmp(before, memory, sizeof(memory)) != 0) return 8;
@@ -443,16 +462,63 @@ int main(void) {
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        0, UINT32_C(0x1000), UINT32_C(24)
+        0, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0)
     );
     if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 9;
 
     nzcv = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = 99U;
     (void)native_thumb_memory_smoke(
         input, UINT8_C(0x9), &nzcv, &steps, &status, registers_out,
-        memory, UINT32_C(0xFFFFFFF8), UINT32_C(16)
+        memory, UINT32_C(0xFFFFFFF8), UINT32_C(16), UINT32_C(0)
     );
     if (status != UINT8_C(2) || steps != 0U || nzcv != UINT8_C(0xAA)) return 10;
+    return 0;
+}
+"""
+
+
+LITERAL_MEMORY_HARNESS = r"""
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA), 2U, 3U,
+        4U, 5U, 6U, 7U
+    };
+    uint32_t output[8] = {0U};
+    uint8_t memory[24] = {0U};
+    memory[8] = UINT8_C(0x78); memory[9] = UINT8_C(0x56);
+    memory[10] = UINT8_C(0x34); memory[11] = UINT8_C(0x12);
+    uint8_t nzcv = UINT8_C(0xAA), status = UINT8_C(0xAA);
+    uint32_t steps = 0U;
+    const uint32_t returned = native_thumb_literal_memory_smoke(
+        input, UINT8_C(0xB), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1000)
+    );
+    if (returned != 0U || status != UINT8_C(0) || steps != UINT32_C(3)
+        || nzcv != UINT8_C(7) || output[1] != UINT32_C(0x12345678)) return 1;
+    uint8_t before[sizeof(memory)];
+    memcpy(before, memory, sizeof(memory));
+
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)native_thumb_literal_memory_smoke(
+        input, UINT8_C(0xB), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(8), UINT32_C(0x1000)
+    );
+    if (status != UINT8_C(3) || steps != UINT32_C(2)
+        || output[1] != input[1] || memcmp(before, memory, sizeof(memory)) != 0) return 2;
+
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)native_thumb_literal_memory_smoke(
+        input, UINT8_C(0xB), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0x1001)
+    );
+    if (status != UINT8_C(2) || steps != 0U) return 3;
+
+    status = UINT8_C(0xAA); steps = 99U; nzcv = UINT8_C(0xAA);
+    (void)native_thumb_literal_memory_smoke(
+        input, UINT8_C(0xB), &nzcv, &steps, &status, output,
+        memory, UINT32_C(0x1000), UINT32_C(24), UINT32_C(0xFFFFFFFC)
+    );
+    if (status != UINT8_C(2) || steps != UINT32_C(2)) return 4;
     return 0;
 }
 """
@@ -471,6 +537,11 @@ def run_pipeline(compiler_override: str | None = None) -> int:
         print("PASS: synthetic Thumb-16 -> C -> native executable (registers, NZCV, step budget)")
         _compile_and_run(compiler, is_msvc, "native_thumb_memory_smoke", _thumb_memory_source(), MEMORY_HARNESS, work_dir)
         print("PASS: native Thumb load/store widths, sign extension, bounds, alignment, and faults")
+        _compile_and_run(
+            compiler, is_msvc, "native_thumb_literal_memory_smoke",
+            _thumb_literal_memory_source(), LITERAL_MEMORY_HARNESS, work_dir
+        )
+        print("PASS: native Thumb PC-relative literal loads, PC alignment, range faults, and overflow")
         _compile_and_run(
             compiler, is_msvc, "native_thumb_multiple_memory_smoke",
             _thumb_multiple_memory_source() + "\n" + _thumb_ldmia_base_list_source(),
