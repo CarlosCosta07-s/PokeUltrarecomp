@@ -103,7 +103,7 @@ class DecoderTests(unittest.TestCase):
             (0xE5914004, "destination register r4"),
             (0xE5940004, "base register r4"),
             (0xE19100B2, "register-offset halfword memory access"),
-            (0xE09100B4, "post-indexed or writeback halfword memory access"),
+            (0xE0D100B4, "post-indexed or writeback halfword memory access"),
             (0xE1F100B4, "post-indexed or writeback halfword memory access"),
             (0xE1D140B4, "destination register r4"),
             (0xE1D400B4, "base register r4"),
