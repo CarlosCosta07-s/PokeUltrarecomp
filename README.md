@@ -1,154 +1,71 @@
 # PokeUltrarecomp
 
-**Estado: pesquisa, POCs sintéticas e ferramentas de inspeção estática ARM/Thumb.** Este repositório ainda não contém uma porta funcional de Pokémon Ultra Sun ou Pokémon Ultra Moon, um runtime próprio para Windows, nem resultados de execução dos jogos.
+**Pesquisa para uma porta nativa de Pokémon Ultra Sun e Pokémon Ultra Moon para Windows/Linux.**  
+**Estado real:** ferramentas de inspeção estática e provas de conceito sintéticas estão publicadas; ainda não existe uma porta jogável nem um runtime de jogo funcional.
 
-## Objetivo
+## Direção do projeto
 
-Desenvolver uma porta nativa de **Pokémon Ultra Sun** e **Pokémon Ultra Moon** para Windows e Linux. A direção é recompilar estaticamente o código ARM/Thumb para código nativo de PC e implementar os serviços necessários com um runtime próprio, sem emulação de hardware 3DS, interpretador de instruções ou fallback interpretado.
+O objetivo é executar o jogo como uma aplicação nativa de PC, e não através de emulação de Nintendo 3DS ou interpretação de instruções.
 
-A estratégia inicial é estudar projetos de reconstrução, descompilação, recompilação e emulação existentes, aproveitar apenas resultados tecnicamente demonstrados e evitar reescritas desnecessárias. A existência de um emulador, de código C/C++ gerado ou de uma cena inicial funcional não prova, por si só, que um jogo foi portado nativamente.
+- **C++20:** runtime nativo, ABI, memória, serviços de plataforma e integração.
+- **C gerado:** resultado da recompilação estática ARM/Thumb, compilado pelo toolchain nativo do sistema.
+- **SDL3:** janela, teclado, controles e áudio multiplataforma.
+- **Vulkan:** renderização de PC por drivers nativos, sem criar uma GPU virtual do 3DS.
+- **Python:** ferramentas de análise, geração auxiliar e testes de desenvolvimento; não será dependência de execução do jogo.
+- **Windows/Linux x86-64:** primeiros alvos. CMake + Ninja organizarão o build; MSVC no Windows e GCC/Clang no Linux.
 
-## Direção do porte nativo
+A engine será um runtime próprio em C++ sobre SDL3 e Vulkan. Godot, Unity e Unreal não foram escolhidas como base: nenhuma recompila por si só o código ARM/Thumb do jogo nem resolve o ABI, os módulos e os serviços de sistema que esse código exige.
 
-**Arquitetura escolhida:** runtime/engine próprio em C++20, SDL3 para janela/entrada/áudio e Vulkan para renderização de PC. O código recompilado será gerado em C e compilado com o toolchain nativo (MSVC no Windows; GCC/Clang no Linux). Python permanece restrito a ferramentas e testes de desenvolvimento.
+**Restrições obrigatórias:** sem emulador, interpretação ARM/Thumb, JIT ou fallback interpretado. Código não suportado deve bloquear a tradução/execução do caminho correspondente. A prioridade é primeiro obter execução funcional; otimização de desempenho vem depois.
 
-Não usaremos emulador 3DS, intérprete ARM/Thumb, JIT ou fallback interpretado. Instruções ou serviços sem implementação validada bloquearão a compilação ou a execução do caminho correspondente. A prioridade inicial é demonstrar execução funcional, não otimizar desempenho.
+A escolha de SDL3/Vulkan é arquitetural, ainda não uma dependência já integrada ao build. A versão inicial do SDL a avaliar e fixar é 3.4.18. Veja as [decisões e marcos técnicos](docs/NATIVE_PORT_DIRECTION.md) e a [arquitetura do runtime](docs/ARCHITECTURE.md).
 
-- [Decisão técnica, linguagens e marcos N1–N3](docs/NATIVE_PORT_DIRECTION.md)
-- [Arquitetura do runtime](docs/ARCHITECTURE.md)
-- [Roadmap executável](docs/ROADMAP.md)
+## O que existe hoje
 
-SDL3 e Vulkan foram escolhidos como base proposta e ainda precisam ser incorporados ao build com versões/licenças registradas; isso não significa que o runtime já esteja implementado.
+- **POC-001 ARM A32 → C:** tradutor experimental de um subconjunto sintético, com operações aritméticas/lógicas limitadas, predicação e flags NZCV. Não é um recompilador ARM geral. [Especificação e limites](docs/POC_001_SPEC.md).
+- **POC-002 Thumb-16 → C:** tradutor experimental de um subconjunto Thumb-16 sintético. Não cobre todas as instruções usadas pelo jogo. [Especificação](docs/THUMB_POC_002.md).
+- **Intake do alvo:** perfis de Ultra Sun/Ultra Moon e verificação de metadados/segmentos em entradas locais. [Guia](docs/GAME_TARGET_INTAKE.md).
+- **Inspeção de código:** inspeção explícita de intervalos ARM/Thumb e anotações conservadoras de fluxo de controle, memória e efeitos de registradores. [Guia](docs/CODE_RANGE_INSPECTION.md).
+- **Contrato de função candidata:** validador estático para comparar efeitos observados com um contrato declarado. Ele não prova equivalência. [Guia](docs/FUNCTION_CONTRACT.md).
+- **Pesquisa e auditoria de referências:** fontes consultadas e limitações de reutilização. [Pesquisa técnica](docs/CODEBASE_RESEARCH.md) e [auditoria](docs/AUDIT.md).
 
-## Estado atual verificável
+As POCs testam fixtures sintéticas e partes de código C gerado. Nenhum arquivo real de código de Ultra Sun/Ultra Moon foi validado pela CI descrita aqui; nenhum jogo foi iniciado pelo runtime deste projeto. Os resultados históricos publicados estão ligados a commits e workflows específicos e **não devem ser interpretados como prova de que o jogo funciona**.
 
-- Existem ferramentas locais para conferir metadados do ExHeader e inspecionar intervalos ARM/Thumb explicitamente selecionados, incluindo fluxo de controle candidato, transferências de memória A32, incluindo cargas/armazenamentos condicionais, e efeitos sintáticos conservadores de registradores/flags para operações com shift imediato e predicação EQ..LE. Elas não fazem descoberta automática de funções nem leem valores de memória durante a inspeção.
-- Este conjunto de documentos registra uma auditoria documental dos quatro projetos de referência listados abaixo. Os testes reportados por esses projetos foram lidos em suas documentações, mas **não foram executados independentemente por este repositório**.
-- A POC-001 e a POC-002 exercitam subconjuntos sintéticos limitados. A execução integral mais recente do snapshot auditado passou em 318 testes, a matriz diferencial aritmética passou em 96/96 e o verificador de segurança passou no [workflow 40217083770](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40217083770). Esses resultados não são testes de jogo e não demonstram equivalência com os executáveis originais.
-- O arquivo **LICENSE** já existia no repositório inicial e contém o texto padrão da GNU GPL versão 3. Sua procedência, autoria e abrangência não estão documentadas. Por isso, não se deve interpretar esse arquivo como confirmação de que todo conteúdo presente ou futuro pode ser licenciado pelo mantenedor. Veja [Legal e propriedade intelectual](docs/LEGAL_AND_IP.md).
-- Nenhuma ROM, dump, firmware, chave, executável ou recurso proprietário deve entrar no Git, em issues, releases ou CI.
+## Próximos marcos
 
-## Jogos-alvo
+1. **N1 — Pipeline nativo:** recompilar uma sequência sintética em C, compilar e executar como binário nativo no Windows e no Linux, com oráculo independente e sem fallback para interpretação.
+2. **N2 — Primeira função real:** selecionar localmente uma função autorizada, confirmar estado ARM/Thumb e contrato, recompilar e validar os efeitos observáveis sem publicar bytes nem relatórios proprietários.
+3. **N3 — Primeiro caminho do jogo:** ligar unidades reais ao runtime C++ e implementar apenas os serviços comprovadamente necessários ao primeiro caminho funcional.
+4. Depois: ampliar gráficos, áudio, entrada, salvamentos, progressão e estabilidade. Medir e otimizar desempenho somente após existir um caminho real de execução.
+5. Validar Ultra Moon separadamente; não presumir compatibilidade total com base em Ultra Sun.
 
-| Jogo | Objetivo | Estado neste projeto |
-| --- | --- | --- |
-| Pokémon Ultra Sun | Investigar uma porta nativa para Windows | Perfil de alvo e inspeção estática; nenhuma porta implementada |
-| Pokémon Ultra Moon | Adaptar resultados comprovados e validar diferenças | Perfil de alvo e inspeção estática; nenhuma porta implementada |
+O roteiro detalhado e os critérios de conclusão estão em [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Projetos de referência
+## Testes e desenvolvimento local
 
-A avaliação e os limites de reutilização estão em [docs/AUDIT.md](docs/AUDIT.md).
-
-- [UltraSunnyMoon](https://github.com/tylergraydev/UltraSunnyMoon) — pesquisa e reconstrução de Pokémon Ultra Sun; seu estado documentado ainda exige um ambiente de 3DS para executar o jogo reconstruído.
-- [3dsrecomp](https://github.com/fearkov/3dsrecomp) — recompilador estático de código ARM/Thumb para C, projetado para funcionar com Zakuro.
-- [Zakuro](https://github.com/fearkov/zakuro) — emulador HLE do Nintendo 3DS que usa recompilação antecipada e interpretação como fallback.
-- [PokéMoon](https://github.com/gradenGnostic/pokemoon) — reconstrução de Pokémon Moon e um alvo separado de runtime para PC; não é uma porta pronta de Ultra Moon.
-
-Esses links são fontes de estudo, não dependências aprovadas para incorporação. Não copiamos repositórios completos. Antes de reutilizar código, é obrigatório verificar licença, commit de origem, autores, dependências, avisos e procedência.
-
-## Aviso de independência
-
-PokeUltrarecomp é um projeto independente de pesquisa e fãs. Não é afiliado, patrocinado, autorizado ou endossado pela Nintendo, GAME FREAK, Creatures Inc. ou The Pokémon Company. Pokémon, os títulos dos jogos, personagens e demais propriedades relacionadas pertencem aos respectivos titulares.
-
-Esse aviso não é autorização, não concede direitos e não oferece imunidade contra reclamações. Consulte [docs/LEGAL_AND_IP.md](docs/LEGAL_AND_IP.md).
-
-## Roadmap
-
-O plano executável está em [docs/ROADMAP.md](docs/ROADMAP.md). A arquitetura proposta — ainda não implementada — está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Registro de ferramentas e testes reproduzíveis: [docs/BUILD_NOTES.md](docs/BUILD_NOTES.md).
-
-As prioridades técnicas são:
-
-1. Manter a auditoria de licença e a segurança de dados.
-2. Fechar o pipeline de recompilação estática com rejeição explícita de instruções sem suporte.
-3. Compilar e executar uma unidade de código gerado como binário nativo em Windows e Linux, usando fixtures sintéticas e validação independente.
-4. Recompilar e validar localmente uma primeira função real de um alvo autorizado, sem publicar entradas ou saídas derivadas.
-5. Integrar a primeira função real ao runtime C++ nativo e implementar somente os serviços comprovadamente necessários.
-6. Construir o caminho gráfico/áudio/input nativo sobre Vulkan/SDL3, sem modelar hardware de 3DS.
-7. Ampliar os caminhos de jogo, validar salvamentos/progressão e só então medir ou otimizar desempenho.
-8. Validar Ultra Moon separadamente.
-
-## Primeira verificação reproduzível
-
-A primeira tarefa de teste está documentada em [docs/REFERENCE_TEST_001.md](docs/REFERENCE_TEST_001.md) e usa um script PowerShell local. O script executa testes sintéticos do parser de overrides do 3dsrecomp numa revisão fixada, sem arquivos de jogo e sem depender do GitHub Actions. O teste ainda não foi executado neste ambiente porque Rust/Cargo não estão instalados. Mesmo aprovado, demonstra apenas o comportamento do parser, não recompilação ou execução de qualquer jogo.
-
-## Verificação local do repositório
-
-Foi adicionado um verificador sem dependências externas para ajudar a detectar caminhos/arquivos com aparência de conteúdo de jogo ou dados privados e links Markdown relativos quebrados:
-
-    python tools/check_repository_safety.py
-    python -m unittest discover -s tests -v
-
-É necessário Python 3.10 ou mais recente e Git. O verificador analisa os blobs preparados no índice Git, as versões atuais dos arquivos na pasta de trabalho e arquivos não ignorados ainda não rastreados. Isso permite detectar diferenças entre o que será commitado e o que está no disco. Ele não examina o histórico inteiro, arquivos ignorados não rastreados, o conteúdo semântico de arquivos binários ou a situação jurídica das fontes. Não substitui revisão do diff, nem comprova que a porta funciona. O uso de `.gitignore` continua sendo uma barreira adicional, não uma garantia.
-
-## Pesquisa de bases de código
-
-Foi criada uma pesquisa de **nove repositórios de código** relacionados a recompilação ARM, emulação, decodificação e validação: [docs/CODEBASE_RESEARCH.md](docs/CODEBASE_RESEARCH.md). Inclui observações técnicas e notas de licença para distinguir referências de código realmente autorizadas para reutilização. Nenhum código de terceiro foi copiado.
-
-## Prova de conceito sintética ARM A32 → C
-
-Foi adicionada a [POC-001](docs/POC_001_SPEC.md), uma demonstração original e restrita que traduz fixtures ARM A32 sintéticas para C. As instruções de dados suportadas aceitam predicação pelas 14 condições padrão de ARM (EQ a LE), assim como os desvios `B`. `ADDS`, `SUBS`, `CMN` e `CMP` imediatos atualizam NZCV; instruções predicadas que não passam na condição preservam registradores e flags. O estado de entrada NZCV é selecionado na geração por `translate(..., initial_nzcv=...)` ou `--initial-nzcv`. A matriz nativa cobre 448 combinações de desvio/predicação (14 condições × 16 estados NZCV) com uma tabela de condições independente, além dos 96 casos aritméticos da matriz diferencial. O tradutor agora aceita desvios para trás/autoalvo **somente** quando é fornecido um orçamento explícito entre 1 e 100.000 instruções executadas (`max_execution_steps` ou `--max-execution-steps`); o C gerado relata término normal (status 0) ou esgotamento do orçamento (status 1) e a contagem de passos. Sem orçamento, a API original permanece igual e laços continuam rejeitados.
-
-A validação integral mais recente passou em **260 testes, sem falhas ou ignorados**, no commit `0bdedf90cc90ad2d8e78f4e51f716060f64c393a`, em Ubuntu com Python 3.14.4 e GCC 15.2.0. A matriz diferencial registou 96/96 correspondências; a matriz Thumb valida 224 combinações (14 condições × 16 estados NZCV); o verificador de segurança passou após analisar 43 caminhos indexados. [Registro da execução integral](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40199260690). Isso valida fixtures sintéticas, anotação sintática e intake de metadados — não a execução do jogo nem compatibilidade com Pokémon Ultra Sun/Ultra Moon.
+Requisitos atuais das ferramentas Python: Python 3.10+ e Git. Na raiz do repositório, os comandos documentados incluem:
 
     python tools/arm_subset_poc.py
     python tools/arm_differential_poc.py
     python -m unittest discover -s tests -v
+    python tools/check_repository_safety.py
 
-A POC traduz a fixture padrão de dez palavras, que usa `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC`, `MVN` e `BX LR`. O subconjunto ainda não inclui `BL`, saltos para trás sem orçamento, memória, funções reais, o CPSR completo, Thumb, formas lógicas com bit S ou shifter-carry. Nada disso lê ROMs nem dados de jogo, constitui um recompilador geral, demonstra suporte a Windows ou representa uma porta de Pokémon. Veja [escopo, comandos e limites](docs/POC_001_SPEC.md).
+A cobertura de cada ferramenta está descrita na respectiva documentação. O tradutor deve falhar de forma explícita para instruções não suportadas. O verificador de segurança ajuda a detectar caminhos/arquivos suspeitos e links Markdown quebrados, mas não examina o histórico inteiro, conteúdo semântico de todo binário nem questões jurídicas. O uso de .gitignore não é uma garantia.
 
-## Análise sintática de efeitos de registradores
+O pipeline CMake/Ninja com SDL3/Vulkan será introduzido como parte do marco N1 e deverá ser validado em Windows e Linux antes de ser considerado concluído. Não alegamos que o build nativo integrado já exista.
 
-A inspeção de intervalo adiciona agora um campo `dataflow` que resume registradores e flags observados como lidos/escritos e assinala efeitos de memória e transferências de controle. O resultado é conservador: chamadas e instruções desconhecidas ficam explicitamente incompletas. Não é análise de vivacidade, execução simbólica, ABI ou prova de que uma faixa é uma função.
+## Uso de entradas locais e propriedade intelectual
 
-Consulte [tools/arm_thumb_effects.py](tools/arm_thumb_effects.py), [testes sintéticos](tests/test_arm_thumb_effects.py) e a fase 5F do [roadmap](docs/ROADMAP.md).
+Não adicionar a commits, issues, pull requests, releases, GitHub Pages, CI ou artefatos:
+- ROMs, dumps, firmware, chaves ou executáveis dos jogos;
+- modelos, texturas, mapas, sons, músicas, fontes ou quaisquer recursos proprietários extraídos;
+- código ou arquivos derivados de entradas proprietárias sem direitos de distribuição verificados;
+- tokens, credenciais, caminhos pessoais ou relatórios sensíveis.
 
-## Preparação dos executáveis de Ultra Sun / Ultra Moon
+A documentação de entrada local destina-se apenas ao ambiente do mantenedor. Não presumimos que possuir uma cópia do jogo autorize automaticamente extração, modificação, recompilação ou distribuição. Leia [docs/LEGAL_AND_IP.md](docs/LEGAL_AND_IP.md) antes de qualquer trabalho que dependa de arquivos do jogo.
 
-A POC-002 cobre o grupo Thumb-1 de processamento entre registradores, shifts, load/store simples, transferências múltiplas e cálculo de endereços. O inspetor A32/Thumb identifica chamadas `BL`/`BLX`, `BX Rm`, literais PC-relativos e prólogos/epílogos. A32 LDR/STR word/byte já cobre offset imediato e offset em registrador com `LSL`/`LSR`/`ASR`/`ROR`/`RRX`; o grupo extra também cobre `LDRH`/`STRH`/`LDRSB`/`LDRSH` com offset imediato ou em registrador. O relatório descreve largura, sinal, base, offset, shift e writeback, sem resolver endereços efetivos nem ler memória. As variantes por registrador especificado, PC/base inválido, halfword literals e modos de transferência não cobertos continuam desconhecidas. A suíte integral passou em **277 testes**, sem falhas nem ignorados, no [workflow](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40201786274). Isso valida fixtures sintéticas; ainda não foi analisado um `.code` real de Ultra Sun/Ultra Moon.
+O arquivo LICENSE preexistente necessita de revisão de procedência e abrangência; não o interprete como autorização para licenciar código ou recursos de terceiros. Veja também [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-O inspetor de intervalos também produz um grafo candidato de fluxo de controle: blocos básicos, arestas de branches condicionais, transferências externas e avisos para instruções desconhecidas e sobreposição com literais. No estado Thumb, também identifica as formas de load/store por registrador/imediato/SP, largura, extensão de sinal e base/offset; ADR fornece alvo PC-relativo alinhado, e ADD/SUB SP informa o delta da pilha. Os valores dos registradores e da memória nunca são inventados nem lidos pelo inspetor. Isso ainda é anotação estática limitada ao intervalo escolhido, não descoberta automática de funções nem prova de execução do jogo.
+## Independência
 
-
-Foi iniciado um caminho específico para os dois alvos: os perfis `targets/pokemon_ultra_sun.json` e `targets/pokemon_ultra_moon.json` e a ferramenta `tools/inspect_3ds_target.py` conferem metadados do ExHeader e de `.code` descomprimido fornecido localmente. O relatório lê o Program ID de 64 bits embutido no ACI, confere-o contra os perfis dos dois jogos, inclui offsets no `.code` para `.text`, `.rodata` e `.data`, stack/BSS e hashes SHA-256 locais. Exige que o `.code` descomprimido corresponda exatamente ao layout page-padded declarado pelo ExHeader; IDs desconhecidos e revisões não confirmadas são tratados conservadoramente. Também apresenta candidatos de revisão para dois tamanhos de `.code` registrados numa referência comunitária, sempre como correspondência por tamanho — não como prova de versão ou autenticidade. Os testes usam ExHeaders e bytes totalmente sintéticos; a CI não lê nem exige ROM, dump ou arquivo extraído dos jogos.
-
-Exemplo (substitua por caminhos locais de entradas do mesmo executável):
-
-    python tools/inspect_3ds_target.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --title-id 00040000001B5000
-
-Esta é uma preparação real de entrada para os alvos, **não** um desassemblador, recompilador ou runtime. Veja [Preparação de executáveis de Ultra Sun / Ultra Moon](docs/GAME_TARGET_INTAKE.md) para pré-requisitos, formato e limites.
-
-## POC-002 — primeiro subconjunto Thumb-16 → C
-
-Foi adicionada a [POC-002](docs/THUMB_POC_002.md), um tradutor Thumb-16 separado da POC ARM A32. O subconjunto cobre `MOVS`, `ADDS`, `SUBS`, `CMP` imediatos, desvios condicionais EQ..LE, desvio incondicional e `BX LR`. A fixture padrão retorna 7 e NZCV=6; a matriz nativa avalia 224 combinações (14 condições × 16 estados NZCV) contra uma tabela independente. Laços para trás exigem orçamento explícito de execução. Essa é uma segunda prova sintética, não um disassembler ou uma cobertura das instruções dos jogos.
-
-## Inspeção local de um intervalo ARM/Thumb
-
-A ferramenta `tools/inspect_3ds_code_range.py` recebe endereço virtual, estado ARM/Thumb e quantidade explícita de instruções e confere o intervalo contra o `.text` declarado no ExHeader. Em A32, reconhece chamada direta/indireta, `LDR` literal, transferências de múltiplos registradores e loads/stores word/byte/halfword/signed-byte com offset imediato ou em registrador, modos pre/post-index, writeback e shift de offset permitido. A semântica de endereço permanece estática: não se presume valor de registrador nem se lê memória; load de PC é apenas anotado como salto indireto. Transferências não cobertas continuam desconhecidas. Em Thumb, o par `BL`/`BLX` imediato ARMv6K é decodificado como chamada de 4 bytes; os demais pares Thumb de 32 bits continuam agrupados como dados brutos, sem decoder Thumb-2 geral. A suíte integral passou em **277 testes** ([run 40201786274](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40201786274)). O relatório contém encodings de código local e deve permanecer privado; use `--report` somente fora do repositório. Veja [guia de intervalos locais](docs/CODE_RANGE_INSPECTION.md). Para confrontar um contrato de função candidata, declarado pelo mantenedor, com o relatório local, veja o [guia de contratos](docs/FUNCTION_CONTRACT.md); o resultado nunca equivale a validação.
-
-Exemplo (os caminhos e o intervalo abaixo são ilustrativos; confirme antes o estado ARM/Thumb da região local):
-
-    python tools/inspect_3ds_code_range.py --target ultra-sun --exheader /local/exheader.bin --code /local/code.bin --state thumb --start-address 0x00100000 --instruction-count 8 --title-id 00040000001B5000
-
-Esta ferramenta fornece anotação sintática do intervalo, não uma descompilação, código C executável nem prova de equivalência. O ABI real do jogo e o estado de registradores ainda não são modelados.
-
-## Execução nativa sem emulação
-
-O produto final terá apenas código nativo da plataforma: unidades recompiladas estaticamente e serviços C++ implementados para PC. Não haverá emulador de Nintendo 3DS, interpretador ARM/Thumb, JIT ou fallback para código não recompilado. Esta regra também vale para testes e CI: os resultados devem usar fixtures sintéticas, referências independentes baseadas na especificação e funções compiladas nativamente.
-
-O runtime ainda não existe e nenhum executável real de Ultra Sun/Ultra Moon foi validado por este repositório. As ferramentas atuais são protótipos de inspeção/recompilação limitada. Ver [Direção técnica do porte nativo](docs/NATIVE_PORT_DIRECTION.md) para os critérios de conclusão.
-## Como acompanhar o progresso
-
-Use GitHub Issues para pesquisas ou problemas com escopo claro. Registre sempre o commit e as versões exatas das ferramentas, comandos executados, resultados observados, logs redigidos e critérios de aceitação. Diferencie resultados reproduzidos de resultados apenas relatados em documentação externa.
-
-Marcos técnicos só podem ser considerados concluídos quando os critérios de aceitação correspondentes em [docs/ROADMAP.md](docs/ROADMAP.md) estiverem demonstrados. Não use percentuais especulativos de conclusão.
-
-## Critérios mínimos de evidência
-
-- **Ferramenta compilada:** o binário da ferramenta foi gerado; isso não demonstra que o jogo foi reconstruído ou executado.
-- **Código reconstruído compilado:** uma unidade de código reconstruída foi compilada e sua origem, teste e resultado foram registrados.
-- **Executável híbrido:** ainda depende de emulador, intérprete, módulos ou serviços de compatibilidade.
-- **Runtime próprio para Windows:** o processo do jogo usa uma camada de runtime de PC identificada e documentada, sem depender de um emulador 3DS para executar os caminhos alegados.
-- **Porta nativa de uma parte do jogo:** uma parte delimitada da lógica do jogo funciona no runtime de PC, com recursos de teste permitidos e evidência reproduzível.
-- **Jogo completo e estável:** cobertura documentada do jogo-alvo e dos sistemas necessários, com testes de progressão, salvamento, entrada, áudio, gráficos, estabilidade e desempenho em uma matriz explícita de ambientes.
-
-Nenhum desses níveis deve ser inferido apenas a partir de uma captura de tela, de uma compilação bem-sucedida ou de uma porcentagem de instruções recompiladas.
+PokeUltrarecomp é um projeto independente de pesquisa e fãs. Não é afiliado, patrocinado, autorizado ou endossado pela Nintendo, GAME FREAK, Creatures Inc. ou The Pokémon Company. Pokémon e os títulos dos jogos pertencem aos respectivos titulares. Este aviso não concede direitos nem garante imunidade contra reclamações.
