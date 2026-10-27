@@ -442,9 +442,9 @@ def run_ghidra_function_census(
         "-scriptPath", str(ROOT / "tools" / "ghidra_scripts"),
         "-log", str(app_log_path),
         "-scriptlog", str(script_log_path),
+        "-deleteProject",
         "-postScript", "FunctionCensusSummary.java",
         str(summary_path), f"0x{text_start:08X}", str(text_size),
-        "-deleteProject",
     ]
     try:
         with log_path.open("wb") as log:
