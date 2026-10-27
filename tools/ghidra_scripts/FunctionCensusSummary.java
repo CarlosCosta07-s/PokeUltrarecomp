@@ -104,7 +104,7 @@ public class FunctionCensusSummary extends GhidraScript {
                 continue;
             }
             AddressSetView body = function.getBody();
-            if (body == null || body.getNumAddresses().signum() == 0) {
+            if (body == null || body.getNumAddresses() == 0L) {
                 continue;
             }
             if (!inRange(body.getMinAddress(), textStart, textEnd) ||
@@ -113,7 +113,7 @@ public class FunctionCensusSummary extends GhidraScript {
                 continue;
             }
 
-            long bodySize = body.getNumAddresses().longValue();
+            long bodySize = body.getNumAddresses();
             boolean hasCall = false;
             boolean hasReturn = false;
             long instructionCount = 0;
