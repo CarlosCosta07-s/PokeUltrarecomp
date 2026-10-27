@@ -92,50 +92,76 @@ def download(source_url: str, destination: Path) -> int:
     return size
 
 
-def process(source_url: str, target: str, format_name: str, ctrtool: Path, index: int) -> dict:
+def _locate_code_file(exefs: Path) -> Path:
+    candidates = [
+        p for p in exefs.rglob("*")
+        if p.is_file() and p.name.lower().lstrip(".") in {"code", "code.bin"}
+    ]
+    if len(candidates) != 1:
+        raise IntakeError("CTRTool did not produce exactly one ExeFS code file")
+    return candidates[0]
+
+
+def extract_and_inspect(
+    image_path: Path, target: str, format_name: str, ctrtool_command: list[str],
+    work_directory: Path, *, ncch_index: int = 0,
+) -> dict:
     fmt, kind = normalize_format(format_name)
+    if not 0 <= ncch_index <= 65535:
+        raise IntakeError("partition/content index must be from 0 to 65535")
+    work = work_directory.resolve()
+    if not work.is_relative_to(Path(tempfile.gettempdir()).resolve()) or work.is_relative_to(ROOT.resolve()):
+        raise IntakeError("working directory must be outside the repository and inside system temporary storage")
+    if not image_path.is_file():
+        raise IntakeError("input image does not exist")
+    work.mkdir(parents=True, exist_ok=True)
+    exefs = work / "exefs"
+    exefs.mkdir(exist_ok=True)
+    exheader = work / "exheader.bin"
+    try:
+        run = subprocess.run(
+            [*ctrtool_command, f"--intype={kind}", f"--ncch={ncch_index}",
+             f"--exheader={exheader}", f"--exefsdir={exefs}", str(image_path)],
+            cwd=work, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=600, check=False,
+        )
+    except Exception as exc:
+        raise IntakeError("CTRTool failed or timed out; no files were published") from exc
+    if run.returncode != 0:
+        raise IntakeError(
+            "CTRTool could not extract this partition; it may be encrypted, malformed, or require keys not provided by this workflow"
+        )
+    code_path = _locate_code_file(exefs)
+    try:
+        from inspect_3ds_target import inspect_target
+        report = inspect_target(target, exheader, code_path)
+    except Exception as exc:
+        raise IntakeError("target metadata/segment validation failed; check game version and decompression state") from exc
+    text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
+    return {
+        "status": "pass",
+        "target": target,
+        "format": "." + fmt,
+        "text_size_bytes": int(text_segment["declared_size_bytes"]),
+        "decompressed_code_size_bytes": int(report["inputs"]["decompressed_code"]["size_bytes"]),
+        "no_game_bytes_or_disassembly_uploaded": True,
+    }
+
+
+def process(source_url: str, target: str, format_name: str, ctrtool: Path, index: int) -> dict:
+    fmt, _ = normalize_format(format_name)
     if index < 0 or index > 65535:
         raise IntakeError("partition/content index must be from 0 to 65535")
     with tempfile.TemporaryDirectory(prefix="pokeultra-intake-") as tmp:
         work = Path(tmp).resolve()
         source = work / ("input." + fmt)
-        download(source_url, source)
-        output = work / "extract"
-        exefs = output / "exefs"
-        exefs.mkdir(parents=True)
-        exheader = output / "exheader.bin"
-        try:
-            run = subprocess.run(
-                [str(ctrtool.resolve()), f"--intype={kind}", f"--ncch={index}",
-                 f"--exheader={exheader}", f"--exefsdir={exefs}", str(source)],
-                cwd=work, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=600, check=False,
-            )
-        except Exception as exc:
-            raise IntakeError("CTRTool failed or timed out; no files were published") from exc
-        if run.returncode != 0:
-            raise IntakeError(
-                "CTRTool could not extract this partition; the image may be encrypted, malformed, or require keys not provided by this workflow"
-            )
-        matches = [
-            p for p in exefs.rglob("*")
-            if p.is_file() and p.name.lower().lstrip(".") in {"code", "code.bin"}
-        ]
-        if len(matches) != 1:
-            raise IntakeError("CTRTool did not produce exactly one ExeFS code file")
-        try:
-            from inspect_3ds_target import inspect_target
-            report = inspect_target(target, exheader, matches[0])
-        except Exception as exc:
-            raise IntakeError("target metadata/segment validation failed; check game version and decompression state") from exc
-        text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
-        return {
-            "status": "pass",
-            "target": target,
-            "format": "." + fmt,
-            "text_segment_size": int(text_segment["declared_size_bytes"]),
-            "game_bytes_or_disassembly_uploaded": False,
-        }
+        size = download(source_url, source)
+        result = extract_and_inspect(
+            source, target, fmt, [str(ctrtool.resolve())],
+            work / "extract", ncch_index=index,
+        )
+        result["downloaded_bytes"] = size
+        return result
 
 
 def main() -> int:
