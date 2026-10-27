@@ -381,7 +381,7 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
     compiler_errors = [
         line for line in lines
         if re.search(
-            r"(?:\\.java:\\d+:\\s*error:|error:\\s*cannot find symbol|"
+            r"(?:\.java:\d+:\s*error:|error:\s*cannot find symbol|"
             r"cannot find symbol|script compilation error|failed to compile|"
             r"compilation failed|javac:)",
             line, re.IGNORECASE,
@@ -400,7 +400,7 @@ def sanitized_ghidra_failure_hint(log_path: Path) -> str:
     line = re.sub(r"\b[a-f0-9]{8,}\b", "<hex>", line, flags=re.IGNORECASE)
     line = re.sub(r"(?:(?:[A-Za-z]:)?[\\/])[^\s:]+", "<path>", line)
     line = re.sub(r"(?i)[A-Za-z0-9_.-]+\.(?:elf|cci|cia|3ds|code|bin)", "<private-file>", line)
-    line = re.sub(r"\\s+", " ", line).strip()
+    line = re.sub(r"\s+", " ", line).strip()
     line = re.sub(r"[^A-Za-z0-9 _.,:;()\[\]<>/'=+?-]", "?", line)
     return line[:180] or "diagnostic-redacted"
 
@@ -463,7 +463,7 @@ def run_ghidra_function_census(
         with log_path.open("ab") as combined:
             for extra_log in (app_log_path, script_log_path):
                 if extra_log.is_file():
-                    combined.write(b"\\n--- private Ghidra diagnostic log ---\\n")
+                    combined.write(b"\n--- private Ghidra diagnostic log ---\n")
                     combined.write(extra_log.read_bytes())
     except OSError:
         pass
