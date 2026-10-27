@@ -111,6 +111,26 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual("headless-analysis", intake.classify_ghidra_failure(log_path))
         self.assertNotIn("0x00101234", intake.classify_ghidra_failure(log_path))
 
+    def test_ghidra_missing_summary_emits_only_redacted_diagnostic(self):
+        fake_headless = self.work / "fake_no_summary.py"
+        fake_headless.write_text(
+            "import sys\\n"
+            "print('Ghidra failed while reading /tmp/private-analysis.elf at 0x00123456')\\n",
+            encoding="utf-8",
+        )
+        text_segment = {"virtual_address": 0x00100000, "declared_size_bytes": 128}
+        with self.assertRaises(intake.IntakeError) as raised:
+            intake.run_ghidra_function_census(
+                fake_headless, "ultra-sun", self.header_fixture, self.code_fixture,
+                text_segment, self.work / "ghidra-no-summary",
+            )
+        message = str(raised.exception)
+        self.assertIn("no readable summary", message)
+        self.assertIn("diagnostic:", message)
+        self.assertNotIn("0x00123456", message)
+        self.assertNotIn("private-analysis.elf", message)
+        self.assertNotIn("/tmp/", message)
+
     def test_runs_ghidra_in_precreated_private_project_directory(self):
         fake_headless = self.work / "fake_analyzeHeadless.py"
         safe_fixture = self._valid_ghidra_summary()
