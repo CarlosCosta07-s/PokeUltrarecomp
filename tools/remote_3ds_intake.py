@@ -419,8 +419,11 @@ def run_ghidra_function_census(
 
     text_start = int(text_segment["virtual_address"])
     text_size = int(text_segment["declared_size_bytes"])
+    # Permit a Python-script headless shim for cross-platform tests while
+    # keeping real Ghidra binaries launched directly in production.
+    launcher = [sys.executable, str(executable)] if executable.suffix.casefold() == ".py" else [str(executable)]
     command = [
-        str(executable), str(project_path),
+        *launcher, str(project_path),
         "ultra-sun-private-census" if target == "ultra-sun" else "ultra-moon-private-census",
         "-import", str(elf_path), "-overwrite",
         "-scriptPath", str(ROOT / ".github" / "ghidra_scripts"),
