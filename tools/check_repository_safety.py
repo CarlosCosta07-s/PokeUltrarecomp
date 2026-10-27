@@ -62,6 +62,8 @@ REQUIRED_FILES = (
     "tools/requirements-analysis.txt",
     "tools/smoke_capstone_integration.py",
     "tools/remote_3ds_intake.py",
+    "tools/summarize_arm_function_candidates.py",
+    "tests/test_summarize_arm_function_candidates.py",
     "tests/test_remote_3ds_intake.py",
     ".github/workflows/remote-3ds-intake.yml",
     "docs/REMOTE_GAME_ANALYSIS.md",
