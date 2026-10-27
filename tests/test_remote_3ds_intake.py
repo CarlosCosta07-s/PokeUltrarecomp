@@ -146,6 +146,24 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def test_runs_ghidra_in_precreated_private_project_directory(self):
         fake_headless = self.work / "fake_analyzeHeadless.py"
         safe_fixture = self._valid_ghidra_summary()
+        candidate_fixture = {
+            "schema_version": 1,
+            "omitted_candidate_count": 0,
+            "candidates": [
+                {
+                    "entry_address": "0x00101000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE3A00001", "0xE12FFF1E"],
+                },
+                {
+                    "entry_address": "0x00102000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE5900000", "0xE12FFF1E"],
+                },
+            ],
+        }
         fake_headless.write_text(
             "#!/usr/bin/env python3\n"
             "import json, sys\nfrom pathlib import Path\n"
@@ -154,10 +172,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
             "if not project.is_dir(): raise SystemExit(23)\n"
             "post=args.index('-postScript')\n"
             "summary=Path(args[post+2])\n"
-            "size=int(args[post+4])\n"
+            "candidate_sidecar=Path(args[post+3])\n"
+            "size=int(args[post+5])\n"
             f"data={safe_fixture!r}\n"
+            f"candidate_data={candidate_fixture!r}\n"
             "data['text_size_bytes']=size\n"
-            "summary.write_text(json.dumps(data), encoding='utf-8')\n",
+            "summary.write_text(json.dumps(data), encoding='utf-8')\n"
+            "candidate_sidecar.write_text(json.dumps(candidate_data), encoding='utf-8')\n",
             encoding="utf-8",
         )
         text_segment = {"virtual_address": 0x00100000, "declared_size_bytes": 128}
@@ -167,6 +188,11 @@ class Remote3DSIntakeTests(unittest.TestCase):
         )
         self.assertEqual("pass", result["status"])
         self.assertEqual(10, result["functions_with_entry_inside_text"])
+        screen = result["candidate_translation_screen"]
+        self.assertEqual(2, screen["private_candidates_screened"])
+        self.assertEqual(1, screen["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertFalse(screen["native_semantic_equivalence_verified"])
+        self.assertFalse(screen["addresses_or_instruction_words_emitted"])
         self.assertTrue((self.work / "ghidra-run" / "ghidra-project").is_dir())
 
     def test_sanitizes_aggregate_ghidra_summary(self):
@@ -255,6 +281,77 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertIn("body.getNumAddresses() == 0L", source)
         self.assertIn("long bodySize = body.getNumAddresses();", source)
         self.assertNotRegex(source, r"getNumAddresses\(\)\.(?:signum|longValue)")
+
+    def test_private_ghidra_candidate_screen_rejects_malformed_sidecar(self):
+        sidecar = self.work / "bad-private-ghidra-candidates.json"
+        sidecar.write_text(
+            json.dumps({
+                "schema_version": 1,
+                "omitted_candidate_count": 0,
+                "addresses": ["0x00101000"],
+                "candidates": [],
+            }),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(intake.IntakeError, "invalid schema"):
+            intake.screen_private_ghidra_candidates(sidecar)
+
+    def test_private_ghidra_candidate_screen_uses_translator_and_syntax_checks_only(self):
+        from unittest.mock import patch
+
+        sidecar = self.work / "private-ghidra-candidates.json"
+        sidecar.write_text(json.dumps({
+            "schema_version": 1,
+            "omitted_candidate_count": 4,
+            "candidates": [
+                {
+                    "entry_address": "0x00101000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE3A00001", "0xE12FFF1E"],
+                },
+                {
+                    "entry_address": "0x00102000",
+                    "body_size_bytes": 8,
+                    "instruction_count": 2,
+                    "words": ["0xE5900000", "0xE12FFF1E"],
+                },
+            ],
+        }), encoding="utf-8")
+
+        with patch.object(
+            intake.shutil, "which",
+            side_effect=lambda name: "/usr/bin/cc" if name == "cc" else None,
+        ), patch.object(
+            intake.subprocess, "run", return_value=type("Result", (), {"returncode": 0})()
+        ) as compile_run:
+            result = intake.screen_private_ghidra_candidates(sidecar)
+
+        self.assertEqual(2, result["private_candidates_screened"])
+        self.assertEqual(4, result["private_candidates_omitted_by_ghidra_cap"])
+        self.assertEqual(1, result["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual("passed", result["native_c_syntax_check"])
+        self.assertEqual(1, result["native_c_syntax_sample_count"])
+        self.assertFalse(result["native_semantic_equivalence_verified"])
+        self.assertFalse(result["function_boundaries_independently_verified"])
+        self.assertFalse(result["addresses_or_instruction_words_emitted"])
+        self.assertNotIn("0x00101000", compile_run.call_args.kwargs["input"])
+        self.assertNotIn("0x00102000", compile_run.call_args.kwargs["input"])
+
+    def test_private_ghidra_candidate_screen_rejects_invalid_candidate_words(self):
+        sidecar = self.work / "invalid-candidate-words.json"
+        sidecar.write_text(json.dumps({
+            "schema_version": 1,
+            "omitted_candidate_count": 0,
+            "candidates": [{
+                "entry_address": "0x00101000",
+                "body_size_bytes": 8,
+                "instruction_count": 2,
+                "words": ["MOV", "0xE12FFF1E"],
+            }],
+        }), encoding="utf-8")
+        with self.assertRaisesRegex(intake.IntakeError, "malformed instruction word"):
+            intake.screen_private_ghidra_candidates(sidecar)
 
     def test_google_drive_share_link_uses_gdown(self):
         from types import SimpleNamespace
