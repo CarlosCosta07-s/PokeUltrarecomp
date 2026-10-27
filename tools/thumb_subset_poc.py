@@ -42,6 +42,7 @@ SUPPORTED_NATIVE_MEMORY_OPS = frozenset((
     "ldrb_reg", "ldrsh_reg", "str_imm", "ldr_imm", "strb_imm", "ldrb_imm",
     "strh_imm", "ldrh_imm",
 ))
+SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS = frozenset(("stmia", "ldmia"))
 MEMORY_ACCESS_WIDTHS = {
     "str_reg": 4, "ldr_reg": 4, "str_imm": 4, "ldr_imm": 4,
     "strh_reg": 2, "ldrh_reg": 2, "strh_imm": 2, "ldrh_imm": 2,
@@ -367,10 +368,16 @@ def translate(
                     f"memory access ({inst[0]}) is decoded for inspection only; "
                     "the synthetic translator has no memory model"
                 )
-            if inst[0] not in SUPPORTED_NATIVE_MEMORY_OPS:
+            if inst[0] not in SUPPORTED_NATIVE_MEMORY_OPS and inst[0] not in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS:
                 raise UnsupportedThumbInstruction(
                     f"memory access ({inst[0]}) is outside the limited native memory model"
                 )
+            if inst[0] == "stmia":
+                _, base_register, register_mask = inst
+                if register_mask & (1 << base_register):
+                    raise UnsupportedThumbInstruction(
+                        "STMIA base register in the register list is unsupported by the conservative native memory model"
+                    )
             supported_memory_found = True
         if inst[0] in ADDRESS_OPS:
             raise UnsupportedThumbInstruction(
@@ -795,6 +802,57 @@ def translate(
                 else:
                     lines.append(f"        r{rd} = {loaded};")
                 lines.append("    }")
+        elif op in SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS:
+            _, rn, register_mask = inst
+            transfer_registers = [reg for reg in range(8) if register_mask & (1 << reg)]
+            transfer_bytes = len(transfer_registers) * 4
+            suffix = str(index)
+            address = f"thumb_multiple_address_{suffix}"
+            memory_offset = f"thumb_multiple_offset_{suffix}"
+            lines.append("    {")
+            lines.append(f"        const uint32_t {address} = r{rn};")
+            lines.append(f"        if (({address} & UINT32_C(3)) != 0U) goto thumb_alignment_fault;")
+            lines.append(f"        if ({address} < guest_memory_base) goto thumb_memory_fault;")
+            lines.append(f"        const uint32_t {memory_offset} = {address} - guest_memory_base;")
+            lines.append(
+                f"        if ({memory_offset} > guest_memory_size || UINT32_C({transfer_bytes}) > guest_memory_size - {memory_offset}) goto thumb_memory_fault;"
+            )
+
+            if op == "stmia":
+                # Snapshot the source registers and validate the complete transfer
+                # before touching the guest region, so a range fault is atomic.
+                for register in transfer_registers:
+                    lines.append(f"        const uint32_t thumb_stmia_r{register}_{suffix} = r{register};")
+                for register_index, register in enumerate(transfer_registers):
+                    byte_offset = register_index * 4
+                    snapshot = f"thumb_stmia_r{register}_{suffix}"
+                    for byte_index in range(4):
+                        shift = byte_index * 8
+                        offset = byte_offset + byte_index
+                        lines.append(
+                            f"        memory_bytes[{memory_offset} + UINT32_C({offset})] = "
+                            f"(uint8_t)(({snapshot} >> {shift}) & UINT32_C(0xFF));"
+                        )
+                lines.append(f"        r{rn} = (uint32_t)({address} + UINT32_C({transfer_bytes}));")
+            else:
+                # Validate the entire range before loading any destination register.
+                for register_index, register in enumerate(transfer_registers):
+                    byte_offset = register_index * 4
+                    loaded = f"thumb_ldmia_r{register}_{suffix}"
+                    parts = [
+                        f"(uint32_t)memory_bytes[{memory_offset} + UINT32_C({byte_offset})]",
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C({byte_offset + 1})] << 8)",
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C({byte_offset + 2})] << 16)",
+                        f"((uint32_t)memory_bytes[{memory_offset} + UINT32_C({byte_offset + 3})] << 24)",
+                    ]
+                    lines.append(f"        const uint32_t {loaded} = " + " | ".join(parts) + ";")
+                for register in transfer_registers:
+                    loaded = f"thumb_ldmia_r{register}_{suffix}"
+                    lines.append(f"        r{register} = {loaded};")
+                # ARMv6-M suppresses LDMIA write-back if Rn is in the list.
+                if not (register_mask & (1 << rn)):
+                    lines.append(f"        r{rn} = (uint32_t)({address} + UINT32_C({transfer_bytes}));")
+            lines.append("    }")
         elif op == "branch":
             condition = inst[1]
             target = branch_targets[index]
