@@ -87,7 +87,8 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 - [x] Expor candidatos de variante por tamanho de `.code` a partir de referência comunitária; o resultado é explicitamente heurístico e não autentica a revisão.
 - [x] Adicionar testes sintéticos de sucesso, falha, incompatibilidade de título e CLI.
 - [ ] Validar uma entrada local autorizada e ainda não modificada de cada jogo; registrar apenas relatório redigido.
-- [ ] Fazer inventário de funções ARM/Thumb sem reutilizar fontes cuja licença não está confirmada.
+- [x] Criar um inventário heurístico agregado de padrões comuns de prólogo ARM/Thumb, com saída sanitizada e testes sintéticos; isso não substitui a identificação manual de funções reais.
+- [ ] Fazer inventário de funções ARM/Thumb reais, confirmando limites/estados sem reutilizar fontes cuja licença não está confirmada.
 
 **Critério de conclusão:** preflight reproduzível em entradas locais dos dois jogos, revisão exata identificada e nenhuma entrada/extração/saída derivada publicada. A etapa atual ainda não é desassemblagem nem recompilação.
 
