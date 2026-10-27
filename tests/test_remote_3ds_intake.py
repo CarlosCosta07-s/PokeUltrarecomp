@@ -282,6 +282,19 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertIn("long bodySize = body.getNumAddresses();", source)
         self.assertNotRegex(source, r"getNumAddresses\(\)\.(?:signum|longValue)")
 
+    def test_arm_decode_rejection_categories_are_fixed_and_redacted(self):
+        cases = (
+            ("branch-with-link is unsupported: 0xEB000123", "branch-with-link"),
+            ("not a supported immediate data-processing instruction: 0xE5900000", "non-immediate-data-processing"),
+            ("flag-setting form is unsupported: 0xE1B00001", "unsupported-flag-setting-form"),
+            ("source register r9 is outside r0-r3 subset", "register-outside-r0-r3"),
+            ("only the canonical MOV immediate encoding with Rn=0 is supported", "noncanonical-mov-mvn"),
+            ("unclassified private decoder error 0x00123456", "other-decode-rejection"),
+        )
+        for message, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(expected, intake.classify_arm_decode_rejection(message))
+
     def test_private_ghidra_candidate_screen_rejects_malformed_sidecar(self):
         sidecar = self.work / "bad-private-ghidra-candidates.json"
         sidecar.write_text(
@@ -330,6 +343,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual(2, result["private_candidates_screened"])
         self.assertEqual(4, result["private_candidates_omitted_by_ghidra_cap"])
         self.assertEqual(1, result["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual(1, result["candidate_sequences_rejected_by_current_arm_subset_translator"])
+        self.assertEqual(1, result["candidate_sequences_with_instruction_decode_rejections"])
+        self.assertEqual(0, result["candidate_sequences_rejected_by_sequence_constraints"])
+        self.assertEqual(
+            {"non-immediate-data-processing": 1},
+            result["unsupported_instruction_encodings_by_family"],
+        )
         self.assertEqual("passed", result["native_c_syntax_check"])
         self.assertEqual(1, result["native_c_syntax_sample_count"])
         self.assertFalse(result["native_semantic_equivalence_verified"])
