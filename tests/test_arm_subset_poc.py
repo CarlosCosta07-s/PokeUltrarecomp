@@ -591,6 +591,9 @@ int main(void) {
     if (run_case(carry_sbcs_reg, 0U, UINT32_C(5), UINT32_C(3), 0U, UINT32_C(1), UINT8_C(2)) != 0) return 9;
     if (run_case(carry_rsc_reg, 0U, UINT32_C(5), UINT32_C(8), UINT8_C(2), UINT32_C(3), UINT8_C(2)) != 0) return 10;
     { int rc = run_case(carry_rscs_shifted_reg, 0U, UINT32_C(5), UINT32_C(2), UINT8_C(2), UINT32_C(0xFFFFFFFF), UINT8_C(8)); if (rc != 0) return 110 + rc; }
+    if (run_case(carry_adcs_imm_zero, UINT32_C(0x7FFFFFFF), 0U, 0U, UINT8_C(2), UINT32_C(0x80000000), UINT8_C(9)) != 0) return 12;
+    if (run_case(carry_sbcs_imm_zero, UINT32_C(0x80000000), 0U, 0U, 0U, UINT32_C(0x7FFFFFFF), UINT8_C(7)) != 0) return 13;
+    if (run_case(carry_rscs_imm, 0U, UINT32_C(0x80000000), 0U, UINT8_C(2), UINT32_C(0x80000003), UINT8_C(9)) != 0) return 14;
     return 0;
 }
 """
