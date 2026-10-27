@@ -59,6 +59,7 @@ REQUIRED_FILES = (
     "tools/wrap_retail_code.py",
     "tests/test_wrap_retail_code.py",
     "tools/disassemble_retail_range.py",
+    "tools/requirements-analysis.txt",
     "tests/test_disassemble_retail_range.py",
     "docs/REAL_GAME_CODE_WORKFLOW.md",
 )
