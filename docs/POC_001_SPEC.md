@@ -31,8 +31,8 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 
 - ARM A32: as instruções de processamento de dados suportadas aceitam condições AL e EQ..LE; a condição `0xF` é recusada. `B` aceita AL e as 14 condições padrão EQ..LE.
 - Formas imediatas de `MOV`, `SUB`, `ADD`, `AND`, `ORR`, `EOR`, `BIC` e `MVN` sem atualização de flags; as formas sem AL são executadas somente quando sua condição EQ..LE é verdadeira.
-- Formas de operando em registrador sem deslocamento (`Operand2` com shift zero): `MOV/MVN`, `AND/ORR/EOR/BIC` sem S-bit, `ADD/SUB`, `ADDS/SUBS`, `CMN/CMP`. As formas predicadas seguem a condição A32 selecionada; `CMN/CMP` não escrevem no registrador de resultado.
-- Formas de registrador que codificam deslocamento não zero, shifts por registrador, barrel shifter e carry derivado do shifter continuam recusadas explicitamente. O suporte de registradores continua limitado a `r0-r3` e não inclui PC/SP/LR como operandos normais.
+- Formas de operando em registrador sem deslocamento (`Operand2` com shift zero): `MOV/MVN`, `AND/ORR/EOR/BIC`, `ADD/SUB`, `ADDS/SUBS`, `CMN/CMP`, incluindo `MOVS/MVNS`, `ANDS/ORRS/EORS/BICS` e `TST/TEQ`. As formas predicadas seguem a condição A32 selecionada; `CMN/CMP/TST/TEQ` não escrevem no registrador de resultado.
+- Nas operações lógicas com S-bit e `Operand2` sem shift, o tradutor atualiza N/Z e preserva C/V, conforme a semântica de shift zero. Isso está coberto por testes nativos sintéticos. Formas lógicas imediatas com S-bit, deslocamentos não zero, shifts por registrador, barrel shifter e carry derivado de um shift continuam recusados explicitamente. O suporte de registradores continua limitado a `r0-r3` e não inclui PC/SP/LR como operandos normais.
 - `B` incondicional e com as 14 condições padrão (EQ, NE, CS, CC, MI, PL, VS, VC, HI, LS, GE, LT, GT, LE), com destinos à frente dentro da própria fixture; os saltos preservam NZCV.
 - Formas aritméticas imediatas com flags: `ADDS`, `SUBS`, `CMN` e `CMP`, com flags NZCV expostas em parâmetro de saída.
 - Imediatos com rotação ARM de 32 bits.
@@ -40,7 +40,7 @@ A função C gerada deve retornar `12`: `12 - 8 + 3 = 7`; `AND #7` mantém `7`, 
 - `BX LR` como terminador único no final da sequência.
 - Limite de 256 palavras de instrução por sequência.
 
-BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas/MOVS/MVNS com S-bit, shifts não zero do Operand2, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Saltos para trás ou para a própria instrução são rejeitados por padrão e só podem ser traduzidos quando é fornecido um orçamento explícito de execução. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
+BL, o campo de condição 0xF (espaço BLX imediato), saltos para fora da fixture, instruções e opcodes fora do subconjunto explícito, Thumb, formas lógicas/MOVS/MVNS imediatas com S-bit, shifts não zero do Operand2, carry do barrel shifter, CPSR completo, registradores fora do subconjunto, acessos à memória, chamadas/funções reais, exceções, ABI real do jogo, VFP/NEON, syscalls e dispositivos 3DS não são suportados. Saltos para trás ou para a própria instrução são rejeitados por padrão e só podem ser traduzidos quando é fornecido um orçamento explícito de execução. Código C gerado não deve ser usado com executáveis/dados proprietários nem como runtime de jogo.
 
 ## Modelo NZCV e integração restrita do tradutor
 
