@@ -362,6 +362,9 @@ def translate(
     contains_literal_load = any(inst[0] in LITERAL_OPS for inst in decoded)
     contains_sp_memory = any(inst[0] in ("str_sp", "ldr_sp") for inst in decoded)
     contains_stack_state_ops = any(inst[0] in STACK_STATE_OPS for inst in decoded)
+    contains_guest_memory_access = contains_literal_load or any(
+        inst[0] in MEMORY_OPS or inst[0] in STACK_OPS for inst in decoded
+    )
     contains_guest_state_access = contains_literal_load or contains_sp_memory or contains_stack_state_ops
     contains_alignment_sensitive_memory = any(
         (inst[0] in MEMORY_ACCESS_WIDTHS and MEMORY_ACCESS_WIDTHS[inst[0]] > 1)
@@ -402,7 +405,7 @@ def translate(
             else:
                 raise UnsupportedThumbInstruction(
                     f"PC/SP address arithmetic ({inst[0]}) is decoded for inspection only; "
-                    "the synthetic translator models ADD/SUB SP only through the bounded stack-state interface"
+                    "the synthetic translator does not model PC or SP"
                 )
         if inst[0] in STACK_OPS:
             if not runtime_memory_io:
@@ -417,7 +420,7 @@ def translate(
                 "the synthetic translator does not model it"
             )
     if runtime_memory_io and not supported_memory_or_stack_state_found:
-        raise UnsupportedThumbInstruction("runtime_memory_io requires a supported memory or stack-state instruction")
+        raise UnsupportedThumbInstruction("runtime_memory_io requires at least one supported memory instruction")
 
     if any(inst == ("return",) for inst in decoded[:-1]):
         raise UnsupportedThumbInstruction("instructions after BX LR are unsupported")
@@ -1060,13 +1063,14 @@ def translate(
             "    if (execution_status_out != 0) *execution_status_out = UINT8_C(1);",
         ))
         if runtime_memory_io:
-            lines.extend((
-                "    goto thumb_exit;",
-                "thumb_memory_fault: ;",
-                "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
-                "    if (execution_status_out != 0) *execution_status_out = UINT8_C(3);",
-                "    goto thumb_exit;",
-            ))
+            lines.append("    goto thumb_exit;")
+            if contains_guest_memory_access:
+                lines.extend((
+                    "thumb_memory_fault: ;",
+                    "    if (steps_executed_out != 0) *steps_executed_out = execution_steps;",
+                    "    if (execution_status_out != 0) *execution_status_out = UINT8_C(3);",
+                    "    goto thumb_exit;",
+                ))
             if contains_alignment_sensitive_memory:
                 lines.extend((
                     "thumb_alignment_fault: ;",
