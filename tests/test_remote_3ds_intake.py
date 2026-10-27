@@ -50,6 +50,28 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual(("cci", "ncsd"), intake.normalize_format("cci"))
         self.assertEqual(("cia", "cia"), intake.normalize_format(".CIA"))
 
+    def test_google_drive_share_link_is_converted_to_download_url(self):
+        link = "https://drive.google.com/file/d/AbCdEf1234567890/view?usp=sharing&resourcekey=key_123"
+        details = intake.google_drive_file_details(link)
+        self.assertEqual(("AbCdEf1234567890", "key_123"), details)
+        direct = intake.google_drive_download_url(*details)
+        parsed = intake.urllib.parse.urlsplit(direct)
+        self.assertEqual("drive.google.com", parsed.hostname)
+        query = intake.urllib.parse.parse_qs(parsed.query)
+        self.assertEqual(["AbCdEf1234567890"], query["id"])
+        self.assertEqual(["key_123"], query["resourcekey"])
+        self.assertEqual(["download"], query["export"])
+
+    def test_google_drive_confirmation_token_from_html(self):
+        html = '<form><input type="hidden" name="confirm" value="token_123"></form>'
+        self.assertEqual("token_123", intake.google_drive_confirmation_token(html))
+
+    def test_google_drive_confirmation_token_from_cookie(self):
+        from types import SimpleNamespace
+        cookies = [SimpleNamespace(name="download_warning_abc", value="cookieToken_2")]
+        self.assertEqual("", intake.google_drive_confirmation_token("", []))
+        self.assertEqual("cookieToken_2", intake.google_drive_confirmation_token("", cookies))
+
     def test_ccd_has_actionable_error(self):
         with self.assertRaisesRegex(intake.IntakeError, r"\.ccd is not a Nintendo 3DS"):
             intake.normalize_format(".ccd")
