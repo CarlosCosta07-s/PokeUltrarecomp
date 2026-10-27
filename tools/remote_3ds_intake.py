@@ -209,10 +209,151 @@ def _locate_code_file(exefs: Path) -> Path:
     return candidates[0]
 
 
+GHIDRA_SUMMARY_COUNTERS = (
+    "functions_with_entry_inside_text",
+    "functions_le_32_bytes",
+    "functions_le_64_bytes",
+    "functions_le_128_bytes",
+    "leaf_functions",
+    "leaf_functions_le_32_bytes",
+    "leaf_functions_le_64_bytes",
+    "leaf_functions_le_128_bytes",
+    "functions_with_return_like_instruction",
+    "leaf_functions_le_64_bytes_with_return_like_instruction",
+    "instructions_in_leaf_functions_le_64_bytes",
+    "excluded_bodies_crossing_text_bounds",
+)
+GHIDRA_MNEMONIC_RE = re.compile(r"^[a-z][a-z0-9.]{0,15}$")
+
+
+def sanitize_ghidra_summary(summary_path: Path, expected_text_size: int) -> dict:
+    """Accept an aggregate-only Ghidra result and strip all non-allowlisted fields."""
+    try:
+        raw = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise IntakeError("Ghidra census did not produce a readable summary") from exc
+    if not isinstance(raw, dict):
+        raise IntakeError("Ghidra census summary must be a JSON object")
+    expected_keys = {
+        "schema_version", "status", "text_size_bytes", *GHIDRA_SUMMARY_COUNTERS,
+        "top_mnemonics_in_leaf_functions_le_64_bytes",
+        "function_boundaries_verified", "addresses_emitted", "disassembly_emitted",
+        "interpretation",
+    }
+    if set(raw) != expected_keys:
+        raise IntakeError("Ghidra census summary has unexpected or missing fields")
+    if raw.get("schema_version") != 1 or isinstance(raw.get("schema_version"), bool):
+        raise IntakeError("Ghidra census summary schema version is unsupported")
+    if raw.get("status") != "pass":
+        raise IntakeError("Ghidra census did not report success")
+    if raw.get("text_size_bytes") != expected_text_size:
+        raise IntakeError("Ghidra census text-size does not match the validated executable")
+    if any(raw.get(key) is not False for key in (
+        "function_boundaries_verified", "addresses_emitted", "disassembly_emitted"
+    )):
+        raise IntakeError("Ghidra census does not satisfy the aggregate-only output policy")
+    if not isinstance(raw.get("interpretation"), str):
+        raise IntakeError("Ghidra census interpretation field is malformed")
+
+    safe: dict[str, object] = {"schema_version": 1, "status": "pass", "text_size_bytes": expected_text_size}
+    for key in GHIDRA_SUMMARY_COUNTERS:
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise IntakeError(f"Ghidra census counter {key} is invalid")
+        safe[key] = value
+
+    ordering = (
+        ("functions_le_32_bytes", "functions_le_64_bytes"),
+        ("functions_le_64_bytes", "functions_le_128_bytes"),
+        ("functions_le_128_bytes", "functions_with_entry_inside_text"),
+        ("leaf_functions_le_32_bytes", "leaf_functions_le_64_bytes"),
+        ("leaf_functions_le_64_bytes", "leaf_functions_le_128_bytes"),
+        ("leaf_functions_le_128_bytes", "leaf_functions"),
+        ("leaf_functions", "functions_with_entry_inside_text"),
+        ("leaf_functions_le_64_bytes_with_return_like_instruction", "leaf_functions_le_64_bytes"),
+        ("functions_with_return_like_instruction", "functions_with_entry_inside_text"),
+    )
+    for smaller, larger in ordering:
+        if int(safe[smaller]) > int(safe[larger]):
+            raise IntakeError(f"Ghidra census counters violate ordering: {smaller} > {larger}")
+
+    top = raw.get("top_mnemonics_in_leaf_functions_le_64_bytes")
+    if not isinstance(top, list) or len(top) > 20:
+        raise IntakeError("Ghidra census mnemonic histogram is malformed")
+    cleaned_top: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in top:
+        if not isinstance(item, dict) or set(item) != {"mnemonic", "count"}:
+            raise IntakeError("Ghidra census mnemonic item contains unexpected fields")
+        mnemonic, count = item.get("mnemonic"), item.get("count")
+        if not isinstance(mnemonic, str) or not GHIDRA_MNEMONIC_RE.fullmatch(mnemonic):
+            raise IntakeError("Ghidra census contains a non-mnemonic value")
+        if mnemonic in seen:
+            raise IntakeError("Ghidra census repeats a mnemonic")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise IntakeError("Ghidra census mnemonic count is invalid")
+        seen.add(mnemonic)
+        cleaned_top.append({"mnemonic": mnemonic, "count": count})
+    safe["top_mnemonics_in_leaf_functions_le_64_bytes"] = cleaned_top
+    safe["function_boundaries_verified"] = False
+    safe["addresses_emitted"] = False
+    safe["disassembly_emitted"] = False
+    return safe
+
+
+def run_ghidra_function_census(
+    ghidra_headless_path: Path, target: str, exheader_path: Path,
+    code_path: Path, text_segment: dict, work_directory: Path,
+) -> dict:
+    """Run Ghidra headless into private temporary files and return only safe aggregates."""
+    executable = ghidra_headless_path.expanduser().resolve()
+    if not executable.is_file():
+        raise IntakeError("configured Ghidra headless executable does not exist")
+    work = work_directory.resolve()
+    if not work.is_relative_to(Path(tempfile.gettempdir()).resolve()) or work.is_relative_to(ROOT.resolve()):
+        raise IntakeError("Ghidra working directory must be in temporary storage outside the repository")
+
+    from wrap_retail_code import build_analysis_elf, RetailCodeWrapError
+    elf_path = work / "private-analysis.elf"
+    project_path = work / "ghidra-project"
+    summary_path = work / "private-ghidra-summary.json"
+    log_path = work / "private-ghidra.log"
+    try:
+        build_analysis_elf(target, exheader_path, code_path, elf_path, confirm_decompressed=True)
+    except (RetailCodeWrapError, OSError) as exc:
+        raise IntakeError("could not prepare the private static-analysis container") from exc
+
+    text_start = int(text_segment["virtual_address"])
+    text_size = int(text_segment["declared_size_bytes"])
+    command = [
+        str(executable), str(project_path),
+        "ultra-sun-private-census" if target == "ultra-sun" else "ultra-moon-private-census",
+        "-import", str(elf_path), "-overwrite",
+        "-scriptPath", str(ROOT / ".github" / "ghidra_scripts"),
+        "-postScript", "FunctionCensusSummary.java",
+        str(summary_path), f"0x{text_start:08X}", str(text_size),
+        "-deleteProject",
+    ]
+    try:
+        with log_path.open("wb") as log:
+            completed = subprocess.run(
+                command, cwd=work, stdout=log, stderr=subprocess.STDOUT,
+                timeout=3600, check=False,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise IntakeError("Ghidra headless census timed out; private output was discarded") from exc
+    except Exception as exc:
+        raise IntakeError("Ghidra headless census could not be launched; private output was discarded") from exc
+    if completed.returncode != 0:
+        raise IntakeError("Ghidra headless census failed; detailed logs remained in temporary storage")
+    return sanitize_ghidra_summary(summary_path, text_size)
+
+
 def extract_and_inspect(
     image_path: Path, target: str, format_name: str, ctrtool_command: list[str],
     work_directory: Path, *, ncch_index: int = 0,
     candidate_decode_summary: bool = False,
+    ghidra_headless_path: Path | None = None,
 ) -> dict:
     fmt, kind = normalize_format(format_name)
     if not 0 <= ncch_index <= 65535:
@@ -253,6 +394,12 @@ def extract_and_inspect(
         decode_summary=candidate_decode_summary,
     )["summary"]
     text_segment = next(s for s in report["memory"]["segments"] if s["name"] == "text")
+    ghidra_census = None
+    if ghidra_headless_path is not None:
+        ghidra_census = run_ghidra_function_census(
+            ghidra_headless_path, target, exheader, code_path,
+            text_segment, work / "ghidra-private",
+        )
     return {
         "status": "pass",
         "target": target,
@@ -263,11 +410,15 @@ def extract_and_inspect(
         "container_title_id_match": report["identity"]["title_id_match"],
         "container_title_kind": report["identity"]["title_kind"],
         "candidate_census": candidate_census,
+        "ghidra_function_census": ghidra_census,
         "no_game_bytes_or_disassembly_uploaded": True,
     }
 
 
-def process(source_url: str, target: str, format_name: str, ctrtool: Path, index: int) -> dict:
+def process(
+    source_url: str, target: str, format_name: str, ctrtool: Path, index: int,
+    ghidra_headless_path: Path | None = None,
+) -> dict:
     fmt, _ = normalize_format(format_name)
     if index < 0 or index > 65535:
         raise IntakeError("partition/content index must be from 0 to 65535")
@@ -278,6 +429,7 @@ def process(source_url: str, target: str, format_name: str, ctrtool: Path, index
         result = extract_and_inspect(
             source, target, fmt, [str(ctrtool.resolve())],
             work / "extract", ncch_index=index, candidate_decode_summary=True,
+            ghidra_headless_path=ghidra_headless_path,
         )
         result["downloaded_bytes"] = size
         return result
@@ -290,13 +442,20 @@ def main() -> int:
     parser.add_argument("--format", choices=sorted(FORMATS), required=True)
     parser.add_argument("--ctrtool", type=Path, required=True)
     parser.add_argument("--ncch-index", type=int, default=0)
+    parser.add_argument(
+        "--ghidra-headless", type=Path,
+        help="optional Ghidra analyzeHeadless path; only aggregate results are emitted",
+    )
     args = parser.parse_args()
     source = os.environ.get("POKEULTRARECOMP_SOURCE_URL", "")
     if not source:
         print("ERROR: configure the Actions secret POKEULTRARECOMP_SOURCE_URL", file=sys.stderr)
         return 2
     try:
-        result = process(source, args.target, args.format, args.ctrtool, args.ncch_index)
+        result = process(
+            source, args.target, args.format, args.ctrtool, args.ncch_index,
+            ghidra_headless_path=args.ghidra_headless,
+        )
         summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary:
             Path(summary).write_text(
@@ -322,6 +481,26 @@ def main() -> int:
                 "This validates the container/layout and inventories candidate prologues; it does not prove recompilation or gameplay.\n",
                 encoding="utf-8",
             )
+            if result["ghidra_function_census"] is not None:
+                ghidra = result["ghidra_function_census"]
+                ghidra_lines = [
+                    "",
+                    "## Ghidra aggregate-only function census",
+                    "",
+                    f"- Recognized function entries inside .text: {ghidra['functions_with_entry_inside_text']}",
+                    f"- Leaf functions of at most 64 bytes: {ghidra['leaf_functions_le_64_bytes']}",
+                    f"- Small leaf functions with a return-like instruction: {ghidra['leaf_functions_le_64_bytes_with_return_like_instruction']}",
+                    "- Function boundaries independently verified: **no**",
+                    "- Addresses, names, instruction bytes or disassembly published: **no**",
+                    "",
+                    "Top mnemonics in small leaf bodies: " + ", ".join(
+                        f"{item['mnemonic']} ({item['count']})"
+                        for item in ghidra["top_mnemonics_in_leaf_functions_le_64_bytes"]
+                    ),
+                    "",
+                ]
+                with Path(summary).open("a", encoding="utf-8") as output:
+                    output.write("\\n".join(ghidra_lines))
         print(json.dumps({
             "status": result["status"], "target": result["target"],
             "format": result["format"], "container_and_layout_validated": True,
@@ -329,6 +508,7 @@ def main() -> int:
             "container_title_id_match": result["container_title_id_match"],
             "container_title_kind": result["container_title_kind"],
             "candidate_census": result["candidate_census"],
+            "ghidra_function_census": result["ghidra_function_census"],
             "game_bytes_or_disassembly_uploaded": False,
         }, indent=2))
         return 0
