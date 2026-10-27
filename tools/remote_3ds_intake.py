@@ -370,6 +370,30 @@ def classify_ghidra_failure(log_path: Path) -> str:
 
 
 
+def sanitized_ghidra_failure_hint(log_path: Path) -> str:
+    """Select and redact one diagnostic line; never expose raw private logs."""
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "private-log-unavailable"
+    candidates = [
+        line for line in lines
+        if re.search(r"(error|exception|failed|cannot|unable|invalid|not found)", line, re.IGNORECASE)
+    ]
+    if not candidates:
+        return "no-matching-diagnostic"
+    line = candidates[-1]
+    # Redact addresses, long hexadecimal values, file paths, and filenames from
+    # the private import before allowing a short diagnostic through.
+    line = re.sub(r"(?i)0x[0-9a-f]{1,16}", "<address>", line)
+    line = re.sub(r"\b[a-f0-9]{8,}\b", "<hex>", line, flags=re.IGNORECASE)
+    line = re.sub(r"(?:(?:[A-Za-z]:)?[/\\\\])[^\\s:]+", "<path>", line)
+    line = re.sub(r"(?i)[A-Za-z0-9_.-]+\\.(?:elf|cci|cia|3ds|code|bin)", "<private-file>", line)
+    line = re.sub(r"\\s+", " ", line).strip()
+    line = re.sub(r"[^A-Za-z0-9 _.,:;()\\[\\]<>/'=+?-]", "?", line)
+    return line[:180] or "diagnostic-redacted"
+
+
 def run_ghidra_function_census(
     ghidra_headless_path: Path, target: str, exheader_path: Path,
     code_path: Path, text_segment: dict, work_directory: Path,
@@ -415,8 +439,9 @@ def run_ghidra_function_census(
         raise IntakeError("Ghidra headless census could not be launched; private output was discarded") from exc
     if completed.returncode != 0:
         category = classify_ghidra_failure(log_path)
+        hint = sanitized_ghidra_failure_hint(log_path)
         raise IntakeError(
-            f"Ghidra headless census failed (category: {category}); private diagnostics were discarded"
+            f"Ghidra headless census failed (category: {category}; diagnostic: {hint}); raw diagnostics were discarded"
         )
     return sanitize_ghidra_summary(summary_path, text_size)
 
