@@ -390,7 +390,7 @@ int main(void) {
                 checks.append(
                     f"    {{ uint8_t f = 0; if (!({pred_name}(&f) == UINT32_C({pred_expected}) && f == UINT8_C({nzcv}))) bad++; }}"
                 )
-        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + chr(10).join(checks) + chr(10) + "    return 0;" + chr(10) + "}" + chr(10)
+        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + "    int bad = 0;" + chr(10) + chr(10).join(checks) + chr(10) + "    return bad;" + chr(10) + "}" + chr(10)
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "conditions.c"
             exe = Path(directory) / ("conditions.exe" if os.name == "nt" else "conditions")
