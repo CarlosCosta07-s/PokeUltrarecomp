@@ -168,19 +168,21 @@ A direção técnica está registrada em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_
 
 ## Fase 6 — Pipeline de recompilação nativa sem fallback
 
-**Estado:** direção arquitetural definida em [NATIVE_PORT_DIRECTION.md](NATIVE_PORT_DIRECTION.md). As POCs atuais geram C a partir de subconjuntos sintéticos e exercitam partes do C compilado nativamente; não existe um pipeline de runtime integrado nem suporte comprovado a código real do jogo.
+**Estado:** parcialmente implementado. O script `tools/run_native_poc_pipeline.py` agora gera C a partir de duas fixtures sintéticas, compila os resultados com um compilador C do host e executa os binários para verificar resultados, registradores, NZCV e contagem de instruções. Também inclui casos negativos que devem ser recusados. O workflow `.github/workflows/native-pipeline.yml` foi adicionado para Linux e Windows. A aprovação de CI deve ser verificada no GitHub antes de declarar esse passo validado; não existe ainda um runtime de jogo integrado nem suporte comprovado a código real.
 
 **Tarefas**
 - [ ] Organizar um build reproduzível com CMake + Ninja para Windows e Linux x86-64, com toolchains nativos documentados.
-- [ ] Unificar uma execução de teste de ponta a ponta: fixture ARM/Thumb declarada → decodificação/IR → C gerado → compilador nativo → execução do binário.
-- [ ] Definir uma interface de teste estável para os registradores/flags observados e para o estado de saída; validar contra oráculos independentes baseados na especificação, não contra emulador ou interpretador.
-- [ ] Fazer com que toda instrução não suportada, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução com um erro claro; não existe fallback interpretado.
-- [ ] Cobrir casos negativos, entradas malformadas, fluxo de controle, limites de orçamento e falhas do compilador.
-- [ ] Adicionar os testes nativos necessários à CI Windows/Linux sem baixar, ler ou produzir arquivos de jogo.
+- [x] Adicionar um smoke test de ponta a ponta para fixtures sintéticas A32 e Thumb: tradutor → C gerado → compilador nativo → execução do binário.
+- [x] Validar resultados esperados, estado de registradores/flags e orçamento de instruções no processo nativo.
+- [x] Cobrir inputs negativos: registrador ARM fora do subconjunto e operação de memória Thumb sem modelo de memória devem falhar explicitamente.
+- [x] Adicionar um workflow de CI para executar o smoke test em Windows e Linux sem arquivos de jogo.
+- [ ] Confirmar execuções aprovadas do workflow em ambos os sistemas; corrigir qualquer falha antes de prosseguir.
+- [ ] Unificar/estender a interface para cobrir regressões de decodificação, fluxo de controle, limites, contratos e falhas do compilador, mantendo um oráculo independente baseado na especificação.
+- [ ] Fazer com que toda instrução sem suporte, estado ARM/Thumb incerto e transferência não resolvida interrompam a tradução; nunca usar fallback interpretado.
 
-**Dependências:** fases 2 e 3; as demonstrações sintéticas existentes da fase 5 são apenas o ponto de partida.
+**Dependências:** fases 2 e 3; as demonstrações sintéticas existentes da fase 5 são o ponto de partida.
 
-**Critério de conclusão:** o pipeline nativo passa em execução automatizada nas duas plataformas com resultados esperados, testes negativos e logs reproduzíveis; nenhuma instrução sem suporte é interpretada. Isso ainda não conta como execução do jogo.
+**Critério de conclusão:** pipeline nativo reproduzível aprovado em ambos os sistemas operacionais, com resultados esperados, testes negativos e logs verificáveis. Isso ainda não conta como execução do jogo.
 
 ## Fase 7 — Primeiro alvo real recompilado
 
