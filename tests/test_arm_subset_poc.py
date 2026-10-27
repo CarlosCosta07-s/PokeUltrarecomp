@@ -86,6 +86,27 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
             poc.decode_word(0xE3711001)
 
+    def test_decodes_preindexed_immediate_word_ldr_str(self):
+        self.assertEqual(("ldr_imm", 0, 1, 4, True), poc.decode_word(0xE5910004))
+        self.assertEqual(("str_imm", 2, 3, 8, False), poc.decode_word(0xE5032008))
+
+    def test_rejects_unsupported_a32_single_data_transfer_forms(self):
+        cases = (
+            (0xE5D10004, "byte memory access"),  # LDRB
+            (0xE7910004, "register-offset memory access"),
+            (0xE4910004, "post-indexed or writeback memory access"),
+            (0xE5B10004, "post-indexed or writeback memory access"),
+            (0xE5914004, "destination register r4"),
+            (0xE5940004, "base register r4"),
+        )
+        for word, message in cases:
+            with self.subTest(word=f"0x{word:08X}"), self.assertRaisesRegex(poc.UnsupportedInstruction, message):
+                poc.decode_word(word)
+
+    def test_translator_requires_explicit_memory_model_for_ldr_str(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "runtime_memory_io=True"):
+            poc.translate([0xE5802004, 0xE12FFF1E])
+
     def test_decodes_plain_register_operand_data_processing(self):
         cases = (
             (0xE1A01000, ("mov_reg", 1, 0)),
@@ -287,6 +308,99 @@ class TranslationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "register_logical_flags.c"
             exe = Path(directory) / ("register_logical_flags.exe" if os.name == "nt" else "register_logical_flags")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_ldr_str_use_bounded_little_endian_guest_memory(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 bounded-memory proof requires cc, gcc, or clang")
+        generated = poc.translate(
+            [0xE5802004, 0xE5903004, 0xE12FFF1E],  # STR r2,[r0,#4]; LDR r3,[r0,#4]; BX LR
+            max_execution_steps=8,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        )
+        harness = generated + chr(10) + """
+#include <stddef.h>
+int main(void) {
+    uint32_t registers[4] = { UINT32_C(0x1000), UINT32_C(0x11111111), UINT32_C(0xA1B2C3D4), UINT32_C(0x33333333) };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t memory[16];
+    for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    uint8_t flags = 0U, status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t result = synthetic_entry_bounded(registers, UINT8_C(0xB), &flags, &steps, &status,
+        output, memory, UINT32_C(0x1000), UINT32_C(sizeof(memory)));
+    return result == UINT32_C(0x1000) && flags == UINT8_C(0xB)
+        && status == UINT8_C(0) && steps == UINT32_C(3)
+        && output[0] == UINT32_C(0x1000) && output[2] == UINT32_C(0xA1B2C3D4)
+        && output[3] == UINT32_C(0xA1B2C3D4)
+        && memory[4] == UINT8_C(0xD4) && memory[5] == UINT8_C(0xC3)
+        && memory[6] == UINT8_C(0xB2) && memory[7] == UINT8_C(0xA1) ? 0 : 1;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_bounded_memory.c"
+            exe = Path(directory) / ("a32_bounded_memory.exe" if os.name == "nt" else "a32_bounded_memory")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_a32_memory_faults_do_not_partially_modify_memory(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; A32 memory-fault proof requires cc, gcc, or clang")
+        generated = poc.translate(
+            [0xE5802004, 0xE12FFF1E],  # STR r2,[r0,#4]; BX LR
+            max_execution_steps=8,
+            runtime_state_io=True,
+            runtime_memory_io=True,
+        )
+        harness = generated + chr(10) + """
+#include <stddef.h>
+static int run_fault(uint32_t base_register, uint32_t region_base, uint32_t region_size,
+                     uint8_t expected_status, uint8_t *memory, uint8_t *saved_memory) {
+    uint32_t registers[4] = { base_register, 0U, UINT32_C(0x11223344), 0U };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t flags = 0U, status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    (void)synthetic_entry_bounded(registers, UINT8_C(0x6), &flags, &steps, &status,
+        output, memory, region_base, region_size);
+    for (size_t i = 0; i < region_size; ++i) if (memory[i] != saved_memory[i]) return 1;
+    if (status != expected_status || steps != UINT32_C(1)
+        || output[0] != base_register || output[2] != UINT32_C(0x11223344)
+        || flags != UINT8_C(0x6)) return 2;
+    return 0;
+}
+int main(void) {
+    uint8_t memory[16], saved[16];
+    for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
+    for (size_t i = 0; i < sizeof(saved); ++i) saved[i] = UINT8_C(0xEE);
+    if (run_fault(UINT32_C(0x1004), UINT32_C(0x1000), UINT32_C(8),
+                  UINT8_C(3), memory, saved) != 0) return 1; /* bounds fault */
+    if (run_fault(UINT32_C(0x1001), UINT32_C(0x1000), UINT32_C(16),
+                  UINT8_C(4), memory, saved) != 0) return 2; /* alignment fault */
+    if (run_fault(UINT32_C(0xFFFFFFFC), UINT32_C(0x1000), UINT32_C(16),
+                  UINT8_C(3), memory, saved) != 0) return 3; /* address overflow */
+    uint32_t registers[4] = { UINT32_C(0x1000), 0U, UINT32_C(0x12345678), 0U };
+    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint8_t flags = 0U, status = 0U;
+    uint32_t steps = UINT32_C(99);
+    (void)synthetic_entry_bounded(registers, UINT8_C(0x0), &flags, &steps, &status,
+        output, memory, UINT32_C(0xFFFFFFF8), UINT32_C(16));
+    if (status != UINT8_C(2) || steps != UINT32_C(0)) return 4; /* mapping overflow */
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_memory_faults.c"
+            exe = Path(directory) / ("a32_memory_faults.exe" if os.name == "nt" else "a32_memory_faults")
             src.write_text(harness, encoding="utf-8")
             compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
