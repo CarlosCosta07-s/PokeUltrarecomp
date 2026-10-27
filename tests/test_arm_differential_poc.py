@@ -12,8 +12,8 @@ import arm_differential_poc as differential  # noqa: E402
 class DifferentialFixtureTests(unittest.TestCase):
     def test_matrix_covers_all_operations_and_boundary_values(self):
         cases = differential.build_cases()
-        self.assertEqual(192, len(cases))
-        self.assertEqual(192, len({case.name for case in cases}))
+        self.assertEqual(240, len(cases))
+        self.assertEqual(240, len({case.name for case in cases}))
         for operation in ("adds", "subs", "cmn", "cmp"):
             self.assertEqual(48, sum(case.name.startswith(operation + "-") for case in cases))
 
@@ -37,7 +37,7 @@ class DifferentialFixtureTests(unittest.TestCase):
             self.skipTest("no C compiler found; native differential proof requires cc, gcc, or clang")
         selected, count = differential.run_differential(compiler)
         self.assertEqual(compiler, selected)
-        self.assertEqual(192, count)
+        self.assertEqual(240, count)
 
 
 if __name__ == "__main__":
