@@ -67,6 +67,7 @@ REQUIRED_FILES = (
     "tests/test_remote_3ds_intake.py",
     ".github/workflows/remote-3ds-intake.yml",
     "docs/REMOTE_GAME_ANALYSIS.md",
+    "docs/FUNCTION_CANDIDATE_CENSUS.md",
     ".github/workflows/analysis-tools.yml",
     "tests/test_disassemble_retail_range.py",
     "docs/REAL_GAME_CODE_WORKFLOW.md",
