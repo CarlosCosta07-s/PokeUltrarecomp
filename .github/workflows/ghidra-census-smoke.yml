@@ -1,0 +1,54 @@
+name: Ghidra census script smoke test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ghidra-census-smoke.yml"
+      - "tools/ghidra_scripts/FunctionCensusSummary.java"
+      - "tools/smoke_ghidra_census.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-ghidra-census:
+    name: Synthetic ARM ELF through real Ghidra
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Java for Ghidra
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Download and verify Ghidra 12.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ghidra_12.2_PUBLIC_20261016.zip"
+          destination="$RUNNER_TEMP/ghidra-release"
+          mkdir -p "$destination"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016.zip' \
+            --output "$archive"
+          echo '2c2cd776db3c1f6a097ba418922378ac3649cadd5e844a6f5f088ae628a7be67  '"$archive" | sha256sum --check -
+          unzip -q "$archive" -d "$destination"
+          headless="$(find "$destination" -type f -path '*/support/analyzeHeadless' -print -quit)"
+          if [ -z "$headless" ]; then
+            echo "::error::Ghidra analyzeHeadless was not found in the verified release"
+            exit 1
+          fi
+          chmod +x "$headless"
+          echo "GHIDRA_HEADLESS_PATH=$headless" >> "$GITHUB_ENV"
+      - name: Run the synthetic ARM census and private-sidecar assertions
+        run: python tools/smoke_ghidra_census.py --ghidra-headless "$GHIDRA_HEADLESS_PATH"
