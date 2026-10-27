@@ -1,9 +1,19 @@
 # Notas de build e testes reproduzíveis
 
+## Thumb LDMIA/STMIA em C nativo — 2026-10-27
+
+- **Escopo adicionado:** `SUPPORTED_NATIVE_MULTIPLE_MEMORY_OPS` aceita `LDMIA` e `STMIA` na API experimental de memória guest limitada. É cobertura de teste do tradutor, não implementação de stack nem de uma memória real do Nintendo 3DS.
+- **Semântica implementada:** os registradores da lista são transferidos em ordem crescente para endereços consecutivos; a faixa e o alinhamento de toda a transferência são verificados antes de ler/gravar. `STMIA` aplica write-back à base. `LDMIA` aplica write-back quando a base não está na lista e o suprime quando está na lista. O código conservador rejeita `STMIA` quando a base consta na lista, pois seu comportamento depende de restrições arquiteturais.
+- **Testes nativos:** a fixture `tools/run_native_poc_pipeline.py` compila C gerado e verifica `STMIA r0!, {r1,r2}` seguido por `LDMIA r3!, {r4,r5}`; também testa `LDMIA r0, {r0}`, write-back, bytes e registradores, falha de faixa e desalinhamento sem escrita parcial.
+- **Regressão Python:** `tests/test_thumb_subset_poc.py` verifica a aceitação de LDMIA com base na lista e a recusa explícita de STMIA com a base na lista.
+- **Validação:** [workflow #40444392587](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40444392587) passou 4/4 testes CTest em Windows/MSVC e Linux/GCC. [Workflow de testes Python #40444392664](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40444392664) passou em 327 testes.
+- **Referência de encoding/semântica:** [ARMv6-M Architecture Reference Manual, seção A6.7.58](https://documentation-service.arm.com/static/5f8ff05ef86e16515cdbf826) para o grupo Thumb `LDMIA/STMIA`. Antes de declarar equivalência para uma função real, confirmar diferenças e contratos pertinentes ao processador ARM11/ARMv6K do alvo.
+- **Limitações:** `LDMIA/STMIA` não estão incorporados ainda ao adaptador de memória C/C++20 por ABI; estão cobertos pelo pipeline de C gerado executado nativamente. A pilha, SP-relativo, literal loads e outros casos seguem recusados.
+
 ## ABI C para região de memória — 2026-10-27
 
 - **Contrato:** `include/pokeultrarecomp/native_abi.h` define `PokeNativeMemory` (versão da ABI, base guest, tamanho e ponteiro de bytes) e `PokeNativeExecutionStatus` para retorno, orçamento, estado guest inválido, falha de faixa e falha de alinhamento.
-- **Unidade gerada:** `tools/generate_native_abi_fixtures.py` gera `native_thumb_memory_generated.c` a partir das 14 formas de memory op aceitas pelo modo experimental e liga um adaptador C em `poke_native_execute_thumb_memory`.
+- **Unidade gerada:** `tools/generate_native_abi_fixtures.py` gera `native_thumb_memory_generated.c` a partir das 14 formas escalares de memory op aceitas pelo modo experimental; `LDMIA/STMIA` são exercitados separadamente pelo pipeline nativo e liga um adaptador C em `poke_native_execute_thumb_memory`.
 - **Host C++20:** `tests/native_runtime_host.cpp` chama a função C pela ABI, verifica registradores e bytes de memória, o status guest em falha de faixa/alinhamento, rejeição de mapa inválido e que versão de ABI incorreta ou buffer nulo deixam o resultado sentinela sem alteração.
 - **Build:** CMake compila a terceira unidade gerada como C e a liga ao host C++20; o teste de ABI executa como parte de `verify`.
 - **Validação:** [workflow nativo #40443861507](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443861507), commit `70e901523e3422a6ead0eac9d7ce51b7a64b248c`, passou os 4 testes CTest no Windows/MSVC e Linux/GCC. A suíte Python completa passou em 325 testes no [workflow #40443861475](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40443861475).
