@@ -105,6 +105,27 @@ class DecoderTests(unittest.TestCase):
             with self.subTest(word=f"0x{word:08X}"):
                 self.assertEqual(expected, poc.decode_word(word))
 
+    def test_decodes_register_logical_flag_and_test_operations(self):
+        cases = (
+            (0xE1B00001, ("movs_reg", 0, 1)),
+            (0xE1F00001, ("mvns_reg", 0, 1)),
+            (0xE0100001, ("ands_reg", 0, 0, 1)),
+            (0xE1900001, ("orrs_reg", 0, 0, 1)),
+            (0xE0300001, ("eors_reg", 0, 0, 1)),
+            (0xE1D00001, ("bics_reg", 0, 0, 1)),
+            (0xE1100001, ("tst_reg", 0, 1)),
+            (0xE1300001, ("teq_reg", 0, 1)),
+        )
+        for word, expected in cases:
+            with self.subTest(word=f"0x{word:08X}"):
+                self.assertEqual(expected, poc.decode_word(word))
+
+    def test_rejects_register_tst_without_s_bit_and_noncanonical_rd(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "TST requires"):
+            poc.decode_word(0xE1000001)
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "TEQ register encoding with Rd=0"):
+            poc.decode_word(0xE1311001)
+
     def test_predicates_plain_register_operand_instructions(self):
         self.assertEqual(
             ("predicated", "ne", ("mov_reg", 0, 1)),
@@ -234,6 +255,38 @@ class TranslationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory) / "register_operations.c"
             exe = Path(directory) / ("register_operations.exe" if os.name == "nt" else "register_operations")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
+    def test_register_logical_flags_preserve_carry_and_overflow(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; logical NZCV proof requires cc, gcc, or clang")
+        operations = (
+            ("movs_register", [0xE3A0000F, 0xE3A01005, 0xE1B00001, 0xE12FFF1E], 5, 3),
+            ("mvns_register", [0xE3A0000F, 0xE3A01005, 0xE1F00001, 0xE12FFF1E], 0xFFFFFFFA, 11),
+            ("ands_register", [0xE3A00102, 0xE3A01102, 0xE0100001, 0xE12FFF1E], 0x80000000, 11),
+            ("orrs_register", [0xE3A00102, 0xE3A01000, 0xE1900001, 0xE12FFF1E], 0x80000000, 11),
+            ("eors_register", [0xE3A00005, 0xE3A01005, 0xE0300001, 0xE12FFF1E], 0, 7),
+            ("bics_register", [0xE3A0000F, 0xE3A01005, 0xE1D00001, 0xE12FFF1E], 10, 3),
+            ("tst_register", [0xE3A00000, 0xE3A01001, 0xE1100001, 0xE12FFF1E], 0, 7),
+            ("teq_register", [0xE3A0000F, 0xE3A01005, 0xE1300001, 0xE12FFF1E], 15, 3),
+        )
+        sources = []
+        checks = []
+        for name, words, expected, expected_flags in operations:
+            generated = poc.translate(words, initial_nzcv=0xB)
+            sources.append(generated.replace("uint32_t synthetic_entry(", f"uint32_t {name}("))
+            checks.append(
+                f"    {{ uint8_t flags = 0; if ({name}(&flags) != UINT32_C({expected}) || flags != UINT8_C({expected_flags})) return {len(checks)+1}; }}"
+            )
+        harness = chr(10).join(sources) + chr(10) + "int main(void) {" + chr(10) + chr(10).join(checks) + chr(10) + "    return 0;" + chr(10) + "}" + chr(10)
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "register_logical_flags.c"
+            exe = Path(directory) / ("register_logical_flags.exe" if os.name == "nt" else "register_logical_flags")
             src.write_text(harness, encoding="utf-8")
             compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
             self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
