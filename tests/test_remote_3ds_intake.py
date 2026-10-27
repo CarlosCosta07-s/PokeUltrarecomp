@@ -335,7 +335,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
                     "entry_address": "0x00102000",
                     "body_size_bytes": 8,
                     "instruction_count": 2,
-                    "words": ["0xE5D00000", "0xE12FFF1E"],  # unsupported LDRB form
+                    "words": ["0xE5D00000", "0xE12FFF1E"],  # supported immediate LDRB in bounded memory model
                 },
                 {
                     "entry_address": "0x00103000",
@@ -356,16 +356,13 @@ class Remote3DSIntakeTests(unittest.TestCase):
 
         self.assertEqual(3, result["private_candidates_screened"])
         self.assertEqual(4, result["private_candidates_omitted_by_ghidra_cap"])
-        self.assertEqual(2, result["sequences_accepted_by_current_arm_subset_translator"])
-        self.assertEqual(1, result["candidate_sequences_rejected_by_current_arm_subset_translator"])
-        self.assertEqual(1, result["candidate_sequences_with_instruction_decode_rejections"])
+        self.assertEqual(3, result["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual(0, result["candidate_sequences_rejected_by_current_arm_subset_translator"])
+        self.assertEqual(0, result["candidate_sequences_with_instruction_decode_rejections"])
         self.assertEqual(0, result["candidate_sequences_rejected_by_sequence_constraints"])
-        self.assertEqual(
-            {"unsupported-operand-class": 1},
-            result["unsupported_instruction_encodings_by_family"],
-        )
+        self.assertEqual({}, result["unsupported_instruction_encodings_by_family"])
         self.assertEqual("passed", result["native_c_syntax_check"])
-        self.assertEqual(2, result["native_c_syntax_sample_count"])
+        self.assertEqual(3, result["native_c_syntax_sample_count"])
         self.assertFalse(result["native_semantic_equivalence_verified"])
         self.assertFalse(result["function_boundaries_independently_verified"])
         self.assertFalse(result["addresses_or_instruction_words_emitted"])
