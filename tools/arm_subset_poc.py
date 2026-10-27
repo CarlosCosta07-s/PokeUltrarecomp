@@ -156,6 +156,33 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
     )
 
 
+def _decode_single_data_transfer(word: int, condition: int) -> tuple[object, ...]:
+    """Decode conservative A32 pre-indexed immediate LDR/STR word transfers."""
+    if (word >> 25) & 1:  # I=1 means register-offset form, which needs Operand2 shifts.
+        raise UnsupportedInstruction(f"register-offset memory access is unsupported: 0x{word:08X}")
+    pre_index = (word >> 24) & 1
+    up = (word >> 23) & 1
+    byte_transfer = (word >> 22) & 1
+    writeback = (word >> 21) & 1
+    load = (word >> 20) & 1
+    rn = (word >> 16) & 0xF
+    rd = (word >> 12) & 0xF
+    offset = word & 0xFFF
+
+    if not pre_index or writeback:
+        raise UnsupportedInstruction(
+            f"post-indexed or writeback memory access is unsupported: 0x{word:08X}"
+        )
+    if byte_transfer:
+        raise UnsupportedInstruction(f"byte memory access is unsupported: 0x{word:08X}")
+    if rn > 3:
+        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r3 subset")
+    if rd > 3:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    operation = "ldr_imm" if load else "str_imm"
+    return _apply_condition(condition, (operation, rd, rn, offset, bool(up)))
+
+
 def decode_word(word: int) -> tuple[object, ...]:
     """Decode one supported ARM A32 word into a small, explicit instruction tuple."""
     if not isinstance(word, int) or word < 0 or word > 0xFFFFFFFF:
@@ -183,6 +210,10 @@ def decode_word(word: int) -> tuple[object, ...]:
 
     if condition == 0xF:
         raise UnsupportedInstruction(f"condition code 0xF is unsupported in 0x{word:08X}")
+
+    # Single data-transfer class (LDR/STR) is decoded separately from ALU forms.
+    if ((word >> 26) & 0b11) == 0b01:
+        return _decode_single_data_transfer(word, condition)
 
     # A32 data-processing instructions with a plain register operand (no
     # shifter) are a separate narrow subset. Other register-shift forms remain
