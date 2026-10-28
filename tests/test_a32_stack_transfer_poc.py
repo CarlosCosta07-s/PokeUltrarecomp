@@ -267,5 +267,69 @@ int main(void) {
             self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
 
+
+class A32MixedSequenceTests(unittest.TestCase):
+    def test_decodes_only_non_flag_setting_alu_ops_for_shared_state(self):
+        self.assertEqual(("mov", 0, 3), poc.decode_mixed_word(0xE3A00003))
+        self.assertEqual(("add", 0, 0, 2), poc.decode_mixed_word(0xE2800002))
+        self.assertEqual(("sub", 1, 1, 1), poc.decode_mixed_word(0xE2411001))
+        for word in (0xE3B00001, 0x13A00001, 0xE3A04001, 0xE0810002):
+            with self.subTest(word=f"0x{word:08X}"), self.assertRaises(poc.UnsupportedA32StackInstruction):
+                poc.decode_mixed_word(word)
+
+    def test_generates_shared_register_state_for_alu_and_stack(self):
+        source = poc.translate_mixed_sequence([
+            0xE3A00003, 0xE92D4030, 0xE2800002, 0xE8BD4030, 0xE12FFF1E
+        ])
+        self.assertIn("r[0] = UINT32_C(0x00000003);", source)
+        self.assertIn("r[0] = r[0] + UINT32_C(0x00000002);", source)
+        self.assertIn("r[13] = new_sp;", source)
+        self.assertNotIn("switch (word)", source)
+
+    def test_native_mixed_alu_stack_roundtrip_and_fault(self):
+        compiler = _find_c_compiler()
+        if not compiler:
+            self.skipTest("no C compiler found; mixed A32 proof requires a native C compiler")
+        words = [0xE3A00003, 0xE92D4030, 0xE2800002, 0xE8BD4030, 0xE12FFF1E]
+        generated = poc.translate_mixed_sequence(words)
+        fault_generated = poc.translate_mixed_sequence([0xE3A00003, 0xE92D4030, 0xE12FFF1E])
+        harness = generated.replace(
+            "uint32_t a32_stack_transfer_entry(", "uint32_t mixed_roundtrip(", 1
+        ) + fault_generated.replace(
+            "uint32_t a32_stack_transfer_entry(", "uint32_t mixed_fault(", 1
+        ) + r'''
+#include <string.h>
+int main(void) {
+    uint32_t in[15] = {0U}, out[15] = {0U};
+    uint8_t memory[64]; memset(memory, 0xEE, sizeof(memory));
+    in[4] = UINT32_C(0x44444444); in[5] = UINT32_C(0x55555555);
+    in[13] = UINT32_C(0x1020); in[14] = UINT32_C(0xDEADBEEF);
+    uint8_t flags = 0U, status = UINT8_C(0xFF); uint32_t steps = 0U;
+    uint32_t returned = mixed_roundtrip(in, UINT8_C(0xB), &flags, memory,
+        UINT32_C(0x1000), UINT32_C(64), out, &steps, &status);
+    if (returned != 5U || status != 0U || steps != 5U || flags != UINT8_C(0xB)
+        || out[0] != 5U || out[4] != in[4] || out[5] != in[5]
+        || out[13] != in[13] || out[14] != in[14]) return 1;
+    if (memory[20] != UINT8_C(0x44) || memory[24] != UINT8_C(0x55)
+        || memory[28] != UINT8_C(0xEF) || memory[31] != UINT8_C(0xDE)) return 2;
+    uint8_t before[64]; memcpy(before, memory, sizeof(memory));
+    in[13] = UINT32_C(0x1004); flags = UINT8_C(0xFF); status = UINT8_C(0xFF); steps = 0U;
+    returned = mixed_fault(in, UINT8_C(0x6), &flags, memory, UINT32_C(0x1000),
+        UINT32_C(64), out, &steps, &status);
+    if (returned != 3U || status != UINT8_C(1) || steps != UINT32_C(2)
+        || flags != UINT8_C(0x6) || out[0] != 3U || out[13] != UINT32_C(0x1004)
+        || memcmp(before, memory, sizeof(memory)) != 0) return 3;
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "a32_mixed_sequence.c"
+            executable = Path(directory) / ("a32_mixed_sequence.exe" if os.name == "nt" else "a32_mixed_sequence")
+            source.write_text(harness, encoding="utf-8", newline="\n")
+            built = _compile_c(compiler, source, executable, directory)
+            self.assertEqual(0, built.returncode, msg=built.stdout + built.stderr)
+            run = subprocess.run([str(executable)], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
 if __name__ == "__main__":
     unittest.main()
