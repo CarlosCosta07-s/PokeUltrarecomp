@@ -15,6 +15,7 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
+import a32_stack_transfer_poc  # noqa: E402
 import arm_subset_poc  # noqa: E402
 import thumb_subset_poc  # noqa: E402
 
@@ -22,6 +23,7 @@ A32_WORDS = (
     0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008,
     0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E,
 )
+A32_STACK_TRANSFER_WORDS = (0xE92D4030, 0xE8BD4030, 0xE12FFF1E)
 THUMB_HALFWORDS = (0x200C, 0x3808, 0x3003, 0x2807, 0x4770)
 THUMB_MEMORY_HALFWORDS = (
     0x5042, 0x5843, 0x5242, 0x5A44, 0x5442, 0x5645, 0x5C46, 0x5E47,
@@ -143,6 +145,15 @@ def generate_a32() -> str:
     return source + "\n" + A32_ADAPTER
 
 
+def generate_a32_stack() -> str:
+    source = a32_stack_transfer_poc.translate_stack_sequence(list(A32_STACK_TRANSFER_WORDS))
+    old_signature = "uint32_t a32_stack_transfer_entry("
+    if old_signature not in source:
+        raise RuntimeError("A32 stack-transfer signature changed; update the ABI adapter deliberately")
+    source = source.replace(old_signature, "uint32_t poke_a32_stack_generated_entry(", 1)
+    return source + "\n" + A32_STACK_ADAPTER
+
+
 def generate_thumb() -> str:
     source = thumb_subset_poc.translate(
         list(THUMB_HALFWORDS),
@@ -155,6 +166,72 @@ def generate_thumb() -> str:
         raise RuntimeError("Thumb generated function signature changed; update the ABI adapter deliberately")
     source = source.replace(old_signature, "uint32_t poke_thumb_generated_entry(", 1)
     return source + "\n" + THUMB_ADAPTER
+
+
+A32_STACK_ADAPTER = r"""
+#include <stddef.h>
+#include <stdint.h>
+#include "pokeultrarecomp/native_abi.h"
+
+int poke_native_execute_a32_stack(
+    const PokeNativeA32StackCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeA32StackResult *result
+)
+{
+    uint32_t registers_out[POKE_NATIVE_A32_REGISTER_COUNT] = {0U};
+    uint8_t nzcv_out = UINT8_C(0xAA);
+    uint8_t execution_status = UINT8_C(0xAA);
+    uint32_t steps_executed = 0U;
+    PokeNativeA32StackResult completed = {0};
+
+    if (call == NULL || memory == NULL || result == NULL || memory->bytes == NULL) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+    if (call->abi_version != POKE_NATIVE_ABI_VERSION
+        || memory->abi_version != POKE_NATIVE_ABI_VERSION) {
+        return POKE_NATIVE_ABI_VERSION_MISMATCH;
+    }
+    if (call->initial_nzcv > UINT8_C(15)) {
+        return POKE_NATIVE_ABI_INVALID_ARGUMENT;
+    }
+
+    const uint32_t return_value = poke_a32_stack_generated_entry(
+        call->registers, call->initial_nzcv, &nzcv_out,
+        memory->bytes, memory->guest_base, memory->size,
+        registers_out, &steps_executed, &execution_status
+    );
+
+    uint8_t mapped_status;
+    switch (execution_status) {
+    case UINT8_C(0):
+        mapped_status = POKE_NATIVE_EXECUTION_RETURNED;
+        break;
+    case UINT8_C(1):
+        mapped_status = POKE_NATIVE_EXECUTION_MEMORY_FAULT;
+        break;
+    case UINT8_C(2):
+        mapped_status = POKE_NATIVE_EXECUTION_INVALID_STATE;
+        break;
+    case UINT8_C(3):
+        mapped_status = POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT;
+        break;
+    default:
+        return POKE_NATIVE_ABI_EXECUTION_FAILED;
+    }
+
+    completed.abi_version = POKE_NATIVE_ABI_VERSION;
+    for (unsigned int index = 0U; index < POKE_NATIVE_A32_REGISTER_COUNT; ++index) {
+        completed.registers[index] = registers_out[index];
+    }
+    completed.return_value = return_value;
+    completed.steps_executed = steps_executed;
+    completed.nzcv = nzcv_out;
+    completed.execution_status = mapped_status;
+    *result = completed;
+    return POKE_NATIVE_ABI_OK;
+}
+"""
 
 
 THUMB_MEMORY_ADAPTER = r"""
@@ -443,14 +520,15 @@ def main(argv: list[str] | None = None) -> int:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         outputs = {
             args.output_dir / "native_a32_generated.c": generate_a32(),
+            args.output_dir / "native_a32_stack_generated.c": generate_a32_stack(),
             args.output_dir / "native_thumb_generated.c": generate_thumb(),
             args.output_dir / "native_thumb_memory_generated.c": generate_thumb_memory(),
         }
         for path, source in outputs.items():
             path.write_text(source, encoding="utf-8", newline="\n")
             print(f"Generated synthetic native ABI fixture: {path.name}")
-    except (OSError, RuntimeError, arm_subset_poc.UnsupportedInstruction,
-            thumb_subset_poc.UnsupportedThumbInstruction) as exc:
+    except (OSError, RuntimeError, a32_stack_transfer_poc.UnsupportedA32StackInstruction,
+            arm_subset_poc.UnsupportedInstruction, thumb_subset_poc.UnsupportedThumbInstruction) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     return 0
