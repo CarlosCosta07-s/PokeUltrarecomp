@@ -9,6 +9,10 @@ static_assert(std::is_standard_layout_v<PokeNativeCall>);
 static_assert(std::is_standard_layout_v<PokeNativeResult>);
 static_assert(sizeof(((PokeNativeCall *)nullptr)->registers) / sizeof(uint32_t)
               == POKE_NATIVE_REGISTER_COUNT);
+static_assert(std::is_standard_layout_v<PokeNativeA32StackCall>);
+static_assert(std::is_standard_layout_v<PokeNativeA32StackResult>);
+static_assert(sizeof(((PokeNativeA32StackCall *)nullptr)->registers) / sizeof(uint32_t)
+              == POKE_NATIVE_A32_REGISTER_COUNT);
 
 namespace {
 
@@ -81,6 +85,60 @@ int main()
         return fail("A32 NZCV/status/step-count mismatch");
     }
     std::cout << "PASS: C++20 host calls generated A32 C through the versioned C ABI\n";
+
+    std::array<uint8_t, 64> a32_stack_bytes{};
+    a32_stack_bytes.fill(UINT8_C(0xEE));
+    PokeNativeMemory a32_stack_memory{};
+    a32_stack_memory.abi_version = POKE_NATIVE_ABI_VERSION;
+    a32_stack_memory.guest_base = UINT32_C(0x1000);
+    a32_stack_memory.size = static_cast<uint32_t>(a32_stack_bytes.size());
+    a32_stack_memory.bytes = a32_stack_bytes.data();
+
+    PokeNativeA32StackCall a32_stack_call{};
+    a32_stack_call.abi_version = POKE_NATIVE_ABI_VERSION;
+    a32_stack_call.registers[4] = UINT32_C(0x44444444);
+    a32_stack_call.registers[5] = UINT32_C(0x55555555);
+    a32_stack_call.registers[13] = UINT32_C(0x1020);
+    a32_stack_call.registers[14] = UINT32_C(0xDEADBEEF);
+    a32_stack_call.initial_nzcv = UINT8_C(0xB);
+    PokeNativeA32StackResult a32_stack_result{};
+    if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
+        != POKE_NATIVE_ABI_OK
+        || a32_stack_result.abi_version != POKE_NATIVE_ABI_VERSION
+        || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
+        || a32_stack_result.return_value != 0U
+        || a32_stack_result.steps_executed != UINT32_C(3)
+        || a32_stack_result.nzcv != UINT8_C(0xB)
+        || a32_stack_result.registers[4] != a32_stack_call.registers[4]
+        || a32_stack_result.registers[5] != a32_stack_call.registers[5]
+        || a32_stack_result.registers[13] != a32_stack_call.registers[13]
+        || a32_stack_result.registers[14] != a32_stack_call.registers[14]) {
+        return fail("A32 full-register stack round-trip failed through the versioned C ABI");
+    }
+    if (a32_stack_bytes[20] != UINT8_C(0x44) || a32_stack_bytes[23] != UINT8_C(0x44)
+        || a32_stack_bytes[24] != UINT8_C(0x55) || a32_stack_bytes[27] != UINT8_C(0x55)
+        || a32_stack_bytes[28] != UINT8_C(0xEF) || a32_stack_bytes[29] != UINT8_C(0xBE)
+        || a32_stack_bytes[30] != UINT8_C(0xAD) || a32_stack_bytes[31] != UINT8_C(0xDE)) {
+        return fail("A32 STMDB/LDMIA memory order or LR serialization mismatch");
+    }
+    std::cout << "PASS: C++20 host calls full-register A32 stack transfer through the versioned C ABI\n";
+
+    const auto a32_stack_bytes_before_fault = a32_stack_bytes;
+    a32_stack_call.registers[13] = UINT32_C(0x1004);
+    a32_stack_call.initial_nzcv = UINT8_C(0x6);
+    if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
+        != POKE_NATIVE_ABI_OK
+        || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
+        || a32_stack_result.steps_executed != UINT32_C(1)
+        || a32_stack_result.nzcv != UINT8_C(0x6)
+        || a32_stack_result.registers[4] != a32_stack_call.registers[4]
+        || a32_stack_result.registers[5] != a32_stack_call.registers[5]
+        || a32_stack_result.registers[13] != a32_stack_call.registers[13]
+        || a32_stack_result.registers[14] != a32_stack_call.registers[14]
+        || a32_stack_bytes != a32_stack_bytes_before_fault) {
+        return fail("A32 stack-transfer range fault changed registers, NZCV, or guest memory");
+    }
+    std::cout << "PASS: C++20 A32 stack-transfer faults preserve memory and guest state\n";
 
     call.registers[0] = 99U;
     call.initial_nzcv = UINT8_C(0x9);
