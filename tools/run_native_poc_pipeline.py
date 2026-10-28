@@ -23,6 +23,7 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
+import a32_stack_transfer_poc  # noqa: E402
 import arm_subset_poc  # noqa: E402
 import thumb_subset_poc  # noqa: E402
 
@@ -84,6 +85,15 @@ STACK_MEMORY_HALFWORDS = (
 STACK_POP_OVERFLOW_HALFWORDS = (
     0xBC0C,  # POP {r2, r3}; test post-increment overflow independently
     0x4770,  # BX lr
+)
+A32_STACK_ROUNDTRIP_WORDS = (
+    0xE92D4030,  # STMDB sp!, {r4, r5, lr}
+    0xE8BD4030,  # LDMIA sp!, {r4, r5, lr}
+    0xE12FFF1E,  # BX lr
+)
+A32_STACK_FAULT_WORDS = (
+    0xE92D4030,  # STMDB sp!, {r4, r5, lr}; rejected by the bounded region
+    0xE12FFF1E,  # BX lr
 )
 
 
@@ -222,6 +232,13 @@ def _assert_fail_closed() -> None:
     else:
         raise PipelineError("Thumb negative case was accepted; memory access must be rejected without a model")
 
+    try:
+        a32_stack_transfer_poc.translate_stack_sequence([0xE3A00001, 0xE12FFF1E])
+    except a32_stack_transfer_poc.UnsupportedA32StackInstruction:
+        pass
+    else:
+        raise PipelineError("A32 stack-transfer translator accepted an instruction outside its bounded subset")
+
 
 def _a32_source() -> str:
     generated = arm_subset_poc.translate(
@@ -344,6 +361,21 @@ def _thumb_stack_pop_overflow_source() -> str:
     return generated.replace(old_signature, "uint32_t native_thumb_stack_pop_overflow_smoke(", 1)
 
 
+def _a32_stack_transfer_source() -> str:
+    """Create two direct-C fixtures for A32 SP write-back and bounded faults."""
+    old_signature = "uint32_t a32_stack_transfer_entry("
+    sources: list[str] = []
+    for words, function_name in (
+        (A32_STACK_ROUNDTRIP_WORDS, "native_a32_stack_smoke"),
+        (A32_STACK_FAULT_WORDS, "native_a32_stack_fault_smoke"),
+    ):
+        generated = a32_stack_transfer_poc.translate_stack_sequence(list(words))
+        if old_signature not in generated:
+            raise PipelineError("A32 stack-transfer translator output changed its bounded C interface")
+        sources.append(generated.replace(old_signature, f"uint32_t {function_name}(", 1))
+    return "\\n".join(sources)
+
+
 A32_HARNESS = r"""
 int main(void) {
     const uint32_t input[4] = {
@@ -364,6 +396,47 @@ int main(void) {
     return 0;
 }
 """
+
+A32_STACK_TRANSFER_HARNESS = r"""
+#include <string.h>
+int main(void) {
+    uint32_t input[15] = {0U};
+    uint32_t output[15] = {0U};
+    uint8_t memory[64];
+    memset(memory, 0xEE, sizeof(memory));
+    input[4] = UINT32_C(0x44444444);
+    input[5] = UINT32_C(0x55555555);
+    input[13] = UINT32_C(0x1020);
+    input[14] = UINT32_C(0xDEADBEEF);
+    uint8_t nzcv = UINT8_C(0xFF), status = UINT8_C(0xFF);
+    uint32_t steps = 0U;
+    uint32_t returned = native_a32_stack_smoke(
+        input, UINT8_C(0xB), &nzcv, memory, UINT32_C(0x1000),
+        (uint32_t)sizeof(memory), output, &steps, &status
+    );
+    if (returned != 0U || status != UINT8_C(0) || steps != UINT32_C(3)
+        || nzcv != UINT8_C(0xB) || output[4] != input[4] || output[5] != input[5]
+        || output[13] != input[13] || output[14] != input[14]) return 1;
+    if (memory[20] != UINT8_C(0x44) || memory[23] != UINT8_C(0x44)
+        || memory[24] != UINT8_C(0x55) || memory[27] != UINT8_C(0x55)
+        || memory[28] != UINT8_C(0xEF) || memory[31] != UINT8_C(0xDE)) return 2;
+
+    uint8_t memory_before[sizeof(memory)];
+    memcpy(memory_before, memory, sizeof(memory));
+    input[13] = UINT32_C(0x1004);
+    nzcv = UINT8_C(0xFF); status = UINT8_C(0xFF); steps = 0U;
+    returned = native_a32_stack_fault_smoke(
+        input, UINT8_C(0x6), &nzcv, memory, UINT32_C(0x1000),
+        (uint32_t)sizeof(memory), output, &steps, &status
+    );
+    if (returned != 0U || status != UINT8_C(1) || steps != UINT32_C(1)
+        || nzcv != UINT8_C(0x6) || output[4] != input[4] || output[5] != input[5]
+        || output[13] != input[13] || output[14] != input[14]
+        || memcmp(memory_before, memory, sizeof(memory)) != 0) return 3;
+    return 0;
+}
+"""
+
 
 THUMB_HARNESS = r"""
 int main(void) {
@@ -700,6 +773,11 @@ def run_pipeline(compiler_override: str | None = None) -> int:
         work_dir = Path(temporary)
         _compile_and_run(compiler, is_msvc, "native_a32_smoke", _a32_source(), A32_HARNESS, work_dir)
         print("PASS: synthetic ARM A32 -> C -> native executable (registers, NZCV, step budget)")
+        _compile_and_run(
+            compiler, is_msvc, "native_a32_stack_transfer_smoke",
+            _a32_stack_transfer_source(), A32_STACK_TRANSFER_HARNESS, work_dir
+        )
+        print("PASS: native A32 STMDB/LDMIA stack transfers, SP/LR, NZCV, bounds, and faults")
         _compile_and_run(compiler, is_msvc, "native_thumb_smoke", _thumb_source(), THUMB_HARNESS, work_dir)
         print("PASS: synthetic Thumb-16 -> C -> native executable (registers, NZCV, step budget)")
         _compile_and_run(compiler, is_msvc, "native_thumb_memory_smoke", _thumb_memory_source(), MEMORY_HARNESS, work_dir)
@@ -743,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return run_pipeline(args.cc)
     except (OSError, PipelineError, arm_subset_poc.UnsupportedInstruction,
+            a32_stack_transfer_poc.UnsupportedA32StackInstruction,
             thumb_subset_poc.UnsupportedThumbInstruction) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
