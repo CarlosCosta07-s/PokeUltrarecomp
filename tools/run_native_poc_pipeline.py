@@ -373,7 +373,7 @@ def _a32_stack_transfer_source() -> str:
         if old_signature not in generated:
             raise PipelineError("A32 stack-transfer translator output changed its bounded C interface")
         sources.append(generated.replace(old_signature, f"uint32_t {function_name}(", 1))
-    return "\\n".join(sources)
+    return "\n".join(sources)
 
 
 A32_HARNESS = r"""
