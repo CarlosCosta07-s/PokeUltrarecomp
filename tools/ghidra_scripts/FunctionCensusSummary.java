@@ -96,7 +96,8 @@ public class FunctionCensusSummary extends GhidraScript {
         long excludedOutOfTextBodies = 0;
         Map<String, Long> smallLeafMnemonics = new HashMap<String, Long>();
         // This sidecar is written only under the caller's private temporary directory.
-        // It holds a bounded set of small, contiguous ARM functions ending in BX LR.
+        // It holds bounded small ARM bodies ending in BX LR or an LDMIA SP!, {..., PC}
+        // epilogue; the Python translator applies stricter semantic checks.
         // Python screens these candidates against the current narrow ARM-to-C subset.
         List<String> privateTranslationCandidates = new ArrayList<String>();
         long privateTranslationCandidatesOmitted = 0;
@@ -127,6 +128,7 @@ public class FunctionCensusSummary extends GhidraScript {
             List<String> candidateWords = new ArrayList<String>();
             boolean candidateIsLinearA32 = true;
             boolean lastInstructionIsBxLr = false;
+            boolean lastInstructionIsLdmiaSpPc = false;
             long expectedInstructionAddress = body.getMinAddress().getOffset();
 
             InstructionIterator instructions = listing.getInstructions(body, true);
@@ -146,6 +148,7 @@ public class FunctionCensusSummary extends GhidraScript {
                 expectedInstructionAddress = instructionAddress + instruction.getLength();
                 lastInstructionIsBxLr = "bx".equals(mnemonic) &&
                     "bxlr".equals(instruction.toString().toLowerCase(Locale.ROOT).replace(" ", ""));
+                lastInstructionIsLdmiaSpPc = false;
                 byte[] encoding = instruction.getBytes();
                 if (encoding == null || encoding.length != 4) {
                     candidateIsLinearA32 = false;
@@ -155,6 +158,13 @@ public class FunctionCensusSummary extends GhidraScript {
                         ((encoding[2] & 0xffL) << 16) |
                         ((encoding[3] & 0xffL) << 24);
                     candidateWords.add(String.format(Locale.ROOT, "\"0x%08X\"", word));
+                    // Exact AL LDMIA SP!, {registers, PC}; semantic checks happen
+                    // in the private Python translator, which permits only a terminal use.
+                    lastInstructionIsLdmiaSpPc =
+                        (word & 0xffff0000L) == 0xe8bd0000L &&
+                        (word & 0x8000L) != 0L &&
+                        (word & 0x2000L) == 0L &&
+                        (word & 0xffffL) != 0L;
                 }
                 if (instruction.getFlowType().isCall()) {
                     hasCall = true;
@@ -205,7 +215,7 @@ public class FunctionCensusSummary extends GhidraScript {
 
             boolean translationCandidate =
                 !hasCall &&
-                lastInstructionIsBxLr &&
+                (lastInstructionIsBxLr || lastInstructionIsLdmiaSpPc) &&
                 body.getNumAddressRanges() == 1 &&
                 bodySize >= 8 && bodySize <= 64 &&
                 bodySize == instructionCount * 4 &&
