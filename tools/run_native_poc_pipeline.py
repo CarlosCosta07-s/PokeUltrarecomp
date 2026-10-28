@@ -87,7 +87,9 @@ STACK_POP_OVERFLOW_HALFWORDS = (
     0x4770,  # BX lr
 )
 A32_STACK_ROUNDTRIP_WORDS = (
+    0xE3A00003,  # MOV r0, #3
     0xE92D4030,  # STMDB sp!, {r4, r5, lr}
+    0xE2800002,  # ADD r0, r0, #2
     0xE8BD4030,  # LDMIA sp!, {r4, r5, lr}
     0xE12FFF1E,  # BX lr
 )
@@ -239,6 +241,13 @@ def _assert_fail_closed() -> None:
     else:
         raise PipelineError("A32 stack-transfer translator accepted an instruction outside its bounded subset")
 
+    try:
+        a32_stack_transfer_poc.translate_mixed_sequence([0xE0810002, 0xE12FFF1E])
+    except a32_stack_transfer_poc.UnsupportedA32StackInstruction:
+        pass
+    else:
+        raise PipelineError("A32 mixed translator accepted an unsupported register-operand instruction")
+
 
 def _a32_source() -> str:
     generated = arm_subset_poc.translate(
@@ -365,11 +374,11 @@ def _a32_stack_transfer_source() -> str:
     """Create two direct-C fixtures for A32 SP write-back and bounded faults."""
     old_signature = "uint32_t a32_stack_transfer_entry("
     sources: list[str] = []
-    for words, function_name in (
-        (A32_STACK_ROUNDTRIP_WORDS, "native_a32_stack_smoke"),
-        (A32_STACK_FAULT_WORDS, "native_a32_stack_fault_smoke"),
+    for words, function_name, translator in (
+        (A32_STACK_ROUNDTRIP_WORDS, "native_a32_stack_smoke", a32_stack_transfer_poc.translate_mixed_sequence),
+        (A32_STACK_FAULT_WORDS, "native_a32_stack_fault_smoke", a32_stack_transfer_poc.translate_stack_sequence),
     ):
-        generated = a32_stack_transfer_poc.translate_stack_sequence(list(words))
+        generated = translator(list(words))
         if old_signature not in generated:
             raise PipelineError("A32 stack-transfer translator output changed its bounded C interface")
         sources.append(generated.replace(old_signature, f"uint32_t {function_name}(", 1))
@@ -414,8 +423,9 @@ int main(void) {
         input, UINT8_C(0xB), &nzcv, memory, UINT32_C(0x1000),
         (uint32_t)sizeof(memory), output, &steps, &status
     );
-    if (returned != 0U || status != UINT8_C(0) || steps != UINT32_C(3)
-        || nzcv != UINT8_C(0xB) || output[4] != input[4] || output[5] != input[5]
+    if (returned != UINT32_C(5) || status != UINT8_C(0) || steps != UINT32_C(5)
+        || nzcv != UINT8_C(0xB) || output[0] != UINT32_C(5)
+        || output[4] != input[4] || output[5] != input[5]
         || output[13] != input[13] || output[14] != input[14]) return 1;
     if (memory[20] != UINT8_C(0x44) || memory[23] != UINT8_C(0x44)
         || memory[24] != UINT8_C(0x55) || memory[27] != UINT8_C(0x55)
@@ -777,7 +787,7 @@ def run_pipeline(compiler_override: str | None = None) -> int:
             compiler, is_msvc, "native_a32_stack_transfer_smoke",
             _a32_stack_transfer_source(), A32_STACK_TRANSFER_HARNESS, work_dir
         )
-        print("PASS: native A32 STMDB/LDMIA stack transfers, SP/LR, NZCV, bounds, and faults")
+        print("PASS: native A32 MOV/ADD + STMDB/LDMIA share registers; SP/LR, NZCV, bounds and faults")
         _compile_and_run(compiler, is_msvc, "native_thumb_smoke", _thumb_source(), THUMB_HARNESS, work_dir)
         print("PASS: synthetic Thumb-16 -> C -> native executable (registers, NZCV, step budget)")
         _compile_and_run(compiler, is_msvc, "native_thumb_memory_smoke", _thumb_memory_source(), MEMORY_HARNESS, work_dir)
