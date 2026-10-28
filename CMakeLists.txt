@@ -33,6 +33,7 @@ if(BUILD_TESTING)
     set(NATIVE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
     set(NATIVE_GENERATED_C_FILES
         "${NATIVE_GENERATED_DIR}/native_a32_generated.c"
+        "${NATIVE_GENERATED_DIR}/native_a32_stack_generated.c"
         "${NATIVE_GENERATED_DIR}/native_thumb_generated.c"
         "${NATIVE_GENERATED_DIR}/native_thumb_memory_generated.c"
     )
@@ -46,6 +47,7 @@ if(BUILD_TESTING)
         DEPENDS
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_native_abi_fixtures.py"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/arm_subset_poc.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/a32_stack_transfer_poc.py"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/thumb_subset_poc.py"
         COMMENT "Generate synthetic ARM/Thumb C fixtures for the native C++ ABI test"
         VERBATIM
