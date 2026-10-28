@@ -106,9 +106,10 @@ int main()
         != POKE_NATIVE_ABI_OK
         || a32_stack_result.abi_version != POKE_NATIVE_ABI_VERSION
         || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_RETURNED
-        || a32_stack_result.return_value != 0U
-        || a32_stack_result.steps_executed != UINT32_C(3)
+        || a32_stack_result.return_value != UINT32_C(5)
+        || a32_stack_result.steps_executed != UINT32_C(5)
         || a32_stack_result.nzcv != UINT8_C(0xB)
+        || a32_stack_result.registers[0] != UINT32_C(5)
         || a32_stack_result.registers[4] != a32_stack_call.registers[4]
         || a32_stack_result.registers[5] != a32_stack_call.registers[5]
         || a32_stack_result.registers[13] != a32_stack_call.registers[13]
@@ -121,7 +122,7 @@ int main()
         || a32_stack_bytes[30] != UINT8_C(0xAD) || a32_stack_bytes[31] != UINT8_C(0xDE)) {
         return fail("A32 STMDB/LDMIA memory order or LR serialization mismatch");
     }
-    std::cout << "PASS: C++20 host calls full-register A32 stack transfer through the versioned C ABI\n";
+    std::cout << "PASS: C++20 host calls mixed A32 MOV/ADD + stack sequence through versioned ABI\n";
 
     const auto a32_stack_bytes_before_fault = a32_stack_bytes;
     a32_stack_call.registers[13] = UINT32_C(0x1004);
@@ -129,8 +130,9 @@ int main()
     if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
         != POKE_NATIVE_ABI_OK
         || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_MEMORY_FAULT
-        || a32_stack_result.steps_executed != UINT32_C(1)
+        || a32_stack_result.steps_executed != UINT32_C(2)
         || a32_stack_result.nzcv != UINT8_C(0x6)
+        || a32_stack_result.registers[0] != UINT32_C(3)
         || a32_stack_result.registers[4] != a32_stack_call.registers[4]
         || a32_stack_result.registers[5] != a32_stack_call.registers[5]
         || a32_stack_result.registers[13] != a32_stack_call.registers[13]
@@ -145,8 +147,9 @@ int main()
     if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
         != POKE_NATIVE_ABI_OK
         || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
-        || a32_stack_result.steps_executed != UINT32_C(1)
+        || a32_stack_result.steps_executed != UINT32_C(2)
         || a32_stack_result.nzcv != UINT8_C(0x7)
+        || a32_stack_result.registers[0] != UINT32_C(3)
         || a32_stack_result.registers[13] != a32_stack_call.registers[13]
         || a32_stack_bytes != a32_stack_bytes_before_fault) {
         return fail("A32 stack-transfer alignment fault was not mapped through the native ABI");
