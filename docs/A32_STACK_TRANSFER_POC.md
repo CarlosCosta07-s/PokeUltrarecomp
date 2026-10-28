@@ -33,7 +33,7 @@ As instruções implementadas não alteram NZCV; o valor inicial validado é cop
 
 ## Testes
 
-O arquivo tests/test_a32_stack_transfer_poc.py cobre a decodificação e as rejeições explícitas, write-back, ordem de registradores, load/store little-endian, restauração de SP/LR, preservação de NZCV, falha de memória, alinhamento, overflow de faixa e preservação do estado em uma falha depois de uma transferência anterior bem-sucedida. Quando há compilador disponível, os testes compilam o C gerado com avisos tratados como erros e executam os binários.
+O arquivo tests/test_a32_stack_transfer_poc.py cobre a decodificação e as rejeições explícitas, write-back, ordem de registradores, load/store little-endian, restauração de SP/LR, preservação de NZCV, falha de memória, alinhamento, overflow de faixa e preservação do estado em uma falha depois de uma transferência anterior bem-sucedida. Quando há compilador disponível, os testes compilam o C gerado com avisos tratados como erros e executam os binários. A fixture de round-trip e a falha por faixa também são exercitadas no pipeline nativo `tools/run_native_poc_pipeline.py`, que é executado pelo CTest.
 
 Execute os testes dessa POC com:
 
