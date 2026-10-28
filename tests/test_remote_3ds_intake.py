@@ -381,6 +381,45 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertNotIn("0x00103000", compile_run.call_args.kwargs["input"])
         self.assertNotIn("0x00104000", compile_run.call_args.kwargs["input"])
 
+    def test_private_real_candidate_screen_uses_mixed_a32_stack_translator(self):
+        from unittest.mock import patch
+
+        sidecar = self.work / "private-ghidra-mixed-candidate.json"
+        sidecar.write_text(json.dumps({
+            "schema_version": 1,
+            "omitted_candidate_count": 0,
+            "candidates": [{
+                "entry_address": "0x00105000",
+                "body_size_bytes": 20,
+                "instruction_count": 5,
+                "words": [
+                    "0xE3A00003",  # MOV r0, #3
+                    "0xE92D4030",  # STMDB sp!, {r4, r5, lr}
+                    "0xE2800002",  # ADD r0, r0, #2
+                    "0xE8BD4030",  # LDMIA sp!, {r4, r5, lr}
+                    "0xE12FFF1E",  # BX lr
+                ],
+            }],
+        }), encoding="utf-8")
+
+        with patch.object(
+            intake.shutil, "which",
+            side_effect=lambda name: "/usr/bin/cc" if name == "cc" else None,
+        ), patch.object(
+            intake.subprocess, "run", return_value=type("Result", (), {"returncode": 0})()
+        ) as compile_run:
+            result = intake.screen_private_ghidra_candidates(sidecar)
+
+        self.assertEqual(1, result["private_candidates_screened"])
+        self.assertEqual(0, result["sequences_accepted_by_current_arm_subset_translator"])
+        self.assertEqual(1, result["sequences_accepted_by_mixed_a32_alu_stack_translator"])
+        self.assertEqual("passed", result["native_c_syntax_check"])
+        self.assertEqual(1, result["native_c_syntax_sample_count"])
+        self.assertNotIn("0x00105000", compile_run.call_args.kwargs["input"])
+        self.assertNotIn("0xE3A00003", compile_run.call_args.kwargs["input"])
+        self.assertFalse(result["native_semantic_equivalence_verified"])
+        self.assertFalse(result["function_boundaries_independently_verified"])
+
     def test_private_ghidra_candidate_screen_rejects_invalid_candidate_words(self):
         sidecar = self.work / "invalid-candidate-words.json"
         sidecar.write_text(json.dumps({
