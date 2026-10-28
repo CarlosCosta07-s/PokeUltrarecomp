@@ -1,4 +1,4 @@
-"""Synthetic tests for the bounded A32 multiple-transfer translator."""
+"""Synthetic tests for bounded A32 stack transfer and mixed ALU/stack translation."""
 import os
 import shutil
 import subprocess
