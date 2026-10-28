@@ -28,6 +28,7 @@ class A32StackDecodeTests(unittest.TestCase):
     def test_decodes_common_full_descending_push_and_empty_ascending_pop(self):
         self.assertEqual(("stmdb_sp", (4, 5, 14)), poc.decode_word(0xE92D4030))
         self.assertEqual(("ldmia_sp", (4, 5, 14)), poc.decode_word(0xE8BD4030))
+        self.assertEqual(("ldmia_sp_pc", (4, 5)), poc.decode_word(0xE8BD8030))
 
     def test_rejects_empty_pc_sp_and_non_al_register_lists(self):
         for word, message in (
@@ -37,7 +38,7 @@ class A32StackDecodeTests(unittest.TestCase):
             (0x192D4010, "AL-condition"),
             (0xE92F4010, "only SP"),
             (0xE8BD2010, "SP in a write-back"),
-            (0xE8BD8000, "PC in a register list"),
+            (0xE8BD0000, "must not be empty"),
         ):
             with self.subTest(word=f"0x{word:08X}"), self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, message):
                 poc.decode_word(word)
@@ -56,12 +57,58 @@ class A32StackTranslationTests(unittest.TestCase):
     def test_requires_exact_bx_lr_terminator_and_bounded_input(self):
         with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "empty"):
             poc.translate_stack_sequence([])
-        with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "must end with exact BX LR"):
+        with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "BX LR or terminal LDMIA"):
             poc.translate_stack_sequence([0xE92D4030])
         with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "after BX LR"):
             poc.translate_stack_sequence([0xE12FFF1E, 0xE92D4030])
+        with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "after terminal LDMIA"):
+            poc.translate_stack_sequence([0xE8BD8030, 0xE12FFF1E])
         with self.assertRaisesRegex(poc.UnsupportedA32StackInstruction, "exceeds 256"):
             poc.translate_stack_sequence([0xE92D4010] * 256 + [0xE12FFF1E])
+
+    def test_emits_direct_c_for_terminal_pc_epilogue(self):
+        source = poc.translate_mixed_sequence([
+            0xE3A00003, 0xE92D4030, 0xE8BD8030
+        ])
+        self.assertIn("uint32_t a32_stack_transfer_entry_with_pc(", source)
+        self.assertIn("uint32_t *guest_pc_out", source)
+        self.assertIn("*guest_pc_out = loaded_pc_2;", source)
+        self.assertIn("const uint32_t transfer_bytes = UINT32_C(12);", source)
+        self.assertNotIn("exact BX LR sequence terminator", source)
+
+    def test_native_pc_epilogue_restores_registers_and_reports_guest_pc(self):
+        compiler = _find_c_compiler()
+        if not compiler:
+            self.skipTest("no C compiler found; PC epilogue proof requires a native C compiler")
+        generated = poc.translate_mixed_sequence([
+            0xE3A00003, 0xE92D4030, 0xE8BD8030
+        ])
+        harness = generated + r'''
+#include <string.h>
+int main(void) {
+    uint32_t in[15] = {0U}, out[15] = {0U};
+    uint8_t memory[64]; memset(memory, 0xEE, sizeof(memory));
+    in[4] = UINT32_C(0x44444444); in[5] = UINT32_C(0x55555555);
+    in[13] = UINT32_C(0x1020); in[14] = UINT32_C(0xABCD1234);
+    uint8_t flags = 0U, status = UINT8_C(0xFF); uint32_t steps = 0U, guest_pc = 0U;
+    uint32_t returned = a32_stack_transfer_entry_with_pc(in, UINT8_C(0xB), &flags,
+        memory, UINT32_C(0x1000), UINT32_C(64), out, &guest_pc, &steps, &status);
+    return returned == 3U && status == 0U && steps == 3U && flags == UINT8_C(0xB)
+        && guest_pc == UINT32_C(0xABCD1234)
+        && out[4] == in[4] && out[5] == in[5] && out[13] == in[13]
+        && memory[20] == UINT8_C(0x44) && memory[24] == UINT8_C(0x55)
+        && memory[28] == UINT8_C(0x34) && memory[31] == UINT8_C(0xAB)
+        ? 0 : 1;
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "a32_pc_epilogue.c"
+            executable = Path(directory) / ("a32_pc_epilogue.exe" if os.name == "nt" else "a32_pc_epilogue")
+            source.write_text(harness, encoding="utf-8", newline="\n")
+            built = _compile_c(compiler, source, executable, directory)
+            self.assertEqual(0, built.returncode, msg=built.stdout + built.stderr)
+            run = subprocess.run([str(executable)], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_emits_direct_c_for_selected_stack_transfers(self):
         source = poc.translate_stack_sequence([0xE92D4030, 0xE8BD4030, 0xE12FFF1E])
