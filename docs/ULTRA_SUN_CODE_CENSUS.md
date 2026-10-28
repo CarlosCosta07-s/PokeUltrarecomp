@@ -73,8 +73,8 @@ O censo confirma que a próxima etapa precisa aproximar o modelo experimental da
 
 - o modelo de registradores é restrito a `r0–r3`;
 - os acessos de memória cobertos são formas escalares pré-indexadas com imediato, sem write-back nem offset em registrador;
-- `LDM/STM` de A32 ainda não fazem parte desse tradutor;
-- o único terminador A32 reconhecido na POC é `BX LR`;
+- as transferências A32 `STMDB SP!` e `LDMIA SP!` são cobertas apenas pela POC-003 experimental, com memória sintética delimitada;
+- a POC-003 agora permite `BX LR` ou o epílogo terminal `LDMIA SP!, {registros, PC}`, retornando o valor de PC como destino convidado explícito;
 - a região de memória de teste é sintética e delimitada, não o mapa de memória real do 3DS.
 
 Por isso, a contagem de entradas do Ghidra não indica quantas funções já podem ser recompiladas. O tradutor ainda não recebeu uma função real selecionada e validada semanticamente.
@@ -83,7 +83,7 @@ Por isso, a contagem de entradas do Ghidra não indica quantas funções já pod
 
 A tentativa posterior de repetir a ingestão, [workflow #40594739458](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40594739458), falhou antes da análise porque o Google Drive limitou o download. Nenhum resultado dessa tentativa deve ser contado como uma nova inspeção do código.
 
-A versão atual de `tools/remote_3ds_intake.py` faz triagem agregada dos candidatos privados do Ghidra. Além do tradutor ARM geral, ela tenta agora a POC-003 mista em sequências A32 que combinem `MOV/ADD/SUB` imediatos com `STMDB/LDMIA SP!`, e registra separadamente as contagens de aceitação. O teste `test_private_real_candidate_screen_uses_mixed_a32_stack_translator` verifica esse caminho com uma fixture sintética; ele não é evidência de compatibilidade com o jogo real. A execução bem-sucedida #40582007887 não incluiu essa nova triagem e a tentativa #40594739458 parou no download antes que ela pudesse rodar. Portanto, ainda precisamos de uma nova ingestão com a imagem real para obter as contagens reais e selecionar um candidato para análise semântica.
+A versão atual de `tools/remote_3ds_intake.py` faz triagem agregada dos candidatos privados do Ghidra. Além do tradutor ARM geral, ela tenta a POC-003 mista em sequências A32 com `MOV/ADD/SUB` imediatos e `STMDB/LDMIA SP!`; o extrator Ghidra também admite epílogos terminais `LDMIA SP!, {registros, PC}`. O destino de retorno é devolvido como dado convidado explícito, nunca como salto para o host, e a triagem conta esses casos separadamente. O teste `test_private_real_candidate_screen_uses_mixed_a32_stack_translator` verifica esse caminho com uma fixture sintética; ele não é evidência de compatibilidade com o jogo real. A execução bem-sucedida #40582007887 não incluiu essa nova triagem e a tentativa #40594739458 parou no download antes que ela pudesse rodar. Portanto, ainda precisamos de uma nova ingestão com a imagem real para obter as contagens reais e selecionar um candidato para análise semântica.
 
 Não há artefatos da execução de referência nem persistência do segmento de código entre runners; uma nova análise real precisa executar de novo a ingestão no próprio workflow.
 
@@ -91,7 +91,7 @@ Não há artefatos da execução de referência nem persistência do segmento de
 
 1. Definir e testar um modelo A32 mais fiel de registradores de entrada/saída e uma região de pilha limitada, com contratos claros para `SP`, `LR`, flags e falhas.
 2. Depois disso, implementar uma família pequena de transferências múltiplas A32 — começando por formas específicas de `STMDB SP!` e `LDMIA SP!` — com ordem de registradores, write-back, alinhamento, limites, overflow e preservação do estado em falhas testados.
-3. Tratar `POP {PC}`/retornos apenas depois de definir como o tradutor modelará o fluxo de controle e o endereço de retorno. Manter ARM e Thumb separados, sem supor que o mesmo padrão tenha semântica idêntica nos dois estados.
+3. Validar com uma função real autorizada o contrato de retorno A32 via `LDMIA SP!, {registros, PC}`; manter retornos Thumb `POP {PC}` separados, sem supor que os dois estados tenham semântica idêntica.
 4. Executar os testes sintéticos específicos e a suíte completa, validar Linux/Windows e só então inspecionar candidatos reais de modo local/temporário. A triagem real posterior deve publicar apenas contagens agregadas e jamais bytes, endereços ou desassemblagens.
 
 **Estado final desta inspeção:** censo agregado real concluído; nenhuma função do jogo foi recompilada ou executada.
