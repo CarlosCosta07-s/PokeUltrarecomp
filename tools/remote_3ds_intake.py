@@ -528,6 +528,7 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
     seen_addresses: set[str] = set()
     compatible_count = 0
     mixed_stack_compatible_count = 0
+    pc_epilogue_compatible_count = 0
     rejected_candidate_sequences = 0
     candidates_with_instruction_decode_rejections = 0
     sequence_level_rejections = 0
@@ -572,8 +573,18 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
             if not isinstance(item, str) or not word_pattern.fullmatch(item):
                 raise IntakeError("private Ghidra candidate contains a malformed instruction word")
             words.append(int(item, 16))
+        terminal_pc_return = False
         if words[-1] != 0xE12FFF1E:
-            raise IntakeError("private Ghidra candidate does not end with exact BX LR")
+            try:
+                terminal_pc_return = (
+                    a32_stack_transfer_poc.decode_word(words[-1])[0] == "ldmia_sp_pc"
+                )
+            except ValueError:
+                terminal_pc_return = False
+            if not terminal_pc_return:
+                raise IntakeError(
+                    "private Ghidra candidate must end with BX LR or supported LDMIA SP!, {..., PC}"
+                )
         if size != len(words) * 4:
             raise IntakeError("private Ghidra candidate size does not match its word array")
 
@@ -626,11 +637,14 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
             mixed_stack_compatible_count += 1
         else:
             compatible_count += 1
+        if terminal_pc_return:
+            pc_epilogue_compatible_count += 1
         if len(syntax_sample) < max_syntax_sample:
             function_name = f"private_candidate_screen_{len(syntax_sample)}"
             signatures = (
                 "uint32_t synthetic_entry_bounded(",
                 "uint32_t a32_stack_transfer_entry(",
+                "uint32_t a32_stack_transfer_entry_with_pc(",
             )
             signature = next((item for item in signatures if item in generated), None)
             if signature is None:
@@ -664,6 +678,7 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         "private_candidates_omitted_by_ghidra_cap": omitted,
         "sequences_accepted_by_current_arm_subset_translator": compatible_count,
         "sequences_accepted_by_mixed_a32_alu_stack_translator": mixed_stack_compatible_count,
+        "sequences_accepted_with_terminal_ldmia_pc_epilogue": pc_epilogue_compatible_count,
         "candidate_sequences_rejected_by_current_arm_subset_translator": rejected_candidate_sequences,
         "candidate_sequences_with_instruction_decode_rejections": candidates_with_instruction_decode_rejections,
         "candidate_sequences_rejected_by_sequence_constraints": sequence_level_rejections,
@@ -679,7 +694,8 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         "addresses_or_instruction_words_emitted": False,
         "interpretation": (
             "Compatibility screening of private game-code candidates using the general ARM subset and "
-            "the bounded mixed A32 ALU/stack translator. Ghidra boundaries can be heuristic; successful "
+            "the bounded mixed A32 ALU/stack translator, including terminal LDMIA-to-PC epilogues. "
+            "Ghidra boundaries can be heuristic; successful "
             "translation and host-C syntax checking do not prove ARM equivalence or gameplay."
         ),
     }
