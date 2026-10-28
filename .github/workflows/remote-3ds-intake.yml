@@ -1,8 +1,9 @@
 name: Remote Nintendo 3DS container intake
 
 on:
-  # This gated trigger performs one real candidate-screen run. The job-level
-  # condition below prevents later pushes from downloading the private image.
+  # One-off push trigger for the exact commit subject:
+  # "Run Ultra Sun CCI candidate screen with latest ARM subset".
+  # The job-level condition prevents ordinary pushes from downloading the private image.
   push:
     branches:
       - main
