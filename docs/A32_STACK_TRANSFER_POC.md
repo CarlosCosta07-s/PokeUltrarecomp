@@ -12,10 +12,11 @@ Estabelecer um primeiro modelo explícito de SP, LR, registradores gerais e mem�
 
 - STMDB SP!, {reglist} com condição AL: decrementa o SP pela quantidade de palavras, grava os registradores listados em ordem crescente de número de registrador em endereços crescentes e atualiza SP depois de validar a transferência inteira.
 - LDMIA SP!, {reglist} com condição AL: carrega os registradores listados em ordem crescente de número de registrador e só atualiza SP depois de validar a faixa inteira e preparar os valores.
-- BX LR exato como terminador obrigatório da sequência gerada.
+- BX LR exato como terminador de sequência.
+- `LDMIA SP!, {registros, PC}` em condição AL é aceito somente no final de uma sequência. O destino carregado para PC é exposto pelo parâmetro `guest_pc_out` da interface dedicada `a32_stack_transfer_entry_with_pc`; não é executado como salto nativo.
 - A variante `translate_mixed_sequence` aceita também as formas AL não-S imediatas de `MOV`, `ADD` e `SUB` que o decodificador A32 existente reconhece em `r0–r3`. Essas instruções e as operações de pilha compartilham o mesmo vetor `r0–r14`, e cada instrução incrementa o orçamento de execução. Nenhuma outra família do decodificador geral é aceita por essa variante.
 
-A lista de transferência pode incluir r0–r12 e LR (r14). O modelo rejeita SP (r13) na lista com write-back, PC (r15) na lista, lista vazia, S-bit, condições diferentes de AL, outra base, outro modo de endereçamento, ausência de write-back e instruções fora do subconjunto. Na variante mista, os dados aritméticos se limitam a `MOV/ADD/SUB` imediatos sem S-bit em `r0–r3`; formas com flags e operandos de registrador não são aceitas. A presença de BX LR só termina a fixture: o endereço de retorno não é executado como um salto nativo.
+As listas `STMDB SP!` podem incluir r0–r12 e LR (r14), mas não SP nem PC. As listas `LDMIA SP!` podem incluir r0–r12 e LR; PC só é aceito no epílogo terminal dedicado. O modelo rejeita SP na lista com write-back, lista vazia, S-bit, condições diferentes de AL, outra base, outro modo de endereçamento, ausência de write-back e instruções fora do subconjunto. Na variante mista, os dados aritméticos se limitam a `MOV/ADD/SUB` imediatos sem S-bit em `r0–r3`; formas com flags e operandos de registrador não são aceitas. A presença de BX LR só termina a fixture: o endereço de retorno não é executado como um salto nativo.
 
 ## ABI sintética e memória
 
@@ -25,7 +26,7 @@ O modelo exige alinhamento de quatro bytes para as transferências múltiplas. A
 
 | Status | Significado |
 |---:|---|
-| 0 | A sequência atingiu o terminador BX LR |
+| 0 | A sequência atingiu o terminador BX LR ou o epílogo terminal LDMIA-to-PC |
 | 1 | Falha de memória, faixa inválida ou overflow de SP |
 | 2 | Argumentos inválidos ou região de endereços inválida |
 | 3 | SP desalinhado para uma transferência múltipla |
@@ -42,6 +43,6 @@ Execute os testes dessa POC com:
 
 ## Limitações e próximo passo
 
-Esta é uma prova separada e limitada, não um tradutor A32 geral. Ainda não cobre LDM/STM com outras bases ou modos, flags S, POP {PC}/retorno por PC, desvios, ABI completa do jogo, mapa de memória do 3DS, funções reais ou serviços do sistema. A POC aritmética A32 original continua com seu subconjunto e suas limitações próprias.
+Esta é uma prova separada e limitada, não um tradutor A32 geral. Ainda não cobre LDM/STM com outras bases ou modos, flags S, retornos Thumb `POP {PC}`, desvios indiretos comuns, ABI completa do jogo, mapa de memória do 3DS, funções reais ou serviços do sistema. A POC aritmética A32 original continua com seu subconjunto e suas limitações próprias.
 
-A POC participa agora de três níveis de teste: testes de tradução, pipeline C11 nativo e fronteira sintética C/C++ versionada. O teste de estado compartilhado já intercala `MOV/ADD` com transferências de pilha e verifica tanto o caminho bem-sucedido quanto a falha por faixa. O próximo passo é expandir essa composição para mais operações e registradores sem misturar as APIs sintéticas com a ABI real do jogo. A integração atual ainda não traduz uma função real. Só depois de validar o build Linux/Windows deve ser selecionada uma função real autorizada, com estado ARM confirmado e contrato de efeitos, para uma tentativa local de recompilação. Nenhum endereço, byte, desassemblagem ou recurso do jogo deve ser publicado como evidência.
+A POC participa agora de três níveis de teste: testes de tradução, pipeline C11 nativo e fronteira sintética C/C++ versionada. O teste de estado compartilhado intercala `MOV/ADD` com transferências de pilha e testa os epílogos A32 `LDMIA SP!, {registros, PC}` emitindo o destino convidado sem salto nativo. A suíte completa de 430 testes passou no [workflow #40609135281](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40609135281), e a pipeline C/C++ nativa passou em Linux e Windows no [workflow #40609135323](https://github.com/CarlosCosta07-s/PokeUltrarecomp/actions/runs/40609135323). O próximo passo é expandir essa composição para mais operações e registradores sem misturar as APIs sintéticas com a ABI real do jogo. A integração atual ainda não traduz uma função real. Só depois de validar o build Linux/Windows deve ser selecionada uma função real autorizada, com estado ARM confirmado e contrato de efeitos, para uma tentativa local de recompilação. Nenhum endereço, byte, desassemblagem ou recurso do jogo deve ser publicado como evidência.
