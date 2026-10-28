@@ -80,12 +80,11 @@ def _translate_sequence(
 ) -> str:
     """Emit C11 for a fixed A32 sequence ending in the exact BX LR terminator.
 
-    The default subset is stack-only. The mixed proof additionally permits the
-    existing A32 decoder's non-flag-setting AL-condition MOV/ADD/SUB immediates
-    on r0-r3, all operating on the same r0-r14 state as the stack transfers.
-    Input/output arrays use r0-r14 (SP=r13, LR=r14). Memory faults are
-    transactional per transfer. Supported operations preserve NZCV. BX LR is a
-    fixture terminator, not a native jump to the guest LR address.
+    The default subset is stack-only. The mixed proof additionally permits
+    AL MOV/ADD/SUB immediates on r0-r3, immediate SP adjustment, and aligned
+    word LDR/STR relative to SP. All use the same r0-r14 state and bounded
+    memory model. Memory faults are checked before the affected access, and
+    supported operations preserve NZCV. Return targets are data, never host jumps.
     """
     if not isinstance(words, (list, tuple)) or not words:
         raise UnsupportedA32StackInstruction("empty A32 stack-transfer sequence")
@@ -151,6 +150,55 @@ def _translate_sequence(
                 "    steps++;",
                 f"    r[{rd}] = {expression};",
             ))
+            continue
+
+        if operation == "adjust_sp":
+            _, adjustment, immediate = instruction
+            operator = "+" if adjustment == "add" else "-"
+            lines.extend((
+                f"    /* Guest instruction {index + 1}: AL {adjustment.upper()} SP, SP, #immediate. */",
+                "    steps++;",
+                f"    r[13] = r[13] {operator} UINT32_C(0x{immediate:08X});",
+            ))
+            continue
+
+        if operation in ("ldr_sp_imm", "str_sp_imm"):
+            _, rd, offset, up = instruction
+            sign = "+" if up else "-"
+            effective = f"effective_address_{index}"
+            transfer_end = f"transfer_end_{index}"
+            region_end = f"region_end_{index}"
+            lines.extend((
+                f"    /* Guest instruction {index + 1}: AL {operation.upper()} word relative to SP. */",
+                "    steps++;",
+                "    {",
+                f"        const uint32_t {effective} = r[13] {sign} UINT32_C({offset});",
+                f"        const uint64_t {transfer_end} = (uint64_t){effective} + UINT64_C(4);",
+                f"        const uint64_t {region_end} = (uint64_t)memory_base + (uint64_t)memory_size;",
+                f"        if (({effective} & UINT32_C(3)) != 0U) {{ status = UINT8_C(3); goto a32_stack_exit; }}",
+                f"        if ((uint64_t){effective} < (uint64_t)memory_base || {transfer_end} > {region_end} || {transfer_end} > UINT64_C(0x100000000)) {{",
+                "            status = UINT8_C(1); goto a32_stack_exit;",
+                "        }",
+            ))
+            if operation == "ldr_sp_imm":
+                loaded = f"loaded_word_{index}"
+                lines.extend((
+                    f"        const uint32_t {loaded} = (uint32_t)memory_bytes[({effective} - memory_base)] |",
+                    f"            ((uint32_t)memory_bytes[({effective} - memory_base) + UINT32_C(1)] << 8) |",
+                    f"            ((uint32_t)memory_bytes[({effective} - memory_base) + UINT32_C(2)] << 16) |",
+                    f"            ((uint32_t)memory_bytes[({effective} - memory_base) + UINT32_C(3)] << 24);",
+                    f"        r[{rd}] = {loaded};",
+                ))
+            else:
+                value = f"store_word_{index}"
+                lines.extend((
+                    f"        const uint32_t {value} = r[{rd}];",
+                    f"        memory_bytes[({effective} - memory_base)] = (uint8_t)({value} & UINT32_C(0xFF));",
+                    f"        memory_bytes[({effective} - memory_base) + UINT32_C(1)] = (uint8_t)(({value} >> 8) & UINT32_C(0xFF));",
+                    f"        memory_bytes[({effective} - memory_base) + UINT32_C(2)] = (uint8_t)(({value} >> 16) & UINT32_C(0xFF));",
+                    f"        memory_bytes[({effective} - memory_base) + UINT32_C(3)] = (uint8_t)(({value} >> 24) & UINT32_C(0xFF));",
+                ))
+            lines.append("    }")
             continue
 
         operation, registers = instruction
@@ -239,11 +287,50 @@ def _translate_sequence(
     return "\n".join(lines)
 
 
+def _decode_mixed_stack_specific(word: int) -> tuple[object, ...] | None:
+    """Decode AL SP adjustment and SP-relative word transfers omitted by the base POC."""
+    if not isinstance(word, int) or isinstance(word, bool) or not 0 <= word <= 0xFFFFFFFF:
+        raise UnsupportedA32StackInstruction("instruction word is outside uint32")
+    if (word >> 28) != 0xE:
+        return None
+
+    # ADD/SUB SP, SP, #rotated-immediate; S-bit and other forms are refused.
+    if ((word >> 25) & 0b111) == 0b001:
+        opcode = (word >> 21) & 0xF
+        set_flags = (word >> 20) & 1
+        rn = (word >> 16) & 0xF
+        rd = (word >> 12) & 0xF
+        if not set_flags and rn == 13 and rd == 13 and opcode in (0b0010, 0b0100):
+            immediate8 = word & 0xFF
+            rotate = 2 * ((word >> 8) & 0xF)
+            immediate = immediate8 if rotate == 0 else (
+                (immediate8 >> rotate) | (immediate8 << (32 - rotate))
+            ) & 0xFFFFFFFF
+            return ("adjust_sp", "add" if opcode == 0b0100 else "sub", immediate)
+
+    # Pre-indexed, non-writeback, word LDR/STR [SP, +/-imm12]. No byte transfers,
+    # register offsets, SP/PC destinations, or non-AL predicates are approximated.
+    if ((word >> 26) & 0b11) == 0b01 and ((word >> 25) & 1) == 0:
+        pre_index = (word >> 24) & 1
+        up = (word >> 23) & 1
+        byte_transfer = (word >> 22) & 1
+        writeback = (word >> 21) & 1
+        load = (word >> 20) & 1
+        rn = (word >> 16) & 0xF
+        rd = (word >> 12) & 0xF
+        if pre_index and not byte_transfer and not writeback and rn == 13 and rd not in (13, 15):
+            return ("ldr_sp_imm" if load else "str_sp_imm", rd, word & 0xFFF, bool(up))
+    return None
+
+
 def decode_mixed_word(word: int) -> tuple[object, ...]:
-    """Decode stack operations plus a tiny AL MOV/ADD/SUB-immediate subset."""
+    """Decode bounded stack, basic ALU, SP-adjustment, and SP-relative word forms."""
     try:
         return decode_word(word)
     except UnsupportedA32StackInstruction:
+        special = _decode_mixed_stack_specific(word)
+        if special is not None:
+            return special
         try:
             instruction = arm_subset_poc.decode_word(word)
         except arm_subset_poc.UnsupportedInstruction as exc:
@@ -253,7 +340,7 @@ def decode_mixed_word(word: int) -> tuple[object, ...]:
         return instruction
     if not instruction or instruction[0] not in ("mov", "add", "sub"):
         raise UnsupportedA32StackInstruction(
-            "mixed sequence only permits STMDB/LDMIA SP!, AL MOV/ADD/SUB immediates, and BX LR"
+            "mixed sequence permits stack transfers, AL MOV/ADD/SUB immediates, SP adjustment, SP-relative word LDR/STR, and return terminators"
         )
     if instruction[0] == "mov":
         if len(instruction) != 3:
