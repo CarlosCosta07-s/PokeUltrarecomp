@@ -320,7 +320,24 @@ class A32MixedSequenceTests(unittest.TestCase):
         self.assertEqual(("mov", 0, 3), poc.decode_mixed_word(0xE3A00003))
         self.assertEqual(("add", 0, 0, 2), poc.decode_mixed_word(0xE2800002))
         self.assertEqual(("sub", 1, 1, 1), poc.decode_mixed_word(0xE2411001))
+        self.assertEqual(("adjust_sp", "sub", 8), poc.decode_mixed_word(0xE24DD008))
+        self.assertEqual(("adjust_sp", "add", 8), poc.decode_mixed_word(0xE28DD008))
+        self.assertEqual(("str_sp_imm", 0, 4, True), poc.decode_mixed_word(0xE58D0004))
+        self.assertEqual(("ldr_sp_imm", 1, 4, True), poc.decode_mixed_word(0xE59D1004))
+        self.assertEqual(("ldr_sp_imm", 1, 4, False), poc.decode_mixed_word(0xE51D1004))
         for word in (0xE3B00001, 0x13A00001, 0xE3A04001, 0xE0810002):
+            with self.subTest(word=f"0x{word:08X}"), self.assertRaises(poc.UnsupportedA32StackInstruction):
+                poc.decode_mixed_word(word)
+
+    def test_rejects_unsupported_sp_adjustment_and_stack_memory_forms(self):
+        for word in (
+            0xE25DD008,  # flag-setting SUB SP, SP, #8
+            0xE58DD004,  # STR SP, [SP, #4]
+            0xE59DF004,  # LDR PC, [SP, #4]
+            0xE5BD0004,  # write-back STR r0, [SP, #4]!
+            0xE5DD0004,  # byte STR r0, [SP, #4]
+            0x159D0004,  # conditional LDR
+        ):
             with self.subTest(word=f"0x{word:08X}"), self.assertRaises(poc.UnsupportedA32StackInstruction):
                 poc.decode_mixed_word(word)
 
@@ -332,6 +349,79 @@ class A32MixedSequenceTests(unittest.TestCase):
         self.assertIn("r[0] = r[0] + UINT32_C(0x00000002);", source)
         self.assertIn("r[13] = new_sp;", source)
         self.assertNotIn("switch (word)", source)
+
+    def test_native_stack_frame_adjustment_and_sp_relative_word_io(self):
+        compiler = _find_c_compiler()
+        if not compiler:
+            self.skipTest("no C compiler found; stack-frame proof requires a native C compiler")
+        words = [
+            0xE3A0002A,  # MOV r0, #42
+            0xE92D4030,  # STMDB sp!, {r4, r5, lr}
+            0xE24DD008,  # SUB sp, sp, #8
+            0xE58D0004,  # STR r0, [sp, #4]
+            0xE59D1004,  # LDR r1, [sp, #4]
+            0xE28DD008,  # ADD sp, sp, #8
+            0xE8BD8030,  # LDMIA sp!, {r4, r5, pc}
+        ]
+        generated = poc.translate_mixed_sequence(words)
+        harness = generated + r'''
+#include <string.h>
+int main(void) {
+    uint32_t in[15] = {0U}, out[15] = {0U};
+    uint8_t memory[64]; memset(memory, 0xEE, sizeof(memory));
+    in[4] = UINT32_C(0x44444444); in[5] = UINT32_C(0x55555555);
+    in[13] = UINT32_C(0x1020); in[14] = UINT32_C(0xABCD1234);
+    uint8_t flags = 0U, status = UINT8_C(0xFF); uint32_t steps = 0U, guest_pc = 0U;
+    uint32_t returned = a32_stack_transfer_entry_with_pc(in, UINT8_C(0xB), &flags,
+        memory, UINT32_C(0x1000), UINT32_C(64), out, &guest_pc, &steps, &status);
+    return returned == 42U && status == 0U && steps == 7U && flags == UINT8_C(0xB)
+        && guest_pc == UINT32_C(0xABCD1234)
+        && out[0] == 42U && out[1] == 42U && out[4] == in[4] && out[5] == in[5]
+        && out[13] == in[13]
+        && memory[16] == UINT8_C(0x2A) && memory[17] == 0U
+        && memory[20] == UINT8_C(0x44) && memory[24] == UINT8_C(0x55)
+        && memory[28] == UINT8_C(0x34) && memory[31] == UINT8_C(0xAB)
+        ? 0 : 1;
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "a32_sp_frame.c"
+            executable = Path(directory) / ("a32_sp_frame.exe" if os.name == "nt" else "a32_sp_frame")
+            source.write_text(harness, encoding="utf-8", newline="\n")
+            built = _compile_c(compiler, source, executable, directory)
+            self.assertEqual(0, built.returncode, msg=built.stdout + built.stderr)
+            run = subprocess.run([str(executable)], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
+
+    def test_native_sp_relative_store_fault_does_not_write_outside_region(self):
+        compiler = _find_c_compiler()
+        if not compiler:
+            self.skipTest("no C compiler found; SP-relative fault proof requires a native C compiler")
+        generated = poc.translate_mixed_sequence([
+            0xE3A0002A, 0xE58D0004, 0xE12FFF1E
+        ])
+        harness = generated + r'''
+#include <string.h>
+int main(void) {
+    uint32_t in[15] = {0U}, out[15] = {0U};
+    uint8_t memory[32], before[32]; memset(memory, 0xA5, sizeof(memory));
+    memcpy(before, memory, sizeof(memory)); in[13] = UINT32_C(0x101C);
+    uint8_t flags = 0U, status = UINT8_C(0xFF); uint32_t steps = 0U;
+    (void)a32_stack_transfer_entry(in, UINT8_C(0x6), &flags, memory,
+        UINT32_C(0x1000), UINT32_C(32), out, &steps, &status);
+    return status == 1U && steps == 2U && flags == UINT8_C(0x6)
+        && out[0] == UINT32_C(42) && out[13] == in[13]
+        && memcmp(memory, before, sizeof(memory)) == 0 ? 0 : 1;
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "a32_sp_frame_fault.c"
+            executable = Path(directory) / ("a32_sp_frame_fault.exe" if os.name == "nt" else "a32_sp_frame_fault")
+            source.write_text(harness, encoding="utf-8", newline="\n")
+            built = _compile_c(compiler, source, executable, directory)
+            self.assertEqual(0, built.returncode, msg=built.stdout + built.stderr)
+            run = subprocess.run([str(executable)], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, msg=run.stdout + run.stderr)
 
     def test_native_mixed_alu_stack_roundtrip_and_fault(self):
         compiler = _find_c_compiler()
