@@ -519,13 +519,15 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
 
     try:
         import arm_subset_poc
+        import a32_stack_transfer_poc
     except ImportError:
-        raise IntakeError("current ARM subset translator is unavailable for candidate screening") from None
+        raise IntakeError("current ARM translators are unavailable for candidate screening") from None
 
     address_pattern = re.compile(r"^0x[0-9A-Fa-f]{8}$")
     word_pattern = re.compile(r"^0x[0-9A-Fa-f]{8}$")
     seen_addresses: set[str] = set()
     compatible_count = 0
+    mixed_stack_compatible_count = 0
     rejected_candidate_sequences = 0
     candidates_with_instruction_decode_rejections = 0
     sequence_level_rejections = 0
@@ -587,6 +589,7 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
                 # The translation attempt below records fixed, sanitized failure categories.
                 pass
 
+        translation_path = "general-arm-subset"
         try:
             generated = arm_subset_poc.translate(
                 words,
@@ -595,29 +598,43 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
                 runtime_memory_io=memory_model_needed,
             )
         except ValueError as exc:
-            # Count only fixed, sanitized decode families for diagnosis. Never
+            # Try the real repository's bounded mixed translator for candidate
+            # bodies that interleave immediate ALU instructions and SP transfers.
+            # This still consumes only private Ghidra words; never logs the body.
+            try:
+                generated = a32_stack_transfer_poc.translate_mixed_sequence(words)
+                translation_path = "mixed-a32-alu-stack"
+            except ValueError:
+                # Count only fixed, sanitized decode families for diagnosis. Never
             # write the candidate address, word, exception text, or C source to logs.
-            rejected_candidate_sequences += 1
-            found_instruction_rejection = False
-            for word in words[:-1]:
-                try:
-                    arm_subset_poc.decode_word(word)
-                except ValueError as exc:
-                    family = classify_arm_decode_rejection(str(exc))
-                    rejection_family_counts[family] = rejection_family_counts.get(family, 0) + 1
-                    found_instruction_rejection = True
-            if found_instruction_rejection:
-                candidates_with_instruction_decode_rejections += 1
-            else:
-                sequence_level_rejections += 1
-            continue
+                rejected_candidate_sequences += 1
+                found_instruction_rejection = False
+                for word in words[:-1]:
+                    try:
+                        arm_subset_poc.decode_word(word)
+                    except ValueError as exc:
+                        family = classify_arm_decode_rejection(str(exc))
+                        rejection_family_counts[family] = rejection_family_counts.get(family, 0) + 1
+                        found_instruction_rejection = True
+                if found_instruction_rejection:
+                    candidates_with_instruction_decode_rejections += 1
+                else:
+                    sequence_level_rejections += 1
+                continue
 
-        compatible_count += 1
+        if translation_path == "mixed-a32-alu-stack":
+            mixed_stack_compatible_count += 1
+        else:
+            compatible_count += 1
         if len(syntax_sample) < max_syntax_sample:
             function_name = f"private_candidate_screen_{len(syntax_sample)}"
-            signature = "uint32_t synthetic_entry_bounded("
-            if signature not in generated:
-                raise IntakeError("ARM translator emitted an unexpected runtime interface")
+            signatures = (
+                "uint32_t synthetic_entry_bounded(",
+                "uint32_t a32_stack_transfer_entry(",
+            )
+            signature = next((item for item in signatures if item in generated), None)
+            if signature is None:
+                raise IntakeError("A32 translator emitted an unexpected runtime interface")
             syntax_sample.append(generated.replace(signature, f"uint32_t {function_name}(", 1))
 
     syntax_status = "not-run-no-compatible-candidates"
@@ -646,6 +663,7 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         "private_candidates_screened": len(candidates),
         "private_candidates_omitted_by_ghidra_cap": omitted,
         "sequences_accepted_by_current_arm_subset_translator": compatible_count,
+        "sequences_accepted_by_mixed_a32_alu_stack_translator": mixed_stack_compatible_count,
         "candidate_sequences_rejected_by_current_arm_subset_translator": rejected_candidate_sequences,
         "candidate_sequences_with_instruction_decode_rejections": candidates_with_instruction_decode_rejections,
         "candidate_sequences_rejected_by_sequence_constraints": sequence_level_rejections,
@@ -660,8 +678,9 @@ def screen_private_ghidra_candidates(sidecar_path: Path) -> dict:
         "function_boundaries_independently_verified": False,
         "addresses_or_instruction_words_emitted": False,
         "interpretation": (
-            "Compatibility screening only. Ghidra boundaries can be heuristic; successful translation "
-            "and host-C syntax checking do not prove ARM equivalence or gameplay."
+            "Compatibility screening of private game-code candidates using the general ARM subset and "
+            "the bounded mixed A32 ALU/stack translator. Ghidra boundaries can be heuristic; successful "
+            "translation and host-C syntax checking do not prove ARM equivalence or gameplay."
         ),
     }
 
