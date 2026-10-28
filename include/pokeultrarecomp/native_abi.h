@@ -53,8 +53,34 @@ typedef struct PokeNativeMemory {
     uint8_t *bytes;
 } PokeNativeMemory;
 
+/*
+ * The A32 stack proof intentionally uses a separate full-register contract.
+ * It must not be confused with PokeNativeCall, whose current generic subset
+ * exposes only r0-r7 plus explicit SP/LR fields.
+ */
+#define POKE_NATIVE_A32_REGISTER_COUNT 15U
+typedef struct PokeNativeA32StackCall {
+    uint32_t abi_version;
+    uint32_t registers[POKE_NATIVE_A32_REGISTER_COUNT]; /* r0-r14; SP=r13, LR=r14. */
+    uint8_t initial_nzcv;
+} PokeNativeA32StackCall;
+
+typedef struct PokeNativeA32StackResult {
+    uint32_t abi_version;
+    uint32_t registers[POKE_NATIVE_A32_REGISTER_COUNT];
+    uint32_t return_value;
+    uint32_t steps_executed;
+    uint8_t nzcv;
+    uint8_t execution_status;
+} PokeNativeA32StackResult;
+
 /* These entries bind generated synthetic fixtures to the stable C ABI. */
 int poke_native_execute_a32(const PokeNativeCall *call, PokeNativeResult *result);
+int poke_native_execute_a32_stack(
+    const PokeNativeA32StackCall *call,
+    const PokeNativeMemory *memory,
+    PokeNativeA32StackResult *result
+);
 int poke_native_execute_thumb(const PokeNativeCall *call, PokeNativeResult *result);
 int poke_native_execute_thumb_memory(
     const PokeNativeCall *call,
