@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Translate a deliberately small A32 stack-transfer subset to native C.
 
-Supported guest operations are only STMDB SP!, {registers}, LDMIA SP!,
-{registers}, and a final exact BX LR terminator. The translator emits C for
-those fixed instructions; it does not interpret ARM words at runtime. The
-bounded memory region is a synthetic test model, not the Nintendo 3DS map.
+The stack-only entry translates STMDB SP!, {registers}, LDMIA SP!, {registers},
+and a final exact BX LR terminator. A separate mixed proof also permits a tiny
+AL-condition MOV/ADD/SUB-immediate subset on r0-r3, sharing the same r0-r14
+state with stack transfers. Both emit fixed C and reject unsupported encodings;
+the bounded memory region is synthetic, not the Nintendo 3DS map.
 """
 from __future__ import annotations
+
+import arm_subset_poc
 
 MAX_INSTRUCTIONS = 256
 REGISTER_COUNT = 15  # r0-r14; r15/PC is deliberately not part of this model.
@@ -68,22 +71,25 @@ def decode_word(word: int) -> tuple[object, ...]:
     return (operation, registers)
 
 
-def translate_stack_sequence(words: list[int] | tuple[int, ...]) -> str:
-    """Emit C11 for a fixed sequence of supported stack transfers ending in BX LR.
+def _translate_sequence(
+    words: list[int] | tuple[int, ...], *, allow_basic_alu: bool
+) -> str:
+    """Emit C11 for a fixed A32 sequence ending in the exact BX LR terminator.
 
-    Input/output arrays use indices r0-r14 (so SP is r13 and LR is r14).
-    Memory faults are transactional per transfer: a failing instruction leaves
-    its registers, SP, and memory unchanged. Earlier completed instructions
-    remain reflected in the returned state. NZCV is preserved by every supported
-    instruction and copied to nzcv_out. BX LR is a sequence terminator here, not
-    a model of a native branch to the guest LR address.
+    The default subset is stack-only. The mixed proof additionally permits the
+    existing A32 decoder's non-flag-setting AL-condition MOV/ADD/SUB immediates
+    on r0-r3, all operating on the same r0-r14 state as the stack transfers.
+    Input/output arrays use r0-r14 (SP=r13, LR=r14). Memory faults are
+    transactional per transfer. Supported operations preserve NZCV. BX LR is a
+    fixture terminator, not a native jump to the guest LR address.
     """
     if not isinstance(words, (list, tuple)) or not words:
         raise UnsupportedA32StackInstruction("empty A32 stack-transfer sequence")
     if len(words) > MAX_INSTRUCTIONS:
         raise UnsupportedA32StackInstruction(f"sequence exceeds {MAX_INSTRUCTIONS} instructions")
 
-    decoded = [decode_word(word) for word in words]
+    decoder = decode_mixed_word if allow_basic_alu else decode_word
+    decoded = [decoder(word) for word in words]
     if any(item == ("return",) for item in decoded[:-1]):
         raise UnsupportedA32StackInstruction("instructions after BX LR are unsupported")
     if decoded[-1] != ("return",):
@@ -92,7 +98,8 @@ def translate_stack_sequence(words: list[int] | tuple[int, ...]) -> str:
     lines = [
         "#include <stdint.h>",
         "#include <stddef.h>",
-        "/* Fixed-sequence A32 stack-transfer proof; not a game runtime. */",
+        ("/* Fixed-sequence A32 ALU/stack proof; not a game runtime. */"
+         if allow_basic_alu else "/* Fixed-sequence A32 stack-transfer proof; not a game runtime. */"),
         "uint32_t a32_stack_transfer_entry(",
         "    const uint32_t *registers_in, uint8_t initial_nzcv, uint8_t *nzcv_out,",
         "    uint8_t *memory_bytes, uint32_t memory_base, uint32_t memory_size,",
@@ -113,7 +120,27 @@ def translate_stack_sequence(words: list[int] | tuple[int, ...]) -> str:
     ]
 
     for index, instruction in enumerate(decoded[:-1]):
+        operation = instruction[0]
+        if operation in ("mov", "add", "sub"):
+            if operation == "mov":
+                _, rd, immediate = instruction
+                expression = f"UINT32_C(0x{immediate:08X})"
+            else:
+                _, rd, rn, immediate = instruction
+                operator = "+" if operation == "add" else "-"
+                expression = f"r[{rn}] {operator} UINT32_C(0x{immediate:08X})"
+            lines.extend((
+                f"    /* Guest instruction {index + 1}: AL {operation.upper()} immediate. */",
+                "    steps++;",
+                f"    r[{rd}] = {expression};",
+            ))
+            continue
+
         operation, registers = instruction
+        if operation not in ("stmdb_sp", "ldmia_sp"):
+            raise UnsupportedA32StackInstruction(
+                f"instruction {index + 1} is outside the selected sequence subset: {operation!r}"
+            )
         count = len(registers)
         transfer_bytes = count * 4
         lines.extend((
@@ -181,3 +208,49 @@ def translate_stack_sequence(words: list[int] | tuple[int, ...]) -> str:
         "",
     ))
     return "\n".join(lines)
+
+
+def decode_mixed_word(word: int) -> tuple[object, ...]:
+    """Decode stack operations plus a tiny AL MOV/ADD/SUB-immediate subset."""
+    try:
+        return decode_word(word)
+    except UnsupportedA32StackInstruction:
+        try:
+            instruction = arm_subset_poc.decode_word(word)
+        except arm_subset_poc.UnsupportedInstruction as exc:
+            raise UnsupportedA32StackInstruction(str(exc)) from exc
+
+    if instruction == ("return",):
+        return instruction
+    if not instruction or instruction[0] not in ("mov", "add", "sub"):
+        raise UnsupportedA32StackInstruction(
+            "mixed sequence only permits STMDB/LDMIA SP!, AL MOV/ADD/SUB immediates, and BX LR"
+        )
+    if instruction[0] == "mov":
+        if len(instruction) != 3:
+            raise UnsupportedA32StackInstruction("MOV must be an AL non-flag-setting immediate form")
+        _, rd, immediate = instruction
+        if not (0 <= rd <= 3 and 0 <= immediate <= 0xFFFFFFFF):
+            raise UnsupportedA32StackInstruction("MOV operands are outside the mixed proof's r0-r3 subset")
+    else:
+        if len(instruction) != 4:
+            raise UnsupportedA32StackInstruction("ADD/SUB must be AL non-flag-setting immediate forms")
+        _, rd, rn, immediate = instruction
+        if not (0 <= rd <= 3 and 0 <= rn <= 3 and 0 <= immediate <= 0xFFFFFFFF):
+            raise UnsupportedA32StackInstruction("ADD/SUB operands are outside the mixed proof's r0-r3 subset")
+    return instruction
+
+
+def translate_stack_sequence(words: list[int] | tuple[int, ...]) -> str:
+    """Translate only the bounded stack-transfer subset and exact BX LR terminator."""
+    return _translate_sequence(words, allow_basic_alu=False)
+
+
+def translate_mixed_sequence(words: list[int] | tuple[int, ...]) -> str:
+    """Translate stack transfers interleaved with AL MOV/ADD/SUB immediates.
+
+    The data-processing operations and stack transfers use a single 15-register
+    state. The mixed proof remains experimental and deliberately rejects all
+    other A32 instructions.
+    """
+    return _translate_sequence(words, allow_basic_alu=True)
