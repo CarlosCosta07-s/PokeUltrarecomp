@@ -67,7 +67,7 @@ def decode_word(word: int) -> tuple[object, ...]:
 
     pc_in_list = bool(register_mask & (1 << 15))
     if pc_in_list and operation != "ldmia_sp":
-        raise UnsupportedA32StackInstruction("PC is only supported in a terminal LDMIA SP! return list")
+        raise UnsupportedA32StackInstruction("PC in a register list is unsupported except for terminal LDMIA SP! return epilogues")
 
     registers = tuple(index for index in range(REGISTER_COUNT) if register_mask & (1 << index))
     if pc_in_list:
