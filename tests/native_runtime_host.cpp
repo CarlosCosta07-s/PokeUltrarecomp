@@ -140,6 +140,30 @@ int main()
     }
     std::cout << "PASS: C++20 A32 stack-transfer faults preserve memory and guest state\n";
 
+    a32_stack_call.registers[13] = UINT32_C(0x1002);
+    a32_stack_call.initial_nzcv = UINT8_C(0x7);
+    if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
+        != POKE_NATIVE_ABI_OK
+        || a32_stack_result.execution_status != POKE_NATIVE_EXECUTION_ALIGNMENT_FAULT
+        || a32_stack_result.steps_executed != UINT32_C(1)
+        || a32_stack_result.nzcv != UINT8_C(0x7)
+        || a32_stack_result.registers[13] != a32_stack_call.registers[13]
+        || a32_stack_bytes != a32_stack_bytes_before_fault) {
+        return fail("A32 stack-transfer alignment fault was not mapped through the native ABI");
+    }
+    std::cout << "PASS: C++20 A32 stack-transfer alignment errors map to native status\n";
+
+    a32_stack_call.abi_version = UINT32_C(99);
+    a32_stack_result.abi_version = UINT32_C(0xAAAAAAAA);
+    a32_stack_result.return_value = UINT32_C(0xAAAAAAAA);
+    if (poke_native_execute_a32_stack(&a32_stack_call, &a32_stack_memory, &a32_stack_result)
+        != POKE_NATIVE_ABI_VERSION_MISMATCH
+        || a32_stack_result.abi_version != UINT32_C(0xAAAAAAAA)
+        || a32_stack_result.return_value != UINT32_C(0xAAAAAAAA)) {
+        return fail("A32 stack ABI version mismatch changed output fields");
+    }
+    std::cout << "PASS: C++20 A32 stack ABI rejects a version mismatch without output writes\n";
+
     call.registers[0] = 99U;
     call.initial_nzcv = UINT8_C(0x9);
     set_sentinel(result);
