@@ -23,6 +23,7 @@ A escolha de SDL3/Vulkan é arquitetural, ainda não uma dependência já integr
 ## O que existe hoje
 
 - **POC-001 ARM A32 → C:** tradutor experimental de um subconjunto sintético com imediatos, `LSL/LSR/ASR/ROR/RRX` de Operand2, lógica com imediato rotacionado e S-bit, e aritmética `ADC/SBC/RSC` com carry/borrow de entrada e variantes S; cobre flags e predicação/NZCV. A matriz diferencial aritmética C11 passou em 240/240 casos contra o modelo NZCV separado, incluindo `RSBS` com subtração reversa; `MUL/MLA` contam com testes nativos específicos de resultado e flags; operações lógicas com flags possuem testes nativos adicionais. Inclui `LDR/STR` word, `LDRB/STRB` byte, `LDRH/STRH` halfword e `LDRSB/LDRSH` signed loads em formas pré-indexadas imediatas numa região de memória delimitada; halfwords exigem alinhamento de 2 bytes neste modelo, e loads signed fazem extensão de sinal explícita. Shifts especificados por registrador, várias famílias de instruções e ABI real integrada ainda não estão implementados. Não é um recompilador ARM geral. [Especificação e limites](docs/POC_001_SPEC.md).
+- **POC-003 A32 → C (pilha):** prova separada de tradução nativa para `STMDB SP!` e `LDMIA SP!` com lista limitada de registradores, validação integral de uma região de memória sintética, write-back, preservação de NZCV e falhas explícitas. Não implementa `POP {PC}` nem uma ABI real de jogo. [Especificação e limitações](docs/A32_STACK_TRANSFER_POC.md).
 - **POC-002 Thumb-16 → C:** tradutor experimental de um subconjunto Thumb-16 sintético. Não cobre todas as instruções usadas pelo jogo. [Especificação](docs/THUMB_POC_002.md).
 - **Intake do alvo:** perfis de Ultra Sun/Ultra Moon e verificação de metadados/segmentos em entradas locais. [Guia](docs/GAME_TARGET_INTAKE.md).
 - **Inspeção de código:** inspeção explícita de intervalos ARM/Thumb e anotações conservadoras de fluxo de controle, memória e efeitos de registradores. [Guia](docs/CODE_RANGE_INSPECTION.md).
@@ -58,6 +59,7 @@ Requisitos atuais das ferramentas Python: Python 3.10+ e Git. Na raiz do reposit
 
     python tools/run_native_poc_pipeline.py
     python tools/arm_subset_poc.py
+    python -m unittest discover -s tests -p 'test_a32_stack_transfer_poc.py' -v
     python tools/arm_differential_poc.py
     python -m unittest discover -s tests -v
     python tools/check_repository_safety.py
