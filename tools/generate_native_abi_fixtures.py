@@ -23,7 +23,7 @@ A32_WORDS = (
     0xE3A0000C, 0xE2400008, 0xE2800003, 0xE2000007, 0xE3800008,
     0xE2200001, 0xE3C00002, 0xE3E01000, 0xE201000C, 0xE12FFF1E,
 )
-A32_STACK_TRANSFER_WORDS = (0xE92D4030, 0xE8BD4030, 0xE12FFF1E)
+A32_STACK_TRANSFER_WORDS = (0xE3A00003, 0xE92D4030, 0xE2800002, 0xE8BD4030, 0xE12FFF1E)
 THUMB_HALFWORDS = (0x200C, 0x3808, 0x3003, 0x2807, 0x4770)
 THUMB_MEMORY_HALFWORDS = (
     0x5042, 0x5843, 0x5242, 0x5A44, 0x5442, 0x5645, 0x5C46, 0x5E47,
@@ -146,7 +146,7 @@ def generate_a32() -> str:
 
 
 def generate_a32_stack() -> str:
-    source = a32_stack_transfer_poc.translate_stack_sequence(list(A32_STACK_TRANSFER_WORDS))
+    source = a32_stack_transfer_poc.translate_mixed_sequence(list(A32_STACK_TRANSFER_WORDS))
     old_signature = "uint32_t a32_stack_transfer_entry("
     if old_signature not in source:
         raise RuntimeError("A32 stack-transfer signature changed; update the ABI adapter deliberately")
