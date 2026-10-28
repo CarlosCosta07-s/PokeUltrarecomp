@@ -36,7 +36,7 @@ Cada unidade traduzida precisa registrar endereço de origem, estado ARM/Thumb, 
 
 ## 2. ABI, memória e estado da CPU
 
-A interface entre C gerado e runtime deve especificar largura/alinhamento, endianness, registradores vivos, flags, stack pointer, convenções de chamada, comportamento de retorno, exceções, callbacks e dependências de estado global. Endereços de origem não podem ser tratados como ponteiros de host sem uma decisão explícita de mapeamento. A ABI experimental genérica atual expõe oito registradores; a POC de pilha A32 usa um tipo de teste separado com `r0–r14` para não alterar silenciosamente esse contrato. Nenhuma dessas fixtures sintéticas define, por si só, a ABI real do jogo.
+A interface entre C gerado e runtime deve especificar largura/alinhamento, endianness, registradores vivos, flags, stack pointer, convenções de chamada, comportamento de retorno, exceções, callbacks e dependências de estado global. Endereços de origem não podem ser tratados como ponteiros de host sem uma decisão explícita de mapeamento. A ABI experimental genérica atual expõe oito registradores; a POC A32 de pilha usa tipos de teste separados com `r0–r14` e agora executa uma sequência sintética em que `MOV/ADD` e `STMDB/LDMIA` compartilham o mesmo estado, sem alterar silenciosamente o contrato genérico. Nenhuma dessas fixtures sintéticas define, por si só, a ABI real do jogo.
 
 Memória do alvo, buffers e regiões mapeadas precisam ter propriedade, tamanho, permissões e vida útil definidos. Não representar falhas de memória como leituras inventadas. Transferências de controle indiretas só podem ser geradas quando o destino puder ser resolvido ou representado por uma interface nativa explícita.
 
