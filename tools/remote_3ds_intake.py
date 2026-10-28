@@ -227,6 +227,24 @@ def download(source_url: str, destination: Path) -> int:
     return size
 
 
+def download_with_fallback(
+    source_url: str, destination: Path, fallback_source_url: str | None = None,
+) -> tuple[int, bool]:
+    """Use an authorized alternate HTTPS source only after a primary quota failure."""
+    try:
+        return download(source_url, destination), False
+    except IntakeError as primary_error:
+        message = str(primary_error).casefold()
+        quota_failure = "rate-limiting" in message or (
+            "quota" in message and "download" in message
+        )
+        if not fallback_source_url or not quota_failure:
+            raise
+        destination.unlink(missing_ok=True)
+        # The same HTTPS policy and 8 GiB limit apply to the fallback.
+        return download(fallback_source_url, destination), True
+
+
 def _locate_code_file(exefs: Path) -> Path:
     candidates = [
         p for p in exefs.rglob("*")
@@ -858,6 +876,7 @@ def extract_and_inspect(
 def process(
     source_url: str, target: str, format_name: str, ctrtool: Path, index: int,
     ghidra_headless_path: Path | None = None,
+    source_url_fallback: str | None = None,
 ) -> dict:
     fmt, _ = normalize_format(format_name)
     if index < 0 or index > 65535:
@@ -865,13 +884,16 @@ def process(
     with tempfile.TemporaryDirectory(prefix="pokeultra-intake-") as tmp:
         work = Path(tmp).resolve()
         source = work / ("input." + fmt)
-        size = download(source_url, source)
+        size, fallback_used = download_with_fallback(
+            source_url, source, fallback_source_url=source_url_fallback,
+        )
         result = extract_and_inspect(
             source, target, fmt, [str(ctrtool.resolve())],
             work / "extract", ncch_index=index, candidate_decode_summary=True,
             ghidra_headless_path=ghidra_headless_path,
         )
         result["downloaded_bytes"] = size
+        result["download_fallback_used"] = fallback_used
         return result
 
 
@@ -888,6 +910,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     source = os.environ.get("POKEULTRARECOMP_SOURCE_URL", "")
+    fallback_source = os.environ.get("POKEULTRARECOMP_SOURCE_URL_FALLBACK", "").strip() or None
     if not source:
         print("ERROR: configure the Actions secret POKEULTRARECOMP_SOURCE_URL", file=sys.stderr)
         return 2
@@ -895,12 +918,14 @@ def main() -> int:
         result = process(
             source, args.target, args.format, args.ctrtool, args.ncch_index,
             ghidra_headless_path=args.ghidra_headless,
+            source_url_fallback=fallback_source,
         )
         summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary:
             Path(summary).write_text(
                 "# Remote 3DS intake\n\n"
                 f"- Status: **{result['status']}**\n"
+                f"- Authorized fallback source used after rate-limit: **{'yes' if result.get('download_fallback_used') else 'no'}**\n"
                 f"- Target: {result['target']}\n"
                 f"- Format: {result['format']}\n"
                 "- Container extraction and metadata preflight: **passed**\n"

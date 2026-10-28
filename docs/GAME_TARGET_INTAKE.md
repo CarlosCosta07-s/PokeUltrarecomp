@@ -51,3 +51,10 @@ O preflight não produz um binário de análise. Para converter o `.code` descom
 ## Inspeção sintática de um intervalo selecionado
 
 Depois de conferir o ExHeader e o `.code` com `tools/inspect_3ds_target.py`, é possível pedir a anotação sintática de uma faixa explicitamente escolhida com `tools/inspect_3ds_code_range.py`. O endereço virtual, o estado ARM/Thumb e a quantidade são obrigatórios; a ferramenta não tenta descobrir limites de função nem adivinhar o estado de instrução. Consulte [CODE_RANGE_INSPECTION.md](CODE_RANGE_INSPECTION.md).
+
+
+## Download remoto privado e fallback
+
+A ingestão remota usa a secret `POKEULTRARECOMP_SOURCE_URL` como origem principal. Se esse provedor bloquear o download por quota/rate-limit, a secret opcional `POKEULTRARECOMP_SOURCE_URL_FALLBACK` permite indicar outra origem HTTPS autorizada para a mesma imagem. O fallback só é tentado quando o erro da origem principal é classificado como quota/rate-limit; permissões, formato inválido e outros erros não são mascarados por uma segunda tentativa. As duas origens passam pela mesma política HTTPS e pelo limite de 8 GiB. O resumo da execução registra somente se o fallback foi utilizado, nunca a URL.
+
+Configure a secret em **Settings → Secrets and variables → Actions** do repositório. Não publique URLs privadas em commits, issues, logs ou documentação. A ROM, o código extraído, hashes privados e desassemblagem não são enviados como artefatos. Sem uma segunda origem configurada, o comportamento continua seguro e explícito: uma quota do Google Drive interrompe a ingestão antes de a análise começar.

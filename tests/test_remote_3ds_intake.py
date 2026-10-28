@@ -529,6 +529,41 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertNotIn("never-log-this", str(raised.exception))
         self.assertFalse(destination.exists())
 
+    def test_download_with_fallback_after_rate_limit(self):
+        from unittest.mock import call, patch
+
+        primary = "https://drive.google.com/file/d/PrimaryPrivateIdentifier/view"
+        fallback = "https://downloads.example.test/pokeultra-image.cci"
+        destination = self.work / "fallback.cci"
+        with patch.object(
+            intake, "download",
+            side_effect=[
+                intake.IntakeError("Google Drive appears to be rate-limiting this file's download"),
+                1234,
+            ],
+        ) as mocked_download:
+            result = intake.download_with_fallback(primary, destination, fallback)
+
+        self.assertEqual((1234, True), result)
+        self.assertEqual(
+            [call(primary, destination), call(fallback, destination)],
+            mocked_download.call_args_list,
+        )
+
+    def test_download_with_fallback_does_not_mask_non_quota_failure(self):
+        from unittest.mock import patch
+
+        primary = "https://drive.google.com/file/d/PrimaryPrivateIdentifier/view"
+        fallback = "https://downloads.example.test/pokeultra-image.cci"
+        destination = self.work / "fallback-failure.cci"
+        with patch.object(
+            intake, "download",
+            side_effect=intake.IntakeError("Google Drive sharing permission is missing"),
+        ) as mocked_download:
+            with self.assertRaisesRegex(intake.IntakeError, "sharing permission"):
+                intake.download_with_fallback(primary, destination, fallback)
+        mocked_download.assert_called_once_with(primary, destination)
+
     def test_google_drive_failure_classifier_reports_quota_without_leaking_url(self):
         secret_url = "https://drive.google.com/file/d/SecretIdentifier123456/view?private=never-echo"
         message = (

@@ -100,6 +100,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           POKEULTRARECOMP_SOURCE_URL: ${{ secrets.POKEULTRARECOMP_SOURCE_URL }}
+          POKEULTRARECOMP_SOURCE_URL_FALLBACK: ${{ secrets.POKEULTRARECOMP_SOURCE_URL_FALLBACK }}
           TARGET: ${{ inputs.target || 'ultra-sun' }}
           IMAGE_FORMAT: ${{ inputs.format || 'cci' }}
           NCCH_INDEX: ${{ inputs.ncch_index || '0' }}
