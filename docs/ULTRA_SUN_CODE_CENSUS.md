@@ -71,11 +71,10 @@ Mnemonics como `cpy` podem ser aliases exibidos pelo desassemblador. A presença
 
 O censo confirma que a próxima etapa precisa aproximar o modelo experimental da ABI ARM, não apenas adicionar operadores aritméticos aleatórios. A POC A32 atual continua deliberadamente limitada:
 
-- o modelo de registradores é restrito a `r0–r3`;
-- os acessos de memória cobertos são formas escalares pré-indexadas com imediato, sem write-back nem offset em registrador;
-- as transferências A32 `STMDB SP!` e `LDMIA SP!` são cobertas apenas pela POC-003 experimental, com memória sintética delimitada;
-- a POC-003 agora permite `BX LR` ou o epílogo terminal `LDMIA SP!, {registros, PC}`, retornando o valor de PC como destino convidado explícito;
-- a região de memória de teste é sintética e delimitada, não o mapa de memória real do 3DS.
+- a POC-001 aritmética continua restrita a `r0–r3` e às suas formas de memória escalar suportadas, sem write-back nem offset em registrador;
+- a POC-003 experimental modela `STMDB/LDMIA SP!`, ajustes imediatos `ADD/SUB SP, SP, #imm` e `LDR/STR` word pré-indexados relativos a SP, em um mesmo estado de 15 registradores e uma região de memória sintética delimitada;
+- a POC-003 aceita `BX LR` ou o epílogo terminal `LDMIA SP!, {registros, PC}`, retornando o valor carregado para PC como destino convidado explícito;
+- nenhuma dessas extensões demonstra que o mapa de memória, o alinhamento especial, o fluxo de controle ou a ABI do jogo real já estejam validados.
 
 Por isso, a contagem de entradas do Ghidra não indica quantas funções já podem ser recompiladas. O tradutor ainda não recebeu uma função real selecionada e validada semanticamente.
 

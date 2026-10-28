@@ -429,11 +429,15 @@ class Remote3DSIntakeTests(unittest.TestCase):
             "omitted_candidate_count": 0,
             "candidates": [{
                 "entry_address": "0x00106000",
-                "body_size_bytes": 12,
-                "instruction_count": 3,
+                "body_size_bytes": 28,
+                "instruction_count": 7,
                 "words": [
-                    "0xE3A00003",  # MOV r0, #3
+                    "0xE3A0002A",  # MOV r0, #42
                     "0xE92D4030",  # STMDB sp!, {r4, r5, lr}
+                    "0xE24DD008",  # SUB sp, sp, #8
+                    "0xE58D0004",  # STR r0, [sp, #4]
+                    "0xE59D1004",  # LDR r1, [sp, #4]
+                    "0xE28DD008",  # ADD sp, sp, #8
                     "0xE8BD8030",  # LDMIA sp!, {r4, r5, pc}
                 ],
             }],
@@ -452,8 +456,14 @@ class Remote3DSIntakeTests(unittest.TestCase):
         self.assertEqual(1, result["sequences_accepted_with_terminal_ldmia_pc_epilogue"])
         self.assertEqual("passed", result["native_c_syntax_check"])
         self.assertIn("guest_pc_out", compile_run.call_args.kwargs["input"])
-        self.assertNotIn("0x00106000", compile_run.call_args.kwargs["input"])
-        self.assertNotIn("0xE8BD8030", compile_run.call_args.kwargs["input"])
+        generated_c = compile_run.call_args.kwargs["input"]
+        self.assertNotIn("0x00106000", generated_c)
+        for private_word in (
+            "0xE3A0002A", "0xE92D4030", "0xE24DD008", "0xE58D0004",
+            "0xE59D1004", "0xE28DD008", "0xE8BD8030",
+        ):
+            self.assertNotIn(private_word, generated_c)
+        self.assertIn("UINT32_C(0x0000002A)", generated_c)
         self.assertFalse(result["native_semantic_equivalence_verified"])
         self.assertFalse(result["function_boundaries_independently_verified"])
 

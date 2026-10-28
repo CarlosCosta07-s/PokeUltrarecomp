@@ -14,13 +14,16 @@ Estabelecer um primeiro modelo explícito de SP, LR, registradores gerais e mem�
 - LDMIA SP!, {reglist} com condição AL: carrega os registradores listados em ordem crescente de número de registrador e só atualiza SP depois de validar a faixa inteira e preparar os valores.
 - BX LR exato como terminador de sequência.
 - `LDMIA SP!, {registros, PC}` em condição AL é aceito somente no final de uma sequência. O destino carregado para PC é exposto pelo parâmetro `guest_pc_out` da interface dedicada `a32_stack_transfer_entry_with_pc`; não é executado como salto nativo.
-- A variante `translate_mixed_sequence` aceita também as formas AL não-S imediatas de `MOV`, `ADD` e `SUB` que o decodificador A32 existente reconhece em `r0–r3`. Essas instruções e as operações de pilha compartilham o mesmo vetor `r0–r14`, e cada instrução incrementa o orçamento de execução. Nenhuma outra família do decodificador geral é aceita por essa variante.
+- A variante `translate_mixed_sequence` aceita também as formas AL não-S imediatas de `MOV`, `ADD` e `SUB` que o decodificador A32 existente reconhece em `r0–r3`.
+- Essa variante aceita `ADD/SUB SP, SP, #immediate` em condição AL, sem S-bit, usando a expansão ARM do imediato rotacionado.
+- Aceita `LDR/STR` word em condição AL, pré-indexados, sem write-back, base SP, offset imediato positivo ou negativo. Destinos SP e PC, offsets por registrador e transferências byte continuam rejeitados.
+- As instruções e transferências de pilha compartilham o vetor `r0–r14`, e cada instrução conta no orçamento. Nenhuma outra família de instruções é aceita por essa variante.
 
 As listas `STMDB SP!` podem incluir r0–r12 e LR (r14), mas não SP nem PC. As listas `LDMIA SP!` podem incluir r0–r12 e LR; PC só é aceito no epílogo terminal dedicado. O modelo rejeita SP na lista com write-back, lista vazia, S-bit, condições diferentes de AL, outra base, outro modo de endereçamento, ausência de write-back e instruções fora do subconjunto. Na variante mista, os dados aritméticos se limitam a `MOV/ADD/SUB` imediatos sem S-bit em `r0–r3`; formas com flags e operandos de registrador não são aceitas. A presença de BX LR só termina a fixture: o endereço de retorno não é executado como um salto nativo.
 
 ## ABI sintética e memória
 
-O C gerado recebe vetores de entrada/saída com 15 palavras, indexadas como r0–r14; portanto r13 é o SP e r14 é o LR. A região de memória é fornecida explicitamente por memory_bytes, memory_base e memory_size, com endereço final calculado em 64 bits para detectar overflow. A região deve ser não vazia e não pode ultrapassar o espaço de endereços de 32 bits.
+O C gerado recebe vetores de entrada/saída com 15 palavras, indexadas como r0–r14; portanto r13 é o SP e r14 é o LR. A região de memória é fornecida explicitamente por memory_bytes, memory_base e memory_size, com endereço final calculado em 64 bits para detectar overflow. A região deve ser não vazia e não pode ultrapassar o espaço de endereços de 32 bits. Ela representa apenas a memória sintética disponível para transferências de pilha e acessos word relativos a SP; não corresponde ao mapa real do 3DS.
 
 O modelo exige alinhamento de quatro bytes para as transferências múltiplas. Antes de alterar memória, registradores ou SP, cada instrução valida a faixa completa. Se a transferência corrente falhar, ela não modifica o estado; transferências anteriores que terminaram com sucesso permanecem refletidas no resultado. As falhas são classificadas como:
 
@@ -29,13 +32,13 @@ O modelo exige alinhamento de quatro bytes para as transferências múltiplas. A
 | 0 | A sequência atingiu o terminador BX LR ou o epílogo terminal LDMIA-to-PC |
 | 1 | Falha de memória, faixa inválida ou overflow de SP |
 | 2 | Argumentos inválidos ou região de endereços inválida |
-| 3 | SP desalinhado para uma transferência múltipla |
+| 3 | SP desalinhado para transferência múltipla ou endereço word desalinhado |
 
 As instruções implementadas não alteram NZCV; o valor inicial validado é copiado para a saída. A política de falha atômica é o contrato seguro deste modelo sintético e não uma afirmação sobre os efeitos parciais de uma exceção de hardware real.
 
 ## Testes
 
-O arquivo tests/test_a32_stack_transfer_poc.py cobre a decodificação e as rejeições explícitas, write-back, ordem de registradores, load/store little-endian, restauração de SP/LR, preservação de NZCV, falha de memória, alinhamento, overflow de faixa e preservação do estado em uma falha depois de uma transferência anterior bem-sucedida. Quando há compilador disponível, os testes compilam o C gerado com avisos tratados como erros e executam os binários. A fixture de round-trip e a falha por faixa também são exercitadas no pipeline nativo `tools/run_native_poc_pipeline.py`, que é executado pelo CTest. O gerador `tools/generate_native_abi_fixtures.py` também cria uma fixture A32 para a fronteira C/C++ versão 4. Ela usa `PokeNativeA32StackCall` e `PokeNativeA32StackResult`, cada um com 15 palavras para `r0–r14`; a ABI genérica existente, de oito registradores, permanece inalterada. O host C++ cobre round-trip, memória, falha por faixa, alinhamento e rejeição de versão.
+O arquivo tests/test_a32_stack_transfer_poc.py cobre a decodificação e as rejeições explícitas, write-back, ordem de registradores, load/store little-endian, restauração de SP/LR/PC convidado, ajustes de frame local, LDR/STR relativos a SP, preservação de NZCV, falha de memória, alinhamento, overflow de faixa e preservação do estado em uma falha. Quando há compilador disponível, os testes compilam o C gerado com avisos tratados como erros e executam os binários. A fixture de round-trip e a falha por faixa também são exercitadas no pipeline nativo `tools/run_native_poc_pipeline.py`, que é executado pelo CTest. O gerador `tools/generate_native_abi_fixtures.py` também cria uma fixture A32 para a fronteira C/C++ versão 4. Ela usa `PokeNativeA32StackCall` e `PokeNativeA32StackResult`, cada um com 15 palavras para `r0–r14`; a ABI genérica existente, de oito registradores, permanece inalterada. O host C++ cobre round-trip, memória, falha por faixa, alinhamento e rejeição de versão.
 
 Execute os testes dessa POC com:
 
