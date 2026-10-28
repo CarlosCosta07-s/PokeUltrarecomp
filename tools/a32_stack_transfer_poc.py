@@ -24,7 +24,7 @@ class UnsupportedA32StackInstruction(ValueError):
 
 
 def decode_word(word: int) -> tuple[object, ...]:
-    """Decode exact AL-condition STMDB SP! / LDMIA SP! forms or BX LR."""
+    """Decode supported AL-condition stack transfers, terminal LDMIA-to-PC, or BX LR."""
     if isinstance(word, bool) or not isinstance(word, int) or not 0 <= word <= 0xFFFFFFFF:
         raise UnsupportedA32StackInstruction(f"instruction word outside uint32: {word!r}")
     if word == 0xE12FFF1E:
@@ -64,10 +64,14 @@ def decode_word(word: int) -> tuple[object, ...]:
         raise UnsupportedA32StackInstruction("multiple-transfer register list must not be empty")
     if register_mask & (1 << 13):
         raise UnsupportedA32StackInstruction("SP in a write-back register list is unsupported")
-    if register_mask & (1 << 15):
-        raise UnsupportedA32StackInstruction("PC in a register list is unsupported; control-flow return is not modeled")
+
+    pc_in_list = bool(register_mask & (1 << 15))
+    if pc_in_list and operation != "ldmia_sp":
+        raise UnsupportedA32StackInstruction("PC is only supported in a terminal LDMIA SP! return list")
 
     registers = tuple(index for index in range(REGISTER_COUNT) if register_mask & (1 << index))
+    if pc_in_list:
+        return ("ldmia_sp_pc", registers)
     return (operation, registers)
 
 
@@ -92,23 +96,34 @@ def _translate_sequence(
     decoded = [decoder(word) for word in words]
     if any(item == ("return",) for item in decoded[:-1]):
         raise UnsupportedA32StackInstruction("instructions after BX LR are unsupported")
-    if decoded[-1] != ("return",):
-        raise UnsupportedA32StackInstruction("sequence must end with exact BX LR")
+    if any(item[0] == "ldmia_sp_pc" for item in decoded[:-1]):
+        raise UnsupportedA32StackInstruction("instructions after terminal LDMIA SP!, {..., PC} are unsupported")
+    terminal_pc_return = decoded[-1][0] == "ldmia_sp_pc"
+    if not terminal_pc_return and decoded[-1] != ("return",):
+        raise UnsupportedA32StackInstruction(
+            "sequence must end with exact BX LR or terminal LDMIA SP!, {..., PC}"
+        )
+    sequence_instructions = decoded if terminal_pc_return else decoded[:-1]
+    entry_name = "a32_stack_transfer_entry_with_pc" if terminal_pc_return else "a32_stack_transfer_entry"
 
     lines = [
         "#include <stdint.h>",
         "#include <stddef.h>",
         ("/* Fixed-sequence A32 ALU/stack proof; not a game runtime. */"
          if allow_basic_alu else "/* Fixed-sequence A32 stack-transfer proof; not a game runtime. */"),
-        "uint32_t a32_stack_transfer_entry(",
+        f"uint32_t {entry_name}(",
         "    const uint32_t *registers_in, uint8_t initial_nzcv, uint8_t *nzcv_out,",
         "    uint8_t *memory_bytes, uint32_t memory_base, uint32_t memory_size,",
-        "    uint32_t *registers_out, uint32_t *steps_executed_out, uint8_t *execution_status_out)",
+        "    uint32_t *registers_out"
+        + (", uint32_t *guest_pc_out" if terminal_pc_return else "")
+        + ", uint32_t *steps_executed_out, uint8_t *execution_status_out)",
         "{",
         "    uint32_t r[15] = { 0U };",
         "    uint32_t steps = 0U;",
         "    uint8_t status = UINT8_C(0);",
-        "    if (registers_in == NULL || registers_out == NULL || memory_bytes == NULL ||",
+        "    if (registers_in == NULL || registers_out == NULL || "
+        + ("guest_pc_out == NULL || " if terminal_pc_return else "")
+        + "memory_bytes == NULL ||",
         "        memory_size == 0U || initial_nzcv > UINT8_C(15) ||",
         "        ((uint64_t)memory_base + (uint64_t)memory_size) > UINT64_C(0x100000000)) {",
         "        if (steps_executed_out != NULL) *steps_executed_out = 0U;",
@@ -118,8 +133,10 @@ def _translate_sequence(
         "    }",
         "    for (uint32_t i = 0U; i < UINT32_C(15); ++i) r[i] = registers_in[i];",
     ]
+    if terminal_pc_return:
+        lines.append("    *guest_pc_out = UINT32_C(0);")
 
-    for index, instruction in enumerate(decoded[:-1]):
+    for index, instruction in enumerate(sequence_instructions):
         operation = instruction[0]
         if operation in ("mov", "add", "sub"):
             if operation == "mov":
@@ -137,11 +154,11 @@ def _translate_sequence(
             continue
 
         operation, registers = instruction
-        if operation not in ("stmdb_sp", "ldmia_sp"):
+        if operation not in ("stmdb_sp", "ldmia_sp", "ldmia_sp_pc"):
             raise UnsupportedA32StackInstruction(
                 f"instruction {index + 1} is outside the selected sequence subset: {operation!r}"
             )
-        count = len(registers)
+        count = len(registers) + (1 if operation == "ldmia_sp_pc" else 0)
         transfer_bytes = count * 4
         lines.extend((
             f"    /* Guest instruction {index + 1}: {operation.upper()} SP!, fixed register list. */",
@@ -193,11 +210,23 @@ def _translate_sequence(
                 ))
             for register in registers:
                 lines.append(f"        r[{register}] = loaded[{register}];")
+            if operation == "ldmia_sp_pc":
+                offset = len(registers) * 4
+                loaded_pc = f"loaded_pc_{index}"
+                lines.extend((
+                    f"        const uint32_t {loaded_pc} = (uint32_t)memory_bytes[(old_sp - memory_base) + UINT32_C({offset})] |",
+                    f"            ((uint32_t)memory_bytes[(old_sp - memory_base) + UINT32_C({offset + 1})] << 8) |",
+                    f"            ((uint32_t)memory_bytes[(old_sp - memory_base) + UINT32_C({offset + 2})] << 16) |",
+                    f"            ((uint32_t)memory_bytes[(old_sp - memory_base) + UINT32_C({offset + 3})] << 24);",
+                ))
             lines.append("        r[13] = (uint32_t)transfer_end;")
+            if operation == "ldmia_sp_pc":
+                lines.append(f"        *guest_pc_out = {loaded_pc};")
         lines.append("    }")
 
+    if not terminal_pc_return:
+        lines.append("    steps++; /* exact BX LR sequence terminator */")
     lines.extend((
-        "    steps++; /* exact BX LR sequence terminator */",
         "a32_stack_exit:",
         "    for (uint32_t i = 0U; i < UINT32_C(15); ++i) registers_out[i] = r[i];",
         "    if (nzcv_out != NULL) *nzcv_out = initial_nzcv;",
