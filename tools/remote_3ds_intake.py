@@ -99,8 +99,9 @@ def extract_container_title_id(
             # section, so the title-identity parser must fail closed on it.
             if format_version != 0:
                 raise IntakeError("CIA format version is unsupported for TMD identity parsing")
-            # A v1 TMD has a 0xB04-byte fixed structure before content metadata;
-            # CTRTool requires at least one 48-byte content record.
+            # With the supported RSA-2048/SHA-256 signature, the TMD content
+            # chunk table begins at 0xB04 and each record is 0x30 bytes.
+            # Require enough room for at least one retail title content record.
             if tmd_size < 0xB34:
                 raise IntakeError("CIA TMD is too small to contain a supported title identity")
 
@@ -121,23 +122,39 @@ def extract_container_title_id(
                 raise IntakeError("CIA TMD section exceeds the file bounds")
 
             stream.seek(position)
-            tmd_header = stream.read(0x1D0)
-            if len(tmd_header) != 0x1D0:
+            # Read through the two-byte content-count field in the v1 TMD
+            # header. The fields below are offsets from the start of this TMD.
+            tmd_header = stream.read(0x1E0)
+            if len(tmd_header) != 0x1E0:
                 raise IntakeError("CIA TMD header is truncated")
             signature_type = int.from_bytes(tmd_header[0:4], "big")
             if signature_type != 0x00010004:
                 raise IntakeError("CIA TMD signature type is unsupported for structural identity parsing")
-            tmd_header_offset = 384
-            if tmd_header[tmd_header_offset] != 1:
+
+            version_offset = 0x180
+            title_id_offset = 0x18C
+            title_type_offset = 0x194
+            content_count_offset = 0x1DE
+            if tmd_header[version_offset] != 1:
                 raise IntakeError("CIA TMD version is not the expected 3DS format")
+
             title_id = int.from_bytes(
-                tmd_header[tmd_header_offset + 12:tmd_header_offset + 20], "big"
+                tmd_header[title_id_offset:title_id_offset + 8], "big"
             )
             title_type = int.from_bytes(
-                tmd_header[tmd_header_offset + 20:tmd_header_offset + 24], "big"
+                tmd_header[title_type_offset:title_type_offset + 4], "big"
+            )
+            content_count = int.from_bytes(
+                tmd_header[content_count_offset:content_count_offset + 2], "big"
             )
             if title_type != 0x40 or title_id == 0:
                 raise IntakeError("CIA TMD title identity fields are invalid")
+            if content_count == 0:
+                raise IntakeError("CIA TMD declares no content records")
+
+            required_tmd_size = 0xB04 + content_count * 0x30
+            if tmd_size < required_tmd_size:
+                raise IntakeError("CIA TMD is too small for its declared content count")
             return f"{title_id:016x}"
     except OSError as exc:
         label = "CIA" if fmt == "cia" else "NCSD"
