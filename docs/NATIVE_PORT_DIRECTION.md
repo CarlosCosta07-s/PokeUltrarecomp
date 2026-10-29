@@ -32,6 +32,17 @@ SDL3 é uma biblioteca de plataforma, não uma engine completa. Ela tem suporte 
 
 Não escolher Godot, Unity ou Unreal como base principal: o problema central não é criar um jogo novo com cenas, mas converter código ARM/Thumb existente para execução nativa e substituir serviços e caminhos gráficos do 3DS. Uma engine genérica não recompila esse código nem resolve o ABI, módulos, arquivos, sincronização e chamadas de serviço exigidos pelo alvo. Uma futura ferramenta auxiliar pode ser avaliada separadamente, mas não fará parte do caminho de execução sem uma decisão documentada.
 
+## Revisão de referências em 29/10/2026
+
+A comparação mais recente confirma que a escolha deve ser uma recompilação estática dedicada, não uma engine genérica nem a integração de um runtime de emulação:
+
+- **[3dsrecomp](https://github.com/fearkov/3dsrecomp):** é a referência pública mais próxima do alvo: descobre funções ARM/Thumb/VFP e gera C. A implementação publicada, entretanto, depende do runtime Zakuro e direciona instruções não suportadas ao interpretador. Aproveitamos apenas ideias de descoberta de funções, geração de C e relatórios de cobertura; não é uma dependência ou base de runtime aceitável para esta direção.
+- **[GBARecomp](https://github.com/mstan/gbarecomp):** é útil para estudar a separação entre análise, IR, codegen, runtime e testes, além de compilação nativa de código gerado. O código/fluxo publicado também inclui caminhos de interpretador e recuperação para PCs não resolvidos e foi criado para o hardware GBA; por isso, não será integrado como runtime nem usado para preencher lacunas do porte.
+- **[Documentação Vulkan da Khronos](https://docs.vulkan.org/tutorial/latest/index.html):** confirma suporte multiplataforma a Windows/Linux e apresenta o material atual para Vulkan 1.4. Vulkan continua sendo a API gráfica prevista para a camada PC; isso não significa que a integração de renderização já exista.
+- **[SDL3](https://wiki.libsdl.org/SDL3/FrontPage) e [releases oficiais](https://github.com/libsdl-org/SDL/releases):** SDL3 é a biblioteca de janela, entrada, controle e áudio escolhida para complementar o runtime C++20. A documentação atual identifica SDL 3.4.18 como versão estável em 29/10/2026; ela deve ser fixada no build somente quando a dependência for efetivamente integrada e testada.
+
+**Regra de arquitetura:** essas fontes servem para pesquisa e comparação, não como autorização para copiar código. Nenhum caminho de runtime aceitará emulador de CPU/GPU, interpretador ARM/Thumb, JIT ou fallback interpretado. A execução de uma unidade real não suportada deve falhar de forma explícita. A validação nesta fase usa fixtures sintéticas e resultados esperados independentes; não executa o jogo num oráculo de interpretação.
+
 ## Arquitetura pretendida
 
 1. **Intake local:** metadados, identidade do alvo, intervalos e arquivos de entrada autorizados são verificados localmente. Nenhuma ROM, extração, recurso proprietário, chave ou executável do jogo é enviada ao Git, Pages, CI ou releases.
