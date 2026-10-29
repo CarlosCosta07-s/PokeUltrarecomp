@@ -299,16 +299,23 @@ class Remote3DSIntakeTests(unittest.TestCase):
         with self.assertRaisesRegex(intake.IntakeError, "identity fields are invalid"):
             intake.extract_container_title_id(cia, "cia", 0)
 
-        cia = self._synthetic_cia_with_tmd(tmd_size=0x1D0)
-        with self.assertRaisesRegex(intake.IntakeError, "section exceeds the file bounds"):
+        cia = self._synthetic_cia_with_tmd()
+        cia.write_bytes(cia.read_bytes()[:-0x100])
+        with self.assertRaisesRegex(intake.IntakeError, "TMD section exceeds the file bounds"):
             intake.extract_container_title_id(cia, "cia", 0)
 
     def test_cia_identity_checks_certificate_and_ticket_section_bounds(self):
-        cia = self._synthetic_cia_with_tmd(certificate_size=0x1000)
+        cia = self._synthetic_cia_with_tmd()
+        data = bytearray(cia.read_bytes())
+        data[0x08:0x0C] = (0xFFFFFFFF).to_bytes(4, "little")
+        cia.write_bytes(data)
         with self.assertRaisesRegex(intake.IntakeError, "certificate section exceeds"):
             intake.extract_container_title_id(cia, "cia", 0)
 
-        cia = self._synthetic_cia_with_tmd(ticket_size=0x1000)
+        cia = self._synthetic_cia_with_tmd()
+        data = bytearray(cia.read_bytes())
+        data[0x0C:0x10] = (0xFFFFFFFF).to_bytes(4, "little")
+        cia.write_bytes(data)
         with self.assertRaisesRegex(intake.IntakeError, "ticket section exceeds"):
             intake.extract_container_title_id(cia, "cia", 0)
 
