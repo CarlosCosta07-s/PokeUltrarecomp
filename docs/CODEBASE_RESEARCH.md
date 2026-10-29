@@ -77,7 +77,7 @@ A [Arm Instruction Set Reference Guide](https://documentation-service.arm.com/st
 
 1. Manter o decodificador conservador: recusar instruções, registradores e campos que não foram implementados explicitamente.
 2. Separar gradualmente decodificação, representação intermediária e emissão; manter cada expansão pequena e coberta por testes positivos e negativos.
-3. Construir testes diferenciais sintéticos antes de usar código de jogo; quando um oráculo de execução for escolhido, comparar os estados relevantes, incluindo registradores e flags.
+3. Construir testes com fixtures sintéticas e resultados esperados independentes antes de usar código de jogo, cobrindo registradores, flags, memória delimitada e fluxo de controle. Não incluir emuladores de CPU, interpretadores de instruções ou oráculos que executem o jogo como dependências do projeto.
 4. Não importar código, dependências ou fragmentos de nenhuma dessas fontes antes de registrar commit exato, licença por arquivo, dependências, avisos e compatibilidade com o escopo de distribuição.
 5. Não usar código gerado a partir de ROMs ou ativos de jogos em testes públicos, commits ou releases.
 
