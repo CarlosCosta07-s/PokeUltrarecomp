@@ -76,19 +76,32 @@ def extract_container_title_id(
             # CIA header: sizes are little-endian and each section begins at a
             # 0x40-byte boundary. Parse only the TMD location and a bounded
             # subset of its metadata; never trust section offsets from file data.
-            if file_size < 0x20:
+            # A standard CIA header is 0x2020 bytes: the fixed 0x20-byte
+            # fields plus the 0x2000-byte content-index bit array. Read only
+            # its fixed prefix, but reject truncated or unsupported headers.
+            if file_size < 0x2020:
                 raise IntakeError("CIA header is truncated")
             stream.seek(0)
             header = stream.read(0x20)
             if len(header) != 0x20:
                 raise IntakeError("CIA header is truncated")
             header_size = int.from_bytes(header[0x00:0x04], "little")
+            cia_type = int.from_bytes(header[0x04:0x06], "little")
+            format_version = int.from_bytes(header[0x06:0x08], "little")
             certificate_size = int.from_bytes(header[0x08:0x0C], "little")
             ticket_size = int.from_bytes(header[0x0C:0x10], "little")
             tmd_size = int.from_bytes(header[0x10:0x14], "little")
-            if header_size < 0x20 or header_size > file_size:
+            if header_size != 0x2020 or header_size > file_size:
                 raise IntakeError("CIA header size is invalid")
-            if tmd_size < 0x1D0:
+            if cia_type != 0:
+                raise IntakeError("CIA type is unsupported")
+            # The simple CIA variant (0xff) does not contain a standard TMD
+            # section, so the title-identity parser must fail closed on it.
+            if format_version != 0:
+                raise IntakeError("CIA format version is unsupported for TMD identity parsing")
+            # A v1 TMD has a 0xB04-byte fixed structure before content metadata;
+            # CTRTool requires at least one 48-byte content record.
+            if tmd_size < 0xB34:
                 raise IntakeError("CIA TMD is too small to contain a supported title identity")
 
             def align_section(value: int) -> int:
