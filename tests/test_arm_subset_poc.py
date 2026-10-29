@@ -105,8 +105,8 @@ class DecoderTests(unittest.TestCase):
             poc.decode_word(0xE3501001)
 
     def test_rejects_cmp_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE3540001)
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE3580001)
 
     def test_rejects_noncanonical_cmn_destination(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMN encoding with Rd=0"):
@@ -129,13 +129,13 @@ class DecoderTests(unittest.TestCase):
             (0xE7910004, "register-offset memory access"),
             (0xE4910004, "post-indexed or writeback memory access"),
             (0xE5B10004, "post-indexed or writeback memory access"),
-            (0xE5914004, "destination register r4"),
-            (0xE5940004, "base register r4"),
+            (0xE5918004, "destination register r8"),
+            (0xE5980004, "base register r8"),
             (0xE19100B2, "register-offset halfword/signed memory access"),
             (0xE0D100B4, "post-indexed or writeback halfword/signed memory access"),
             (0xE1F100B4, "post-indexed or writeback halfword/signed memory access"),
-            (0xE1D140B4, "destination register r4"),
-            (0xE1D400B4, "base register r4"),
+            (0xE1D180B4, "destination register r8"),
+            (0xE1D800B4, "base register r8"),
             (0xE1D00090, "reserved or doubleword A32 extra memory transfer"),
             (0xE1C100D4, "signed-byte store encoding is reserved"),
             (0xE1C100F4, "signed-halfword store encoding is reserved"),
@@ -190,8 +190,8 @@ class DecoderTests(unittest.TestCase):
     def test_rejects_noncanonical_or_out_of_subset_a32_multiply_registers(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "MUL encoding requires"):
             poc.decode_word(0xE0001291)  # MUL has a reserved-zero accumulator field.
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register r4"):
-            poc.decode_word(0xE0040291)  # MUL destination r4 is outside the POC subset.
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "register r8"):
+            poc.decode_word(0xE0080291)  # MUL destination r4 is outside the POC subset.
 
     def test_decodes_register_logical_flag_and_test_operations(self):
         cases = (
@@ -238,11 +238,11 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "register-specified Operand2 shifts"):
             poc.decode_word(0xE0800211)  # ADD r0,r0,r1,LSL r2
 
-    def test_rejects_register_operand_registers_outside_r0_to_r3(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE0800004)  # ADD r0,r0,r4
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "destination register r4"):
-            poc.decode_word(0xE1A04001)  # MOV r4,r1
+    def test_rejects_register_operand_registers_outside_r0_to_r7(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE0800008)  # ADD r0,r0,r4
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "destination register r8"):
+            poc.decode_word(0xE1A08001)  # MOV r4,r1
 
     def test_rejects_noncanonical_register_cmp_and_mov(self):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "CMP register encoding with Rd=0"):
@@ -257,29 +257,29 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(("and", 0, 0, 7), poc.decode_word(0xE2000007))
 
     def test_rejects_and_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE2040001)  # AND r0, r4, #1
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE2080001)  # AND r0, r4, #1
 
     def test_decodes_orr_immediate(self):
         self.assertEqual(("orr", 0, 0, 8), poc.decode_word(0xE3800008))
 
     def test_rejects_orr_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE3840001)  # ORR r0, r4, #1
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE3880001)  # ORR r0, r4, #1
 
     def test_decodes_eor_immediate(self):
         self.assertEqual(("eor", 0, 0, 1), poc.decode_word(0xE2200001))
 
     def test_rejects_eor_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE2240001)  # EOR r0, r4, #1
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE2280001)  # EOR r0, r4, #1
 
     def test_decodes_bic_immediate(self):
         self.assertEqual(("bic", 0, 0, 2), poc.decode_word(0xE3C00002))
 
     def test_rejects_bic_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE3C40002)  # BIC r0, r4, #2
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE3C80002)  # BIC r0, r4, #2
 
     def test_decodes_mvn_immediate(self):
         self.assertEqual(("mvn", 1, 0), poc.decode_word(0xE3E01000))
@@ -289,8 +289,8 @@ class DecoderTests(unittest.TestCase):
             poc.decode_word(0xE3E11000)  # Noncanonical Rn=1
 
     def test_rejects_sub_with_source_outside_supported_registers(self):
-        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r4"):
-            poc.decode_word(0xE2440001)  # SUB r0, r4, #1
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "source register r8"):
+            poc.decode_word(0xE2480001)  # SUB r0, r4, #1
 
 
 class TranslationTests(unittest.TestCase):
@@ -437,8 +437,8 @@ class TranslationTests(unittest.TestCase):
         harness = generated + chr(10) + """
 #include <stddef.h>
 int main(void) {
-    uint32_t registers[4] = { UINT32_C(0x1000), UINT32_C(0x11111111), UINT32_C(0xA1B2C3D4), UINT32_C(0x33333333) };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1000), UINT32_C(0x11111111), UINT32_C(0xA1B2C3D4), UINT32_C(0x33333333) };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t memory[16];
     for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
     uint8_t flags = 0U, status = UINT8_C(0xFF);
@@ -475,8 +475,8 @@ int main(void) {
         harness = generated + chr(10) + """
 #include <stddef.h>
 int main(void) {
-    uint32_t registers[4] = { UINT32_C(0x1001), 0U, UINT32_C(0xA1B2C3D4), 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1001), 0U, UINT32_C(0xA1B2C3D4), 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t memory[16];
     for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
     uint8_t flags = 0U, status = UINT8_C(0xFF);
@@ -512,8 +512,8 @@ int main(void) {
         harness = generated + chr(10) + """
 #include <stddef.h>
 int main(void) {
-    uint32_t registers[4] = { UINT32_C(0x1000), 0U, UINT32_C(0xA1B2C3D4), 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1000), 0U, UINT32_C(0xA1B2C3D4), 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t memory[16];
     for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
     uint8_t flags = 0U, status = UINT8_C(0xFF);
@@ -550,8 +550,8 @@ int main(void) {
         harness = generated + chr(10) + """
 #include <stddef.h>
 int main(void) {
-    uint32_t registers[4] = { UINT32_C(0x1000), 0U, 0U, 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1000), 0U, 0U, 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t memory[16] = {0};
     memory[2] = UINT8_C(0x00);
     memory[3] = UINT8_C(0x80); /* signed halfword: -32768 */
@@ -618,8 +618,8 @@ int main(void) {
 typedef uint32_t (*entry_fn)(const uint32_t *, uint8_t, uint8_t *, uint32_t *, uint8_t *, uint32_t *);
 static int run_case(entry_fn fn, uint32_t r0, uint32_t r1, uint32_t r2,
                     uint8_t initial_nzcv, uint32_t expected_r0, uint8_t expected_nzcv) {
-    uint32_t input[4] = { r0, r1, r2, UINT32_C(0xDEADBEEF) };
-    uint32_t output[4] = {0U,0U,0U,0U};
+    uint32_t input[8] = { r0, r1, r2, UINT32_C(0xDEADBEEF) };
+    uint32_t output[8] = {0U,0U,0U,0U};
     uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
@@ -685,8 +685,8 @@ static int run_case(
     uint32_t r0, uint32_t r1, uint8_t initial_nzcv,
     uint32_t expected_r0, uint8_t expected_nzcv
 ) {
-    uint32_t input[4] = { r0, r1, UINT32_C(0x2468ACE0), UINT32_C(0xDEADBEEF) };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t input[8] = { r0, r1, UINT32_C(0x2468ACE0), UINT32_C(0xDEADBEEF) };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
@@ -745,8 +745,8 @@ static int run_case(
     uint32_t r1, uint8_t initial_nzcv, uint32_t expected_r0,
     uint8_t expected_nzcv, uint32_t r2
 ) {
-    uint32_t input[4] = { UINT32_C(0x13579BDF), r1, r2, UINT32_C(0xDEADBEEF) };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t input[8] = { UINT32_C(0x13579BDF), r1, r2, UINT32_C(0xDEADBEEF) };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t flags = UINT8_C(0xFF), status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     uint32_t result = fn(input, initial_nzcv, &flags, &steps, &status, output);
@@ -787,8 +787,8 @@ int main(void) {
         harness = generated + chr(10) + """
 #include <stddef.h>
 int main(void) {
-    uint32_t registers[4] = { UINT32_C(0x1000), 0U, UINT32_C(0x12345678), 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1000), 0U, UINT32_C(0x12345678), 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t memory[16];
     for (size_t i = 0; i < sizeof(memory); ++i) memory[i] = UINT8_C(0xEE);
     uint8_t flags = 0U, status = UINT8_C(0xFF);
@@ -823,8 +823,8 @@ int main(void) {
 #include <stddef.h>
 static int run_fault(uint32_t base_register, uint32_t region_base, uint32_t region_size,
                      uint8_t expected_status, uint8_t *memory, uint8_t *saved_memory) {
-    uint32_t registers[4] = { base_register, 0U, UINT32_C(0x11223344), 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { base_register, 0U, UINT32_C(0x11223344), 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t flags = 0U, status = UINT8_C(0xFF);
     uint32_t steps = 0U;
     (void)synthetic_entry_bounded(registers, UINT8_C(0x6), &flags, &steps, &status,
@@ -845,8 +845,8 @@ int main(void) {
                   UINT8_C(4), memory, saved) != 0) return 2; /* alignment fault */
     if (run_fault(UINT32_C(0xFFFFFFFC), UINT32_C(0x1000), UINT32_C(16),
                   UINT8_C(3), memory, saved) != 0) return 3; /* address overflow */
-    uint32_t registers[4] = { UINT32_C(0x1000), 0U, UINT32_C(0x12345678), 0U };
-    uint32_t output[4] = { 0U, 0U, 0U, 0U };
+    uint32_t registers[8] = { UINT32_C(0x1000), 0U, UINT32_C(0x12345678), 0U };
+    uint32_t output[8] = { 0U, 0U, 0U, 0U };
     uint8_t flags = 0U, status = 0U;
     uint32_t steps = UINT32_C(99);
     (void)synthetic_entry_bounded(registers, UINT8_C(0x0), &flags, &steps, &status,
@@ -1404,10 +1404,10 @@ int main(void) {
         ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_add_ne(")
         harness = "\n".join((add, skipped)) + """
 int main(void) {
-    const uint32_t input[4] = {
+    const uint32_t input[8] = {
         UINT32_C(37), UINT32_C(0x12345678), UINT32_C(0x80000000), UINT32_C(0xDEADBEEF)
     };
-    uint32_t output[4] = {0U, 0U, 0U, 0U};
+    uint32_t output[8] = {0U, 0U, 0U, 0U};
     uint8_t flags = UINT8_C(255), status = UINT8_C(255);
     uint32_t steps = 0U;
     if (!(a32_runtime_add(input, UINT8_C(11), &flags, &steps, &status, output) == UINT32_C(42)
@@ -1433,6 +1433,48 @@ int main(void) {
             run = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(0, run.returncode, msg=f"runtime A32 input/output/flags/step check failed with {run.returncode}")
 
+    def test_runtime_state_io_supports_r4_and_r7_with_eight_register_abi(self):
+        compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
+        if not compiler:
+            self.skipTest("no C compiler found; eight-register A32 proof requires cc, gcc, or clang")
+        source = poc.translate(
+            [
+                0xE3A04009,  # MOV r4, #9
+                0xE2847003,  # ADD r7, r4, #3
+                0xE1A00007,  # MOV r0, r7
+                0xE12FFF1E,  # BX LR
+            ],
+            max_execution_steps=4,
+            runtime_state_io=True,
+        ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_r4_r7(")
+        harness = source + """
+int main(void) {
+    const uint32_t input[8] = {
+        UINT32_C(1), UINT32_C(2), UINT32_C(3), UINT32_C(4),
+        UINT32_C(5), UINT32_C(6), UINT32_C(7), UINT32_C(8)
+    };
+    uint32_t output[8] = {0U};
+    uint8_t flags = UINT8_C(255), status = UINT8_C(255);
+    uint32_t steps = 0U;
+    uint32_t result = a32_runtime_r4_r7(input, UINT8_C(11), &flags, &steps, &status, output);
+    if (result != UINT32_C(12) || flags != UINT8_C(11)
+        || status != UINT8_C(0) || steps != UINT32_C(4)) return 1;
+    if (output[0] != UINT32_C(12) || output[1] != input[1]
+        || output[2] != input[2] || output[3] != input[3]) return 2;
+    if (output[4] != UINT32_C(9) || output[5] != input[5]
+        || output[6] != input[6] || output[7] != UINT32_C(12)) return 3;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory) / "a32_runtime_r4_r7.c"
+            exe = Path(directory) / ("a32_runtime_r4_r7.exe" if os.name == "nt" else "a32_runtime_r4_r7")
+            src.write_text(harness, encoding="utf-8")
+            compiled = subprocess.run([compiler, str(src), "-std=c11", "-Wall", "-Wextra", "-Werror", "-o", str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, compiled.returncode, msg=compiled.stdout + compiled.stderr)
+            executed = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(0, executed.returncode, msg=executed.stdout + executed.stderr)
+
     def test_runtime_state_io_rejects_null_registers_and_invalid_nzcv(self):
         compiler = next((shutil.which(name) for name in (os.environ.get("CC", ""), "cc", "gcc", "clang") if name and shutil.which(name)), None)
         if not compiler:
@@ -1444,8 +1486,8 @@ int main(void) {
         ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_validate(")
         harness = source + """
 int main(void) {
-    const uint32_t input[4] = {1U, 2U, 3U, 4U};
-    uint32_t output[4] = {UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+    const uint32_t input[8] = {1U, 2U, 3U, 4U};
+    uint32_t output[8] = {UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
                           UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)};
     uint8_t flags = UINT8_C(0xAA), status = UINT8_C(0xAA);
     uint32_t steps = UINT32_C(99);
