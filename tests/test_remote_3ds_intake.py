@@ -259,13 +259,16 @@ class Remote3DSIntakeTests(unittest.TestCase):
 
     def _synthetic_cia_with_tmd(self, *, title_id=0x00040000001B5000,
                                  signature_type=0x00010004, title_type=0x40,
-                                 tmd_size=0x200, certificate_size=0, ticket_size=0):
+                                 tmd_size=0xB34, certificate_size=0, ticket_size=0,
+                                 cia_type=0, format_version=0):
         header_size = 0x2020
         tmd_offset = (header_size + 0x3F) & ~0x3F
         tmd_offset = (tmd_offset + certificate_size + 0x3F) & ~0x3F
         tmd_offset = (tmd_offset + ticket_size + 0x3F) & ~0x3F
         cia = bytearray(tmd_offset + tmd_size)
         cia[0x00:0x04] = header_size.to_bytes(4, "little")
+        cia[0x04:0x06] = cia_type.to_bytes(2, "little")
+        cia[0x06:0x08] = format_version.to_bytes(2, "little")
         cia[0x08:0x0C] = certificate_size.to_bytes(4, "little")
         cia[0x0C:0x10] = ticket_size.to_bytes(4, "little")
         cia[0x10:0x14] = tmd_size.to_bytes(4, "little")
@@ -292,6 +295,26 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def test_cia_identity_rejects_unsupported_tmd_signature(self):
         cia = self._synthetic_cia_with_tmd(signature_type=0x00010000)
         with self.assertRaisesRegex(intake.IntakeError, "signature type is unsupported"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+    def test_cia_identity_rejects_unsupported_header_type_and_format_version(self):
+        cia = self._synthetic_cia_with_tmd(cia_type=1)
+        with self.assertRaisesRegex(intake.IntakeError, "CIA type is unsupported"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+        cia = self._synthetic_cia_with_tmd(format_version=1)
+        with self.assertRaisesRegex(intake.IntakeError, "format version is unsupported"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+    def test_cia_identity_rejects_tmd_without_content_record(self):
+        cia = self._synthetic_cia_with_tmd(tmd_size=0xB33)
+        with self.assertRaisesRegex(intake.IntakeError, "TMD is too small"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+    def test_cia_identity_rejects_truncated_header(self):
+        cia = self.work / "truncated-header.cia"
+        cia.write_bytes(b"\\0" * 0x201F)
+        with self.assertRaisesRegex(intake.IntakeError, "CIA header is truncated"):
             intake.extract_container_title_id(cia, "cia", 0)
 
     def test_cia_identity_rejects_wrong_title_type_and_truncated_sections(self):
