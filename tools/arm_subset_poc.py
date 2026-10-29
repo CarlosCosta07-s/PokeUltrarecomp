@@ -112,7 +112,7 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             f"flag-setting form is unsupported for register Operand2: 0x{word:08X}"
         )
 
-    # All values remain in a tiny, explicit r0-r3 model. PC/SP/LR operands
+    # All values remain in a tiny, explicit r0-r7 model. PC/SP/LR operands
     # and PC writes are excluded rather than approximated.
     if opcode in (0b1011, 0b1010):  # CMN/CMP register: update flags only.
         operation = "cmn_reg" if opcode == 0b1011 else "cmp_reg"
@@ -122,13 +122,13 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(
                 f"only canonical {operation[:-4].upper()} register encoding with Rd=0 is supported"
             )
-        if rn > 3 or rm > 3:
+        if rn > 7 or rm > 7:
             register = max(rn, rm)
-            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r7 subset")
         return complete((operation, rn, rm))
 
-    if rd > 3:
-        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    if rd > 7:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r7 subset")
 
     if opcode in (0b1101, 0b1111):  # MOV/MVN register.
         if rn != 0:
@@ -136,8 +136,8 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(
                 f"only the canonical {operation} register encoding with Rn=0 is supported"
             )
-        if rm > 3:
-            raise UnsupportedInstruction(f"source register r{rm} is outside r0-r3 subset")
+        if rm > 7:
+            raise UnsupportedInstruction(f"source register r{rm} is outside r0-r7 subset")
         base = "mov" if opcode == 0b1101 else "mvn"
         operation = (base + "s" if set_flags else base) + "_reg"
         return complete((operation, rd, rm))
@@ -150,9 +150,9 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
             raise UnsupportedInstruction(
                 f"only canonical {operation[:-4].upper()} register encoding with Rd=0 is supported"
             )
-        if rn > 3 or rm > 3:
+        if rn > 7 or rm > 7:
             register = max(rn, rm)
-            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r7 subset")
         return complete((operation, rn, rm))
 
     logical_operations = {
@@ -162,9 +162,9 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         0b1110: "bic",
     }
     if opcode in logical_operations:
-        if rn > 3 or rm > 3:
+        if rn > 7 or rm > 7:
             register = max(rn, rm)
-            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r7 subset")
         base = logical_operations[opcode]
         operation = (base + "s" if set_flags else base) + "_reg"
         return complete((operation, rd, rn, rm))
@@ -174,9 +174,9 @@ def _decode_register_data_processing(word: int, condition: int) -> tuple[object,
         0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc",
     }
     if opcode in arithmetic_operations:
-        if rn > 3 or rm > 3:
+        if rn > 7 or rm > 7:
             register = max(rn, rm)
-            raise UnsupportedInstruction(f"source register r{register} is outside r0-r3 subset")
+            raise UnsupportedInstruction(f"source register r{register} is outside r0-r7 subset")
         base = arithmetic_operations[opcode]
         operation = (base + "s" if set_flags else base) + "_reg"
         return complete((operation, rd, rn, rm))
@@ -203,10 +203,10 @@ def _decode_single_data_transfer(word: int, condition: int) -> tuple[object, ...
         raise UnsupportedInstruction(
             f"post-indexed or writeback memory access is unsupported: 0x{word:08X}"
         )
-    if rn > 3:
-        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r3 subset")
-    if rd > 3:
-        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    if rn > 7:
+        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r7 subset")
+    if rd > 7:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r7 subset")
     if byte_transfer:
         operation = "ldrb_imm" if load else "strb_imm"
     else:
@@ -236,10 +236,10 @@ def _decode_halfword_data_transfer(word: int, condition: int) -> tuple[object, .
         raise UnsupportedInstruction(
             f"post-indexed or writeback halfword/signed memory access is unsupported: 0x{word:08X}"
         )
-    if rn > 3:
-        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r3 subset")
-    if rd > 3:
-        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    if rn > 7:
+        raise UnsupportedInstruction(f"base register r{rn} is outside r0-r7 subset")
+    if rd > 7:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r7 subset")
 
     # S:H=01 denotes LDRH/STRH; S:H=10/11 denote signed loads only.
     if transfer_kind == 0b01:
@@ -276,10 +276,10 @@ def _decode_multiply(word: int, condition: int) -> tuple[object, ...]:
             f"MUL encoding requires the accumulator field Rn to be zero: 0x{word:08X}"
         )
     registers = (rd, rm, rs, ra) if accumulate else (rd, rm, rs)
-    unsupported = [register for register in registers if register > 3]
+    unsupported = [register for register in registers if register > 7]
     if unsupported:
         raise UnsupportedInstruction(
-            f"multiply source/destination register r{max(unsupported)} is outside r0-r3 subset"
+            f"multiply source/destination register r{max(unsupported)} is outside r0-r7 subset"
         )
 
     operation = "mla" if accumulate else "mul"
@@ -371,8 +371,8 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction("CMN requires the S bit to be set")
         if rd != 0:
             raise UnsupportedInstruction("only canonical CMN encoding with Rd=0 is supported")
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         return _apply_condition(condition, ("cmn", rn, immediate))
 
     if opcode == 0b1010:  # CMP (immediate): subtract for flags, no destination write
@@ -380,15 +380,15 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction("CMP requires the S bit to be set")
         if rd != 0:
             raise UnsupportedInstruction("only canonical CMP encoding with Rd=0 is supported")
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         return _apply_condition(condition, ("cmp", rn, immediate))
 
     if opcode in (0b0011, 0b0101, 0b0110, 0b0111):  # RSB/ADC/SBC/RSC.
-        if rd > 3:
-            raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rd > 7:
+            raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r7 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         base = {0b0011: "rsb", 0b0101: "adc", 0b0110: "sbc", 0b0111: "rsc"}[opcode]
         operation = base + "s" if set_flags else base
         return _apply_condition(condition, (operation, rd, rn, immediate))
@@ -399,13 +399,13 @@ def decode_word(word: int) -> tuple[object, ...]:
             raise UnsupportedInstruction(f"{operation[:-4].upper()} requires the S bit to be set")
         if rd != 0:
             raise UnsupportedInstruction(f"only canonical {operation[:-4].upper()} encoding with Rd=0 is supported")
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         return _apply_condition(condition, (operation, rn, immediate, shifter_carry))
 
-    # Restrict this POC to r0-r3 so the generated C and tests stay auditable.
-    if rd > 3:
-        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r3 subset")
+    # Restrict this POC to r0-r7 so the generated C and tests stay auditable.
+    if rd > 7:
+        raise UnsupportedInstruction(f"destination register r{rd} is outside r0-r7 subset")
 
     if opcode == 0b1101:  # MOV/MOVS (immediate)
         if rn != 0:
@@ -422,41 +422,41 @@ def decode_word(word: int) -> tuple[object, ...]:
         return _apply_condition(condition, ("mvn", rd, immediate))
 
     if opcode == 0b0000:  # AND (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         if set_flags:
             return _apply_condition(condition, ("ands_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("and", rd, rn, immediate))
 
     if opcode == 0b1100:  # ORR (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         if set_flags:
             return _apply_condition(condition, ("orrs_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("orr", rd, rn, immediate))
 
     if opcode == 0b0001:  # EOR (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         if set_flags:
             return _apply_condition(condition, ("eors_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("eor", rd, rn, immediate))
 
     if opcode == 0b1110:  # BIC (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         if set_flags:
             return _apply_condition(condition, ("bics_imm", rd, rn, immediate, shifter_carry))
         return _apply_condition(condition, ("bic", rd, rn, immediate))
 
     if opcode == 0b0100:  # ADD (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         return _apply_condition(condition, ("adds" if set_flags else "add", rd, rn, immediate))
 
     if opcode == 0b0010:  # SUB (immediate)
-        if rn > 3:
-            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r3 subset")
+        if rn > 7:
+            raise UnsupportedInstruction(f"source register r{rn} is outside r0-r7 subset")
         return _apply_condition(condition, ("subs" if set_flags else "sub", rd, rn, immediate))
 
     raise UnsupportedInstruction(f"unsupported data-processing opcode {opcode:04b} in 0x{word:08X}")
@@ -473,7 +473,7 @@ def translate(
 
     By default, registers and NZCV are fixed at translation time, preserving the
     original synthetic POC API. With ``runtime_state_io=True``, bounded C accepts
-    entry r0-r3 and NZCV at runtime and returns all four registers plus NZCV,
+    entry r0-r7 and NZCV at runtime and returns all four registers plus NZCV,
     step count and execution status. ``runtime_memory_io=True`` adds an explicit,
     bounded byte-region for pre-indexed immediate word, byte, halfword and signed-load forms.
     Unsupported addresses and misaligned word accesses fail explicitly; no interpreter
@@ -572,7 +572,7 @@ def translate(
             used_registers.update((instruction[1], instruction[2]))
 
     if runtime_state_io:
-        used_registers = set(range(4))
+        used_registers = set(range(8))
     bounded = max_execution_steps is not None
     function_signature = (
         "uint32_t synthetic_entry_bounded(const uint32_t *registers_in, "
@@ -1035,7 +1035,7 @@ def translate(
     ))
     if runtime_state_io:
         lines.append("    if (registers_out != 0) {")
-        lines.extend(f"        registers_out[{register}] = r{register};" for register in range(4))
+        lines.extend(f"        registers_out[{register}] = r{register};" for register in range(8))
         lines.append("    }")
     lines.extend((
         "    return r0;",
