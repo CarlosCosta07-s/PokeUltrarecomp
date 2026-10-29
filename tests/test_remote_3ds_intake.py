@@ -260,7 +260,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def _synthetic_cia_with_tmd(self, *, title_id=0x00040000001B5000,
                                  signature_type=0x00010004, title_type=0x40,
                                  tmd_size=0xB34, certificate_size=0, ticket_size=0,
-                                 cia_type=0, format_version=0):
+                                 cia_type=0, format_version=0, content_count=1):
         header_size = 0x2020
         tmd_offset = (header_size + 0x3F) & ~0x3F
         tmd_offset = (tmd_offset + certificate_size + 0x3F) & ~0x3F
@@ -281,6 +281,8 @@ class Remote3DSIntakeTests(unittest.TestCase):
             tmd[396:404] = title_id.to_bytes(8, "big")
         if tmd_size >= 408:
             tmd[404:408] = title_type.to_bytes(4, "big")
+        if tmd_size >= 0x1E0:
+            tmd[0x1DE:0x1E0] = content_count.to_bytes(2, "big")
         path = self.work / "synthetic.cia"
         path.write_bytes(cia)
         return path
@@ -309,6 +311,16 @@ class Remote3DSIntakeTests(unittest.TestCase):
     def test_cia_identity_rejects_tmd_without_content_record(self):
         cia = self._synthetic_cia_with_tmd(tmd_size=0xB33)
         with self.assertRaisesRegex(intake.IntakeError, "TMD is too small"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+    def test_cia_identity_rejects_zero_content_count(self):
+        cia = self._synthetic_cia_with_tmd(content_count=0)
+        with self.assertRaisesRegex(intake.IntakeError, "declares no content records"):
+            intake.extract_container_title_id(cia, "cia", 0)
+
+    def test_cia_identity_checks_tmd_size_against_content_count(self):
+        cia = self._synthetic_cia_with_tmd(content_count=2)
+        with self.assertRaisesRegex(intake.IntakeError, "too small for its declared content count"):
             intake.extract_container_title_id(cia, "cia", 0)
 
     def test_cia_identity_rejects_truncated_header(self):
