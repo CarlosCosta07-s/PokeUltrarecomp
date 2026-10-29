@@ -70,6 +70,7 @@ def process_local(
     ctrtool_path: Path,
     index: int = 0,
     ghidra_headless_path: Path | None = None,
+    seeddb_path: Path | None = None,
 ) -> dict:
     """Analyze a local image with temporary extraction; never download or upload it."""
     if not 0 <= index <= 65535:
@@ -83,6 +84,25 @@ def process_local(
     if not ctrtool.is_file():
         raise intake.IntakeError("CTRTool path must identify a file")
 
+    seeddb = None
+    if seeddb_path is not None:
+        try:
+            seeddb = seeddb_path.expanduser().resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise intake.IntakeError("the supplied local seed database does not exist or cannot be resolved") from exc
+        if not seeddb.is_file():
+            raise intake.IntakeError("the supplied local seed database path must identify a file")
+        try:
+            seeddb.relative_to(ROOT.resolve())
+        except ValueError:
+            pass
+        else:
+            raise intake.IntakeError(
+                "keep seed databases and other key material outside the repository; never add them to Git"
+            )
+        if seeddb == image:
+            raise intake.IntakeError("the seed database must be a separate local file")
+
     ghidra = None
     if ghidra_headless_path is not None:
         try:
@@ -92,12 +112,18 @@ def process_local(
         if not ghidra.is_file():
             raise intake.IntakeError("Ghidra path must identify a file")
 
+    ctrtool_command = [str(ctrtool)]
+    if seeddb is not None:
+        # Pass only a user-supplied local database. Never copy, read, log,
+        # publish or upload its contents.
+        ctrtool_command.append(f"--seeddb={seeddb}")
+
     with tempfile.TemporaryDirectory(prefix="pokeultra-local-intake-") as temporary:
         result = intake.extract_and_inspect(
             image,
             target,
             format_name,
-            [str(ctrtool)],
+            ctrtool_command,
             Path(temporary) / "extract",
             ncch_index=index,
             candidate_decode_summary=True,
@@ -135,6 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ctrtool", required=True, type=Path, help="path to the locally installed CTRTool executable")
     parser.add_argument("--ncch-index", type=int, default=0)
     parser.add_argument(
+        "--seeddb",
+        type=Path,
+        help="optional existing local seed database you are authorized to use; never uploaded or logged",
+    )
+    parser.add_argument(
         "--ghidra-headless",
         type=Path,
         help="optional local Ghidra analyzeHeadless executable; only aggregate results are emitted",
@@ -149,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             args.ctrtool,
             args.ncch_index,
             ghidra_headless_path=args.ghidra_headless,
+            seeddb_path=args.seeddb,
         )
     except intake.IntakeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
