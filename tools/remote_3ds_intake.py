@@ -897,7 +897,7 @@ def extract_and_inspect(
         raise IntakeError("CTRTool failed or timed out; no files were published") from exc
     if run.returncode != 0:
         raise IntakeError(
-            "CTRTool could not extract this partition; it may be encrypted, malformed, or require keys not provided by this workflow"
+            "CTRTool could not extract this partition; it may be encrypted, malformed, or require keys not supplied to CTRTool"
         )
     code_path = _locate_code_file(exefs)
     container_title_id = extract_container_title_id(image_path, fmt, ncch_index)
