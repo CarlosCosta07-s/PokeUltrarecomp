@@ -19,6 +19,53 @@ Este modo permite processar a imagem em um runner temporário do GitHub Actions 
 
 O workflow tem limite de download de 8 GiB, limite de execução de 120 minutos, usa CTRTool v1.3.0 e fixa gdown em 6.4.2 para baixar arquivos públicos do Google Drive. Para a análise estática agrega, instala Java 21 e baixa Ghidra 12.2 do release oficial, verificando o SHA-256 do arquivo ZIP antes de executar o analisador headless. Se a imagem exigir chaves que o workflow não tem ou não puder ser extraída diretamente, ele falha de forma explícita; não tenta recuperar chaves ou contornar criptografia.
 
+## Executar localmente sem enviar a imagem à nuvem
+
+O modo `tools/local_3ds_intake.py` é a alternativa ao workflow remoto quando um provedor limita downloads, quando você prefere não transferir a imagem para GitHub Actions ou quando quer inspecionar o conteúdo diretamente no computador. Ele não baixa a imagem, não precisa das secrets `POKEULTRARECOMP_SOURCE_URL*` e não faz upload de ROM, código extraído, hashes ou desassemblagem. A imagem original fica onde está; arquivos de extração são criados num diretório temporário do sistema e removidos ao terminar.
+
+### Antes de executar
+
+- Mantenha a imagem fora da pasta do repositório.
+- Se você tem um arquivo dividido como `.7z.001`, `.7z.002` etc., mantenha todas as partes juntas e extraia a partir da parte `.7z.001` com 7-Zip (Windows) ou `7z x "arquivo.7z.001"` (Linux). Passe ao programa o arquivo resultante `.cia`, `.cci` ou `.3ds`, não uma parte `.001`.
+- Tenha uma instalação local do CTRTool. O procedimento não obtém chaves nem contorna criptografia; se o conteúdo precisar de chaves que você não possui, a ferramenta falha de forma explícita.
+- A imagem precisa ser uma entrada obtida e utilizada de acordo com os direitos aplicáveis. Não a adicione ao Git nem envie os resultados privados para issues, pull requests ou artifacts.
+
+### Comandos
+
+No PowerShell, ajuste os caminhos para os arquivos locais:
+
+```powershell
+python tools/local_3ds_intake.py `
+  --image "D:\Jogos\ultra-sun.cia" `
+  --target ultra-sun `
+  --format cia `
+  --ncch-index 0 `
+  --ctrtool "C:\Ferramentas\ctrtool.exe"
+```
+
+No Linux:
+
+```bash
+python3 tools/local_3ds_intake.py \
+  --image "$HOME/Jogos/ultra-sun.cci" \
+  --target ultra-sun \
+  --format cci \
+  --ncch-index 0 \
+  --ctrtool "$HOME/bin/ctrtool"
+```
+
+Ultra Moon deve ser selecionado separadamente com `--target ultra-moon`. `--format` precisa corresponder à imagem real (`3ds`, `cci` ou `cia`). Para incluir o censo agregado do Ghidra, acrescente `--ghidra-headless` com o caminho para o executável local `analyzeHeadless`; essa etapa é opcional.
+
+A saída é JSON com contagens agregadas e campos explícitos de que a imagem não foi enviada. Ela não inclui caminho local, bytes, hash, endereço de função, palavras de instrução ou desassemblagem. A ferramenta também marca explicitamente que equivalência semântica ainda não foi verificada e que o jogo não foi iniciado.
+
+Validação de segurança com fixtures sintéticas, sem imagem de jogo:
+
+```bash
+python -m unittest discover -s tests -p 'test_local_3ds_intake.py' -v
+```
+
+Essa suíte testa o contrato local e o relato seguro; não substitui a execução local do intake numa imagem real nem valida uma função real recompilada.
+
 ## Privacidade e limitações
 
 A imagem completa trafega do seu provedor para a infraestrutura de GitHub Actions. Ela não passa pelo anexo do ChatGPT e não é guardada como artifact do workflow, mas o processamento acontece em uma máquina de nuvem de terceiros. Use esse método somente se estiver confortável com isso e com as condições do seu provedor de armazenamento.
