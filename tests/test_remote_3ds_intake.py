@@ -387,7 +387,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
             ("branch-with-link is unsupported: 0xEB000123", "branch-with-link"),
             ("not a supported immediate data-processing instruction: 0xE5900000", "non-immediate-data-processing"),
             ("flag-setting form is unsupported: 0xE1B00001", "unsupported-flag-setting-form"),
-            ("source register r9 is outside r0-r3 subset", "register-outside-r0-r3"),
+            ("source register r9 is outside r0-r7 subset", "register-outside-r0-r7"),
             ("only the canonical MOV immediate encoding with Rn=0 is supported", "noncanonical-mov-mvn"),
             ("unclassified private decoder error 0x00123456", "other-decode-rejection"),
             ("not a supported data-processing operand form: 0xE5900000", "unsupported-operand-class"),
