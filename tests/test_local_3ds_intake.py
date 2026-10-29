@@ -95,6 +95,49 @@ class Local3DSIntakeTests(unittest.TestCase):
         self.assertFalse(result["game_started"])
         self.assertNotIn(str(self.image), json.dumps(result))
 
+    def test_seeddb_is_passed_to_ctrtool_but_never_reported(self):
+        seeddb = self.work / "existing-seeddb.bin"
+        seeddb.write_bytes(b"synthetic seed database fixture")
+        expected_internal_result = {
+            "status": "pass",
+            "target": "ultra-sun",
+            "format": ".cci",
+            "text_size_bytes": 4096,
+            "decompressed_code_size_bytes": 8192,
+            "container_title_id_supplied": True,
+            "container_title_id_match": "matched",
+            "container_title_kind": "base",
+            "candidate_census": {"candidate_sites_total": 0},
+            "ghidra_function_census": None,
+        }
+        with patch.object(
+            intake, "extract_and_inspect", return_value=expected_internal_result
+        ) as inspect:
+            result = local_intake.process_local(
+                self.image, "ultra-sun", "cci", self.ctrtool,
+                seeddb_path=seeddb,
+            )
+
+        args, _kwargs = inspect.call_args
+        self.assertEqual(
+            [str(self.ctrtool.resolve()), f"--seeddb={seeddb.resolve()}"],
+            args[3],
+        )
+        self.assertNotIn(str(seeddb.resolve()), json.dumps(result))
+        self.assertFalse(result["source_uploaded"])
+
+    def test_rejects_missing_seeddb_and_seeddb_inside_repository(self):
+        with self.assertRaisesRegex(intake.IntakeError, "seed database does not exist"):
+            local_intake.process_local(
+                self.image, "ultra-sun", "cci", self.ctrtool,
+                seeddb_path=self.work / "missing-seeddb.bin",
+            )
+        with self.assertRaisesRegex(intake.IntakeError, "outside the repository"):
+            local_intake.process_local(
+                self.image, "ultra-sun", "cci", self.ctrtool,
+                seeddb_path=ROOT / "README.md",
+            )
+
     def test_rejects_invalid_partition_index_before_running_tools(self):
         with self.assertRaisesRegex(intake.IntakeError, "from 0 to 65535"):
             local_intake.process_local(
@@ -112,8 +155,10 @@ class Local3DSIntakeTests(unittest.TestCase):
             "native_semantic_equivalence_verified": False,
             "game_started": False,
         }
+        seeddb = self.work / "existing-seeddb.bin"
+        seeddb.write_bytes(b"synthetic seed database fixture")
         stdout = io.StringIO()
-        with patch.object(local_intake, "process_local", return_value=fake_result), patch.dict(
+        with patch.object(local_intake, "process_local", return_value=fake_result) as process, patch.dict(
             "os.environ", {"POKEULTRARECOMP_SOURCE_URL": ""}, clear=False
         ), contextlib.redirect_stdout(stdout):
             exit_code = local_intake.main([
@@ -121,9 +166,11 @@ class Local3DSIntakeTests(unittest.TestCase):
                 "--target", "ultra-sun",
                 "--format", "cci",
                 "--ctrtool", str(self.ctrtool),
+                "--seeddb", str(seeddb),
             ])
         self.assertEqual(0, exit_code)
         self.assertEqual(fake_result, json.loads(stdout.getvalue()))
+        self.assertEqual(seeddb, process.call_args.kwargs["seeddb_path"])
 
 
 if __name__ == "__main__":
