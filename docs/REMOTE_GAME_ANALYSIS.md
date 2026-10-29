@@ -43,6 +43,8 @@ python tools/local_3ds_intake.py `
   --ctrtool "C:\Ferramentas\ctrtool.exe"
 ```
 
+Se o NCCH exigir um banco de seeds, acrescente `--seeddb` apontando para um arquivo local que você já possua e esteja autorizado a usar. O PokeUltrarecomp não baixa, gera ou recupera seeds/chaves. Mantenha esse arquivo fora do repositório; a ferramenta não imprime o caminho no JSON nem envia o arquivo.
+
 No Linux:
 
 ```bash
@@ -53,6 +55,8 @@ python3 tools/local_3ds_intake.py \
   --ncch-index 0 \
   --ctrtool "$HOME/bin/ctrtool"
 ```
+
+No Linux, adicione `--seeddb "$HOME/dados-locais/seeddb.bin"` quando necessário. Use apenas um banco existente e autorizado. Não o coloque no Git nem o envie para issues, secrets do Actions ou artifacts.
 
 Ultra Moon deve ser selecionado separadamente com `--target ultra-moon`. `--format` precisa corresponder à imagem real (`3ds`, `cci` ou `cia`). Para incluir o censo agregado do Ghidra, acrescente `--ghidra-headless` com o caminho para o executável local `analyzeHeadless`; essa etapa é opcional.
 
