@@ -1405,22 +1405,27 @@ int main(void) {
         harness = "\n".join((add, skipped)) + """
 int main(void) {
     const uint32_t input[8] = {
-        UINT32_C(37), UINT32_C(0x12345678), UINT32_C(0x80000000), UINT32_C(0xDEADBEEF)
+        UINT32_C(37), UINT32_C(0x12345678), UINT32_C(0x80000000), UINT32_C(0xDEADBEEF),
+        UINT32_C(0x11111111), UINT32_C(0x22222222), UINT32_C(0x33333333), UINT32_C(0x44444444)
     };
-    uint32_t output[8] = {0U, 0U, 0U, 0U};
+    uint32_t output[8] = {0U};
     uint8_t flags = UINT8_C(255), status = UINT8_C(255);
     uint32_t steps = 0U;
     if (!(a32_runtime_add(input, UINT8_C(11), &flags, &steps, &status, output) == UINT32_C(42)
         && flags == UINT8_C(11) && status == UINT8_C(0) && steps == UINT32_C(2)
         && output[0] == UINT32_C(42) && output[1] == input[1]
-        && output[2] == input[2] && output[3] == input[3])) return 1;
+        && output[2] == input[2] && output[3] == input[3]
+        && output[4] == input[4] && output[5] == input[5]
+        && output[6] == input[6] && output[7] == input[7])) return 1;
     if (!(input[0] == UINT32_C(37))) return 2;
-    output[0] = output[1] = output[2] = output[3] = 0U;
+    for (unsigned i = 0; i < 8; ++i) output[i] = 0U;
     flags = UINT8_C(255); status = UINT8_C(255); steps = 0U;
     if (!(a32_runtime_add_ne(input, UINT8_C(4), &flags, &steps, &status, output) == UINT32_C(37)
         && flags == UINT8_C(4) && status == UINT8_C(0) && steps == UINT32_C(2)
         && output[0] == input[0] && output[1] == input[1]
-        && output[2] == input[2] && output[3] == input[3])) return 3;
+        && output[2] == input[2] && output[3] == input[3]
+        && output[4] == input[4] && output[5] == input[5]
+        && output[6] == input[6] && output[7] == input[7])) return 3;
     return 0;
 }
 """
@@ -1486,18 +1491,24 @@ int main(void) {
         ).replace("uint32_t synthetic_entry_bounded(", "uint32_t a32_runtime_validate(")
         harness = source + """
 int main(void) {
-    const uint32_t input[8] = {1U, 2U, 3U, 4U};
-    uint32_t output[8] = {UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
-                          UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)};
+    const uint32_t input[8] = {
+        1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U
+    };
+    uint32_t output[8] = {
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA),
+        UINT32_C(0xAAAAAAAA), UINT32_C(0xAAAAAAAA)
+    };
     uint8_t flags = UINT8_C(0xAA), status = UINT8_C(0xAA);
     uint32_t steps = UINT32_C(99);
     if (a32_runtime_validate(0, UINT8_C(0), &flags, &steps, &status, output) != 0U) return 1;
     if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 2;
-    for (unsigned i = 0; i < 4; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 3;
+    for (unsigned i = 0; i < 8; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 3;
     flags = UINT8_C(0xAA); status = UINT8_C(0xAA); steps = UINT32_C(99);
     if (a32_runtime_validate(input, UINT8_C(16), &flags, &steps, &status, output) != 0U) return 4;
     if (status != UINT8_C(2) || steps != 0U || flags != UINT8_C(0xAA)) return 5;
-    for (unsigned i = 0; i < 4; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 6;
+    for (unsigned i = 0; i < 8; ++i) if (output[i] != UINT32_C(0xAAAAAAAA)) return 6;
     return 0;
 }
 """
