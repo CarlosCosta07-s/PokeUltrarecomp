@@ -313,7 +313,7 @@ class Remote3DSIntakeTests(unittest.TestCase):
 
     def test_cia_identity_rejects_truncated_header(self):
         cia = self.work / "truncated-header.cia"
-        cia.write_bytes(b"\\0" * 0x201F)
+        cia.write_bytes(bytes(0x201F))
         with self.assertRaisesRegex(intake.IntakeError, "CIA header is truncated"):
             intake.extract_container_title_id(cia, "cia", 0)
 
