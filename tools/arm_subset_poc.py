@@ -473,7 +473,7 @@ def translate(
 
     By default, registers and NZCV are fixed at translation time, preserving the
     original synthetic POC API. With ``runtime_state_io=True``, bounded C accepts
-    entry r0-r7 and NZCV at runtime and returns all four registers plus NZCV,
+    entry r0-r7 and NZCV at runtime and returns all eight registers plus NZCV,
     step count and execution status. ``runtime_memory_io=True`` adds an explicit,
     bounded byte-region for pre-indexed immediate word, byte, halfword and signed-load forms.
     Unsupported addresses and misaligned word accesses fail explicitly; no interpreter
