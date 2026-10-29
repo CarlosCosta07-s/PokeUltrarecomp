@@ -49,11 +49,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Set up Java for Ghidra
+      - name: Set up Java for Ghidra 12.2
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          # Ghidra 12.2 requires JDK 25 or newer.
+          java-version: "25"
       - name: Download and verify Ghidra 12.2
         shell: bash
         run: |
