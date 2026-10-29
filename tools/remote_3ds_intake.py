@@ -35,39 +35,100 @@ def normalize_format(value: str) -> tuple[str, str]:
 def extract_container_title_id(
     image_path: Path, format_name: str, ncch_index: int,
 ) -> str | None:
-    """Read the selected NCCH Program ID from an unencrypted NCSD header."""
-    _fmt, kind = normalize_format(format_name)
-    if kind != "ncsd":
-        return None
-    if not 0 <= ncch_index < 8:
-        raise IntakeError("NCSD partition index must be from 0 to 7")
+    """Read a title identity from an NCSD/NCCH header or a CIA TMD.
+
+    This is structural identity checking only; it does not authenticate the
+    file, verify a signature, decrypt content, or identify an exact game revision.
+    """
+    fmt, kind = normalize_format(format_name)
     try:
         file_size = image_path.stat().st_size
         with image_path.open("rb") as stream:
-            if file_size < 0x200:
-                raise IntakeError("NCSD container header is truncated")
-            stream.seek(0x100)
-            if stream.read(4) != b"NCSD":
-                raise IntakeError("input does not contain the expected NCSD header")
-            stream.seek(0x120 + ncch_index * 8)
-            entry = stream.read(8)
-            if len(entry) != 8:
-                raise IntakeError("NCSD partition table is truncated")
-            offset_units = int.from_bytes(entry[0:4], "little")
-            size_units = int.from_bytes(entry[4:8], "little")
-            if offset_units == 0 or size_units == 0:
-                raise IntakeError("selected NCSD partition is absent")
-            offset = offset_units * 0x200
-            size = size_units * 0x200
-            if offset < 0x200 or size < 0x200 or offset > file_size or size > file_size - offset:
-                raise IntakeError("selected NCSD partition range is outside the image")
-            stream.seek(offset)
-            header = stream.read(0x200)
-            if len(header) != 0x200 or header[0x100:0x104] != b"NCCH":
-                raise IntakeError("selected NCSD partition does not contain an NCCH header")
-            return f"{int.from_bytes(header[0x118:0x120], 'little'):016x}"
+            if kind == "ncsd":
+                if not 0 <= ncch_index < 8:
+                    raise IntakeError("NCSD partition index must be from 0 to 7")
+                if file_size < 0x200:
+                    raise IntakeError("NCSD container header is truncated")
+                stream.seek(0x100)
+                if stream.read(4) != b"NCSD":
+                    raise IntakeError("input does not contain the expected NCSD header")
+                stream.seek(0x120 + ncch_index * 8)
+                entry = stream.read(8)
+                if len(entry) != 8:
+                    raise IntakeError("NCSD partition table is truncated")
+                offset_units = int.from_bytes(entry[0:4], "little")
+                size_units = int.from_bytes(entry[4:8], "little")
+                if offset_units == 0 or size_units == 0:
+                    raise IntakeError("selected NCSD partition is absent")
+                offset = offset_units * 0x200
+                size = size_units * 0x200
+                if offset < 0x200 or size < 0x200 or offset > file_size or size > file_size - offset:
+                    raise IntakeError("selected NCSD partition range is outside the image")
+                stream.seek(offset)
+                header = stream.read(0x200)
+                if len(header) != 0x200 or header[0x100:0x104] != b"NCCH":
+                    raise IntakeError("selected NCSD partition does not contain an NCCH header")
+                return f"{int.from_bytes(header[0x118:0x120], 'little'):016x}"
+
+            if fmt != "cia":
+                raise IntakeError("unsupported container identity format")
+
+            # CIA header: sizes are little-endian and each section begins at a
+            # 0x40-byte boundary. Parse only the TMD location and a bounded
+            # subset of its metadata; never trust section offsets from file data.
+            if file_size < 0x20:
+                raise IntakeError("CIA header is truncated")
+            stream.seek(0)
+            header = stream.read(0x20)
+            if len(header) != 0x20:
+                raise IntakeError("CIA header is truncated")
+            header_size = int.from_bytes(header[0x00:0x04], "little")
+            certificate_size = int.from_bytes(header[0x08:0x0C], "little")
+            ticket_size = int.from_bytes(header[0x0C:0x10], "little")
+            tmd_size = int.from_bytes(header[0x10:0x14], "little")
+            if header_size < 0x20 or header_size > file_size:
+                raise IntakeError("CIA header size is invalid")
+            if tmd_size < 0x1D0:
+                raise IntakeError("CIA TMD is too small to contain a supported title identity")
+
+            def align_section(value: int) -> int:
+                return (value + 0x3F) & ~0x3F
+
+            position = header_size
+            position = align_section(position)
+            if certificate_size > file_size - position:
+                raise IntakeError("CIA certificate section exceeds the file bounds")
+            position += certificate_size
+            position = align_section(position)
+            if position > file_size or ticket_size > file_size - position:
+                raise IntakeError("CIA ticket section exceeds the file bounds")
+            position += ticket_size
+            position = align_section(position)
+            if position > file_size or tmd_size > file_size - position:
+                raise IntakeError("CIA TMD section exceeds the file bounds")
+
+            stream.seek(position)
+            tmd_header = stream.read(0x1D0)
+            if len(tmd_header) != 0x1D0:
+                raise IntakeError("CIA TMD header is truncated")
+            signature_type = int.from_bytes(tmd_header[0:4], "big")
+            if signature_type != 0x00010004:
+                raise IntakeError("CIA TMD signature type is unsupported for structural identity parsing")
+            tmd_header_offset = 384
+            if tmd_header[tmd_header_offset] != 1:
+                raise IntakeError("CIA TMD version is not the expected 3DS format")
+            title_id = int.from_bytes(
+                tmd_header[tmd_header_offset + 12:tmd_header_offset + 20], "big"
+            )
+            title_type = int.from_bytes(
+                tmd_header[tmd_header_offset + 20:tmd_header_offset + 24], "big"
+            )
+            if title_type != 0x40 or title_id == 0:
+                raise IntakeError("CIA TMD title identity fields are invalid")
+            return f"{title_id:016x}"
     except OSError as exc:
-        raise IntakeError("could not read the NCSD container header") from exc
+        label = "CIA" if fmt == "cia" else "NCSD"
+        raise IntakeError(f"could not read the {label} container header") from exc
 
 def validate_url(value: str) -> None:
     try:
