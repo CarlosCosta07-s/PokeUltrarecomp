@@ -33,9 +33,9 @@ class DecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(poc.UnsupportedInstruction, "condition code 0xF"):
             poc.decode_word(0xF3A00003)
 
-    def test_rejects_unsupported_register(self):
-        with self.assertRaises(poc.UnsupportedInstruction):
-            poc.decode_word(0xE3A04003)  # MOV r4, #3
+    def test_rejects_register_outside_r0_to_r7(self):
+        with self.assertRaisesRegex(poc.UnsupportedInstruction, "destination register r8"):
+            poc.decode_word(0xE3A08003)  # MOV r8, #3
 
     def test_decodes_adds_with_flags(self):
         self.assertEqual(("adds", 0, 0, 1), poc.decode_word(0xE2900001))
