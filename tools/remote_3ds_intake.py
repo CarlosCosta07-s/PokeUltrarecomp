@@ -551,7 +551,7 @@ ARM_DECODE_REJECTION_FAMILIES = (
     "register-shifted-operand",
     "unsupported-flag-setting-form",
     "noncanonical-cmn-cmp",
-    "register-outside-r0-r3",
+    "register-outside-r0-r7",
     "noncanonical-mov-mvn",
     "unsupported-data-processing-opcode",
     "other-decode-rejection",
@@ -593,8 +593,8 @@ def classify_arm_decode_rejection(message: str) -> str:
         return "unsupported-flag-setting-form"
     if "canonical cmn" in lowered or "canonical cmp" in lowered or "cmn requires" in lowered or "cmp requires" in lowered:
         return "noncanonical-cmn-cmp"
-    if "register r" in lowered and "outside r0-r3 subset" in lowered:
-        return "register-outside-r0-r3"
+    if "register r" in lowered and "outside r0-r7 subset" in lowered:
+        return "register-outside-r0-r7"
     if "canonical mov" in lowered or "canonical mvn" in lowered:
         return "noncanonical-mov-mvn"
     if "unsupported data-processing opcode" in lowered:
