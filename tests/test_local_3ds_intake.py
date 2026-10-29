@@ -3,7 +3,6 @@
 import contextlib
 import io
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -84,9 +83,10 @@ class Local3DSIntakeTests(unittest.TestCase):
         self.assertEqual(self.image.resolve(), args[0])
         self.assertEqual("ultra-sun", args[1])
         self.assertEqual("cci", args[2])
-        temp_root = os.path.normcase(str(Path(tempfile.gettempdir()).resolve()))
-        work_directory = os.path.normcase(str(Path(args[4]).resolve()))
-        self.assertEqual(temp_root, os.path.commonpath((temp_root, work_directory)))
+        work_directory = Path(args[4]).resolve()
+        self.assertEqual("extract", work_directory.name)
+        self.assertTrue(work_directory.parent.name.startswith("pokeultra-local-intake-"))
+        self.assertFalse(work_directory.is_relative_to(ROOT.resolve()))
         self.assertTrue(kwargs["candidate_decode_summary"])
         self.assertEqual("local", result["source_mode"])
         self.assertFalse(result["source_uploaded"])
